@@ -2,15 +2,13 @@ version: '3'
 
 # Python Language SDK. Implements the contract in ../Taskfile.yaml. Tasks only call scripts/.
 # TAG=vX.Y.Z is mapped to a PEP 440 version by ../scripts/version.sh; without TAG a build is 0.0.0.
-# Scripts read TAG from the environment; this makes `task stamp TAG=v1.2.3` work as well as `TAG=v1.2.3 task stamp`.
-env:
-  TAG: '{{.TAG}}'
+# Each script call below passes TAG explicitly, so the task's TAG wins over any TAG already in the environment.
 
 tasks:
   build:
     desc: Build sdist and wheel into dist/ (TAG optional)
     cmds:
-      - scripts/build.sh
+      - TAG="{{.TAG}}" scripts/build.sh
 
   test:
     cmds:
@@ -37,21 +35,21 @@ tasks:
     desc: Validate TAG and print the PyPI version it maps to (build computes it itself)
     requires: { vars: [TAG] }
     cmds:
-      - ../scripts/version.sh "$TAG" pypi
+      - ../scripts/version.sh "{{.TAG}}" pypi
 
   publish:dry-run:
     requires: { vars: [TAG] }
     cmds:
-      - scripts/publish.sh --dry-run
+      - TAG="{{.TAG}}" scripts/publish.sh --dry-run
 
   publish:
     desc: Upload to PyPI via trusted publishing; skips a version already on PyPI
     requires: { vars: [TAG] }
     cmds:
-      - scripts/publish.sh
+      - TAG="{{.TAG}}" scripts/publish.sh
 
   verify:
     desc: Install the published package and assert eyepop.version() == TAG's version
     requires: { vars: [TAG] }
     cmds:
-      - scripts/verify.sh
+      - TAG="{{.TAG}}" scripts/verify.sh
