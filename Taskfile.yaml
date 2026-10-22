@@ -1,0 +1,30 @@
+version: "3"
+
+# Every language dir has its own Taskfile.yaml implementing this contract. CI calls only these tasks.
+#   build           compile / package into the language's standard output
+#   test            run unit tests
+#   stamp           TAG=vX.Y.Z  stamp the tag's version (see scripts/version.sh); no-op if the ecosystem takes it from the build
+#   publish:dry-run TAG=vX.Y.Z  everything short of uploading
+#   publish         TAG=vX.Y.Z  upload; idempotent, skips a version already published
+#   verify          TAG=vX.Y.Z  install the PUBLISHED artifact in a scratch project and assert eyepop version() == the tag's version
+
+includes:
+  node: { taskfile: node/Taskfile.yaml, dir: node }
+  python: { taskfile: python/Taskfile.yaml, dir: python }
+  go: { taskfile: go/Taskfile.yaml, dir: go }
+  rust: { taskfile: rust/Taskfile.yaml, dir: rust }
+  cs: { taskfile: cs/Taskfile.yaml, dir: cs }
+
+tasks:
+  build:
+    desc: Build every Language SDK
+    deps: [node:build, python:build, go:build, rust:build, cs:build]
+
+  test:
+    desc: Test every Language SDK
+    deps: [node:test, python:test, go:test, rust:test, cs:test]
+
+  test:scripts:
+    desc: Self-check the tag-to-version mapping
+    cmds:
+      - scripts/version.test.sh
