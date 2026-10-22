@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <PackageId>EyePop</PackageId>
+    <!-- Placeholder: the release tag is the only version source, tasks pass -p:Version=. -->
+    <Version>0.0.0</Version>
+    <Authors>EyePop</Authors>
+    <Description>EyePop client SDK for .NET (scaffold).</Description>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <RepositoryUrl>https://github.com/eyepop-ai/eyepop-sdk</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+  </PropertyGroup>
+
+</Project>
