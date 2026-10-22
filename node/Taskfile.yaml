@@ -1,12 +1,8 @@
-version: "3"
+version: '3'
 
 # Node Language SDK (npm workspaces under packages/*). Implements the contract in ../Taskfile.yaml.
-# TAG=vX.Y.Z is mapped to an npm version by ../scripts/version.sh. Adding a package under
-# packages/ needs no change here: every task loops over scripts/workspaces.mjs (dependencies first).
-vars:
-  VERSION:
-    sh: '[ -n "{{.TAG}}" ] && ../scripts/version.sh "{{.TAG}}" npm || true'
-
+# Tasks only call scripts/. TAG=vX.Y.Z is mapped to an npm version by ../scripts/version.sh.
+# Adding a package under packages/ needs no change here: the scripts loop over every workspace.
 tasks:
   build:
     cmds:
@@ -18,88 +14,47 @@ tasks:
       - task: build
       - npm test --workspaces
 
+  lint:
+    desc: ESLint and Prettier check
+    cmds:
+      - npm install --no-audit --no-fund
+      - npx eslint .
+      - npx prettier --check .
+
+  typecheck:
+    desc: tsc --noEmit in every workspace
+    cmds:
+      - npm install --no-audit --no-fund
+      - npm run typecheck --workspaces
+
+  check:
+    desc: The CI gate. lint, typecheck, test
+    cmds:
+      - task: lint
+      - task: typecheck
+      - task: test
+
   stamp:
-    desc: Write TAG's version into every workspace manifest (and inter-workspace dependency ranges)
+    desc: Write TAG's version into every workspace manifest
     requires: { vars: [TAG] }
     cmds:
-      - |
-        set -eu
-        v="{{.VERSION}}"
-        [ -n "$v" ] || exit 1
-        npm version "$v" --no-git-tag-version --allow-same-version --workspaces >/dev/null
-        node scripts/workspaces.mjs ranges "$v"
-        echo "stamped $v"
+      - scripts/stamp.sh
 
   publish:dry-run:
     requires: { vars: [TAG] }
     cmds:
       - task: build
-      - |
-        set -eu
-        want="{{.VERSION}}"
-        [ -n "$want" ] || { echo "empty version for TAG={{.TAG}}" >&2; exit 1; }
-        # capture first: a failing listing must fail the task, not feed an empty loop
-        list=$(node scripts/workspaces.mjs list)
-        [ -n "$list" ] || { echo "no workspaces found" >&2; exit 1; }
-        while read -r dir name v; do
-          [ "$v" = "$want" ] || { echo "$name is $v, expected $want (run stamp first)" >&2; exit 1; }
-          tag=latest; case "$v" in *-*) tag=next ;; esac
-          echo "== $name@$v (dist-tag $tag)"
-          npm publish --dry-run --workspace "$dir" --tag "$tag" </dev/null
-        done <<EOF
-        $list
-        EOF
+      - scripts/publish.sh --dry-run
 
   publish:
     desc: Publish every workspace with provenance; skips versions already on the registry
     requires: { vars: [TAG] }
     cmds:
       - task: build
-      - |
-        set -eu
-        want="{{.VERSION}}"
-        [ -n "$want" ] || { echo "empty version for TAG={{.TAG}}" >&2; exit 1; }
-        list=$(node scripts/workspaces.mjs list)
-        [ -n "$list" ] || { echo "no workspaces found" >&2; exit 1; }
-        # check every manifest before the first upload so a bad stamp publishes nothing
-        while read -r dir name v; do
-          [ "$v" = "$want" ] || { echo "$name is $v, expected $want (run stamp first)" >&2; exit 1; }
-        done <<EOF
-        $list
-        EOF
-        while read -r dir name v; do
-          if [ -n "$(npm view "$name@$v" version 2>/dev/null </dev/null)" ]; then
-            echo "$name@$v already on npm, skipping"
-            continue
-          fi
-          tag=latest; case "$v" in *-*) tag=next ;; esac
-          npm publish --workspace "$dir" --provenance --tag "$tag" </dev/null
-        done <<EOF
-        $list
-        EOF
+      - scripts/publish.sh
 
   verify:
-    desc: Install each published workspace in a scratch dir and assert eyepop.version() == TAG's version
+    desc: Install the published packages and assert eyepop.version() == TAG's version
     requires: { vars: [TAG] }
     cmds:
-      - |
-        set -eu
-        v="{{.VERSION}}"
-        [ -n "$v" ] || exit 1
-        list=$(node scripts/workspaces.mjs list)
-        [ -n "$list" ] || { echo "no workspaces found" >&2; exit 1; }
-        d=$(mktemp -d); trap 'rm -rf "$d"' EXIT
-        cd "$d" && npm init -y >/dev/null
-        cd - >/dev/null
-        while read -r dir name _; do
-          # registry reads lag a fresh publish, so retry
-          n=0
-          until (cd "$d" && npm install --no-audit --no-fund --prefer-online "$name@$v" >/dev/null 2>&1 </dev/null); do
-            n=$((n+1)); [ "$n" -lt 6 ] || { echo "cannot install $name@$v" >&2; exit 1; }
-            sleep 10
-          done
-          (cd "$d" && NAME="$name" EXPECT="$v" node --input-type=module -e 'const m = await import(process.env.NAME); const got = m.eyepop.version(); if (got !== process.env.EXPECT) { console.error("got " + got); process.exit(1) } console.log("ok", process.env.NAME, got)' </dev/null)
-          (cd "$d" && NAME="$name" EXPECT="$v" node -e 'const got = require(process.env.NAME).eyepop.version(); if (got !== process.env.EXPECT) process.exit(1)')
-        done <<EOF
-        $list
-        EOF
+      - scripts/verify.sh

@@ -18,7 +18,8 @@ const load = () => {
 }
 
 const list = (pkgs) => {
-  const seen = new Set(), out = []
+  const seen = new Set(),
+    out = []
   const visit = (name) => {
     if (seen.has(name)) return
     seen.add(name)
@@ -32,7 +33,12 @@ const list = (pkgs) => {
 const ranges = (pkgs, ver) => {
   for (const [, p] of pkgs) {
     let changed = false
-    for (const f of depFields) for (const d of Object.keys(p.json[f] ?? {})) if (pkgs.has(d)) { p.json[f][d] = ver; changed = true }
+    for (const f of depFields)
+      for (const d of Object.keys(p.json[f] ?? {}))
+        if (pkgs.has(d)) {
+          p.json[f][d] = ver
+          changed = true
+        }
     if (changed) writeFileSync(`${p.dir}/package.json`, JSON.stringify(p.json, null, 2) + '\n')
   }
 }
