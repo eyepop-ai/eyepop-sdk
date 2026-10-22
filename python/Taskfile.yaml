@@ -1,63 +1,57 @@
-version: "3"
+version: '3'
 
-# Python Language SDK. Implements the contract in ../Taskfile.yaml.
-# TAG=vX.Y.Z is mapped to a PEP 440 version by ../scripts/version.sh; without TAG the build is 0.0.0
-# (setuptools-scm alone would give 0.0.1.devN+g<sha> in a git checkout without tags).
+# Python Language SDK. Implements the contract in ../Taskfile.yaml. Tasks only call scripts/.
+# TAG=vX.Y.Z is mapped to a PEP 440 version by ../scripts/version.sh; without TAG a build is 0.0.0.
+# Scripts read TAG from the environment; this makes `task stamp TAG=v1.2.3` work as well as `TAG=v1.2.3 task stamp`.
+env:
+  TAG: '{{.TAG}}'
 
 tasks:
   build:
-    desc: Build sdist + wheel into dist/ (TAG optional, stamps the version)
+    desc: Build sdist and wheel into dist/ (TAG optional)
     cmds:
-      - rm -rf dist
-      - |
-        set -e
-        if [ -n "{{.TAG}}" ]; then v=$(../scripts/version.sh "{{.TAG}}" pypi); else v=0.0.0; fi
-        SETUPTOOLS_SCM_PRETEND_VERSION=$v uv build
+      - scripts/build.sh
 
   test:
-    desc: Run unit tests
     cmds:
       - uv run pytest
 
+  lint:
+    desc: ruff check and format check
+    cmds:
+      - uv run ruff check .
+      - uv run ruff format --check .
+
+  typecheck:
+    cmds:
+      - uv run pyright
+
+  check:
+    desc: The CI gate. lint, typecheck, test
+    cmds:
+      - task: lint
+      - task: typecheck
+      - task: test
+
   stamp:
-    desc: Validate the TAG and print the PyPI version it stamps (build/publish compute it themselves)
+    desc: Validate TAG and print the PyPI version it maps to (build computes it itself)
     requires: { vars: [TAG] }
     cmds:
-      - ../scripts/version.sh "{{.TAG}}" pypi
+      - ../scripts/version.sh "$TAG" pypi
 
   publish:dry-run:
-    desc: Build at TAG's version and run twine check
     requires: { vars: [TAG] }
     cmds:
-      - task: build
-        vars: { TAG: "{{.TAG}}" }
-      - uvx twine check dist/*
+      - scripts/publish.sh --dry-run
 
   publish:
     desc: Upload to PyPI via trusted publishing; skips a version already on PyPI
     requires: { vars: [TAG] }
     cmds:
-      - task: build
-        vars: { TAG: "{{.TAG}}" }
-      - |
-        set -e
-        v=$(../scripts/version.sh "{{.TAG}}" pypi)
-        code=$(curl -s -o /dev/null -w '%{http_code}' "https://pypi.org/pypi/eyepop/$v/json")
-        case "$code" in
-          200) echo "eyepop $v already on PyPI, skipping" ;;
-          404) uv publish --trusted-publishing always ;;
-          *) echo "PyPI lookup failed: HTTP $code" >&2; exit 1 ;;
-        esac
+      - scripts/publish.sh
 
   verify:
-    desc: Install the published eyepop==TAG's version in a scratch venv and assert version()
+    desc: Install the published package and assert eyepop.version() == TAG's version
     requires: { vars: [TAG] }
     cmds:
-      - |
-        set -e
-        v=$(../scripts/version.sh "{{.TAG}}" pypi)
-        d=$(mktemp -d)
-        trap 'rm -rf "$d"' EXIT
-        uv venv -q "$d/venv"
-        uv pip install -q --python "$d/venv/bin/python" --prerelease allow --no-cache "eyepop==$v"
-        cd "$d" && EXPECT=$v "$d/venv/bin/python" -I -c 'import os, eyepop; got = eyepop.version(); assert got == os.environ["EXPECT"], got; print("ok", got)'
+      - scripts/verify.sh
