@@ -1,0 +1,41 @@
+name: CI repo
+
+# Checks that belong to no single language: the shared scripts and the workflows themselves.
+on:
+  pull_request:
+    paths: &paths
+      - '**/scripts/**'
+      - '.github/**'
+  push:
+    branches: [main]
+    paths: *paths
+
+concurrency:
+  group: ci-repo-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  scripts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: scripts/version.test.sh
+      # shellcheck is preinstalled on the runner.
+      - run: shellcheck ./scripts/*.sh ./*/scripts/*.sh
+
+  workflows:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: docker://rhysd/actionlint:1.7.12
+        with:
+          args: -color

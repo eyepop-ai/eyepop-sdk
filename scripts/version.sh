@@ -4,15 +4,28 @@
 set -euo pipefail
 
 tag=${1:?tag required}
-eco=${2:?ecosystem required}
+ecosystem=${2:?ecosystem required}
 
-re='^v([0-9]+\.[0-9]+\.[0-9]+)(-(alpha|beta|rc)\.([0-9]+))?$'
-[[ $tag =~ $re ]] || { echo "invalid release tag: $tag" >&2; exit 1; }
-core=${BASH_REMATCH[1]} pre=${BASH_REMATCH[3]:-} n=${BASH_REMATCH[4]:-}
+pattern='^v([0-9]+\.[0-9]+\.[0-9]+)(-(alpha|beta|rc)\.([0-9]+))?$'
+[[ $tag =~ $pattern ]] || { echo "invalid release tag: $tag" >&2; exit 1; }
+core=${BASH_REMATCH[1]}     # 4.0.0
+stage=${BASH_REMATCH[3]:-}  # alpha, beta, rc, or empty for a stable release
+number=${BASH_REMATCH[4]:-} # 1
 
-case $eco in
-  npm | cargo | nuget) echo "$core${pre:+-$pre.$n}" ;;
-  pypi) echo "$core${pre:+$([[ $pre == alpha ]] && echo a || { [[ $pre == beta ]] && echo b || echo rc; })$n}" ;;
+# npm, cargo and nuget all take semver as is: 4.0.0-alpha.1
+semver=$core${stage:+-$stage.$number}
+
+# PyPI wants PEP 440: 4.0.0-alpha.1 becomes 4.0.0a1
+case $stage in
+  alpha) pep440=${core}a$number ;;
+  beta) pep440=${core}b$number ;;
+  rc) pep440=${core}rc$number ;;
+  *) pep440=$core ;;
+esac
+
+case $ecosystem in
+  npm | cargo | nuget) echo "$semver" ;;
+  pypi) echo "$pep440" ;;
   go-tag) echo "go/$tag" ;;
-  *) echo "unknown ecosystem: $eco" >&2; exit 1 ;;
+  *) echo "unknown ecosystem: $ecosystem" >&2; exit 1 ;;
 esac

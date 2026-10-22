@@ -27,8 +27,10 @@ jobs:
         with:
           node-version: 24
           registry-url: https://registry.npmjs.org
+      # Fails if package-lock.json is out of sync with the manifests, before stamping changes them.
+      - run: npm ci --no-audit --no-fund
+        working-directory: node
+      - run: task node:check
       - run: task node:stamp TAG="$TAG"
-      - run: task node:build
-      - run: task node:test
       - run: task node:publish TAG="$TAG"
       - run: task node:verify TAG="$TAG"
