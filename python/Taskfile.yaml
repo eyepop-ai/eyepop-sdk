@@ -1,0 +1,63 @@
+version: "3"
+
+# Python Language SDK. Implements the contract in ../Taskfile.yaml.
+# TAG=vX.Y.Z is mapped to a PEP 440 version by ../scripts/version.sh; without TAG the build is 0.0.0
+# (setuptools-scm alone would give 0.0.1.devN+g<sha> in a git checkout without tags).
+
+tasks:
+  build:
+    desc: Build sdist + wheel into dist/ (TAG optional, stamps the version)
+    cmds:
+      - rm -rf dist
+      - |
+        set -e
+        if [ -n "{{.TAG}}" ]; then v=$(../scripts/version.sh "{{.TAG}}" pypi); else v=0.0.0; fi
+        SETUPTOOLS_SCM_PRETEND_VERSION=$v uv build
+
+  test:
+    desc: Run unit tests
+    cmds:
+      - uv run pytest
+
+  stamp:
+    desc: Validate the TAG and print the PyPI version it stamps (build/publish compute it themselves)
+    requires: { vars: [TAG] }
+    cmds:
+      - ../scripts/version.sh "{{.TAG}}" pypi
+
+  publish:dry-run:
+    desc: Build at TAG's version and run twine check
+    requires: { vars: [TAG] }
+    cmds:
+      - task: build
+        vars: { TAG: "{{.TAG}}" }
+      - uvx twine check dist/*
+
+  publish:
+    desc: Upload to PyPI via trusted publishing; skips a version already on PyPI
+    requires: { vars: [TAG] }
+    cmds:
+      - task: build
+        vars: { TAG: "{{.TAG}}" }
+      - |
+        set -e
+        v=$(../scripts/version.sh "{{.TAG}}" pypi)
+        code=$(curl -s -o /dev/null -w '%{http_code}' "https://pypi.org/pypi/eyepop/$v/json")
+        case "$code" in
+          200) echo "eyepop $v already on PyPI, skipping" ;;
+          404) uv publish --trusted-publishing always ;;
+          *) echo "PyPI lookup failed: HTTP $code" >&2; exit 1 ;;
+        esac
+
+  verify:
+    desc: Install the published eyepop==TAG's version in a scratch venv and assert version()
+    requires: { vars: [TAG] }
+    cmds:
+      - |
+        set -e
+        v=$(../scripts/version.sh "{{.TAG}}" pypi)
+        d=$(mktemp -d)
+        trap 'rm -rf "$d"' EXIT
+        uv venv -q "$d/venv"
+        uv pip install -q --python "$d/venv/bin/python" --prerelease allow --no-cache "eyepop==$v"
+        cd "$d" && EXPECT=$v "$d/venv/bin/python" -I -c 'import os, eyepop; got = eyepop.version(); assert got == os.environ["EXPECT"], got; print("ok", got)'
