@@ -1,0 +1,11 @@
+{
+  "name": "eyepop-sdk-node",
+  "private": true,
+  "version": "0.0.0",
+  "workspaces": ["packages/*"],
+  "devDependencies": {
+    "tsup": "^8.5.0",
+    "typescript": "^5.9.0",
+    "vitest": "^3.2.0"
+  }
+}
