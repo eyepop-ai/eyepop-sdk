@@ -26,8 +26,8 @@ jobs:
         with:
           persist-credentials: false
       - run: scripts/version.test.sh
-      # shellcheck is preinstalled on the runner.
-      - run: shellcheck ./scripts/*.sh ./*/scripts/*.sh
+      # Every tracked shell script, wherever it lives. shellcheck is preinstalled on the runner.
+      - run: git ls-files -z '*.sh' | xargs -0 shellcheck
 
   workflows:
     runs-on: ubuntu-latest
