@@ -37,4 +37,4 @@ jobs:
       # Same as `task go:check` from the repo root.
       - run: task check
       - name: Release dry-run
-        run: task publish:dry-run TAG=v0.0.0-alpha.0
+        run: task publish:dry-run TAG=v4.0.0-alpha.0
