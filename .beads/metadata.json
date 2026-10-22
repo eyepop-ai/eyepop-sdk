@@ -1,0 +1,7 @@
+{
+  "database": "dolt",
+  "backend": "dolt",
+  "dolt_mode": "embedded",
+  "dolt_database": "eyepop_sdk",
+  "project_id": "50e4f42d-235a-4468-a0f1-863c646f9faa"
+}
