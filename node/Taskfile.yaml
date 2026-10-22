@@ -3,9 +3,7 @@ version: '3'
 # Node Language SDK (npm workspaces under packages/*). Implements the contract in ../Taskfile.yaml.
 # Tasks only call scripts/. TAG=vX.Y.Z is mapped to an npm version by ../scripts/version.sh.
 # Adding a package under packages/ needs no change here: the scripts loop over every workspace.
-# Scripts read TAG from the environment; this makes `task stamp TAG=v1.2.3` work as well as `TAG=v1.2.3 task stamp`.
-env:
-  TAG: '{{.TAG}}'
+# Each script call below passes TAG explicitly, so the task's TAG wins over any TAG already in the environment.
 
 tasks:
   build:
@@ -42,23 +40,23 @@ tasks:
     desc: Write TAG's version into every workspace manifest
     requires: { vars: [TAG] }
     cmds:
-      - scripts/stamp.sh
+      - TAG="{{.TAG}}" scripts/stamp.sh
 
   publish:dry-run:
     requires: { vars: [TAG] }
     cmds:
       - task: build
-      - scripts/publish.sh --dry-run
+      - TAG="{{.TAG}}" scripts/publish.sh --dry-run
 
   publish:
     desc: Publish every workspace with provenance; skips versions already on the registry
     requires: { vars: [TAG] }
     cmds:
       - task: build
-      - scripts/publish.sh
+      - TAG="{{.TAG}}" scripts/publish.sh
 
   verify:
     desc: Install the published packages and assert eyepop.version() == TAG's version
     requires: { vars: [TAG] }
     cmds:
-      - scripts/verify.sh
+      - TAG="{{.TAG}}" scripts/verify.sh
