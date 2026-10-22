@@ -1,0 +1,90 @@
+name: Release
+
+# Lockstep release: publishing a GitHub release at tag vX.Y.Z publishes every Language SDK at that version.
+# Re-run failed jobs is safe: every publish task skips a version that is already on its registry.
+on:
+  release:
+    types: [published]
+
+concurrency:
+  group: release-${{ github.event.release.tag_name }}
+  cancel-in-progress: false
+
+permissions: {}
+
+jobs:
+  verify-tag:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Validate tag for every ecosystem
+        env:
+          TAG: ${{ github.event.release.tag_name }}
+        run: |
+          for eco in npm pypi cargo nuget go-tag; do
+            echo "$eco: $(scripts/version.sh "$TAG" "$eco")"
+          done
+
+  node:
+    needs: verify-tag
+    permissions:
+      contents: read
+      id-token: write
+    uses: ./.github/workflows/_release-node.yml
+    with:
+      tag: ${{ github.event.release.tag_name }}
+
+  python:
+    needs: verify-tag
+    permissions:
+      contents: read
+      id-token: write
+    uses: ./.github/workflows/_release-python.yml
+    with:
+      tag: ${{ github.event.release.tag_name }}
+
+  go:
+    needs: verify-tag
+    permissions:
+      contents: write # go:publish pushes the go/vX.Y.Z tag
+    uses: ./.github/workflows/_release-go.yml
+    with:
+      tag: ${{ github.event.release.tag_name }}
+
+  rust:
+    needs: verify-tag
+    permissions:
+      contents: read
+      id-token: write
+    uses: ./.github/workflows/_release-rust.yml
+    with:
+      tag: ${{ github.event.release.tag_name }}
+    secrets:
+      CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+
+  cs:
+    needs: verify-tag
+    permissions:
+      contents: read
+    uses: ./.github/workflows/_release-cs.yml
+    with:
+      tag: ${{ github.event.release.tag_name }}
+    secrets:
+      NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
+
+  # Red until all five languages are published (including when verify-tag failed and the rest were skipped).
+  release-summary:
+    if: always()
+    needs: [verify-tag, node, python, go, rust, cs]
+    runs-on: ubuntu-latest
+    permissions: {}
+    steps:
+      - env:
+          NEEDS: ${{ toJSON(needs) }}
+        run: |
+          echo "$NEEDS" | jq -r 'to_entries[] | "\(.key): \(.value.result)"'
+          echo "$NEEDS" | jq -e 'all(.[]; .result == "success")' >/dev/null

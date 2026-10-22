@@ -1,0 +1,43 @@
+name: Release rust
+
+on:
+  workflow_call:
+    inputs:
+      tag:
+        type: string
+        required: true
+    secrets:
+      CARGO_REGISTRY_TOKEN:
+        required: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      id-token: write # crates.io trusted publishing
+    env:
+      TAG: ${{ inputs.tag }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: arduino/setup-task@c0bc642852239c2689f73f4ea6459c29405f3c52 # v3.0.0
+        with:
+          repo-token: ${{ github.token }}
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable branch; toolchain pinned via input
+        with:
+          toolchain: stable
+      - run: task rust:stamp TAG="$TAG"
+      - run: task rust:build
+      - run: task rust:test
+      # Trusted-publishing token exchange. continue-on-error so the first publish (crate not yet
+      # registered, no trusted publisher possible) falls back to the CARGO_REGISTRY_TOKEN secret.
+      - id: auth
+        uses: rust-lang/crates-io-auth-action@3268eb413133e2960fa4ae0e963ca76380c54cd9 # v1.0.6
+        continue-on-error: true
+      - run: task rust:publish TAG="$TAG"
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token || secrets.CARGO_REGISTRY_TOKEN }}
+      - run: task rust:verify TAG="$TAG"
