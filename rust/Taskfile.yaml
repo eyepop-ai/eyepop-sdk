@@ -1,0 +1,54 @@
+version: '3'
+
+# Rust Language SDK. Implements the contract in ../Taskfile.yaml. Tasks only call scripts/.
+# TAG=vX.Y.Z is mapped to a cargo version by ../scripts/version.sh.
+# Each script call below passes TAG explicitly, so the task's TAG wins over any TAG already in the environment.
+
+tasks:
+  build:
+    cmds:
+      - cargo build
+
+  test:
+    cmds:
+      - cargo test
+
+  lint:
+    desc: rustfmt check and clippy with warnings as errors
+    cmds:
+      - cargo fmt --check
+      - cargo clippy --all-targets -- -D warnings
+
+  typecheck:
+    cmds:
+      - cargo check --all-targets
+
+  check:
+    desc: The CI gate. lint, typecheck, test
+    cmds:
+      - task: lint
+      - task: typecheck
+      - task: test
+
+  stamp:
+    desc: Write TAG's version into the crate manifest (revert to 0.0.0 afterwards)
+    requires: { vars: [TAG] }
+    cmds:
+      - TAG="{{.TAG}}" scripts/stamp.sh
+
+  publish:dry-run:
+    requires: { vars: [TAG] }
+    cmds:
+      - TAG="{{.TAG}}" scripts/publish.sh --dry-run
+
+  publish:
+    desc: Stamp, then publish to crates.io; skips a version already published
+    requires: { vars: [TAG] }
+    cmds:
+      - TAG="{{.TAG}}" scripts/publish.sh
+
+  verify:
+    desc: Build against the published crate and assert eyepop::version() == TAG's version
+    requires: { vars: [TAG] }
+    cmds:
+      - TAG="{{.TAG}}" scripts/verify.sh
