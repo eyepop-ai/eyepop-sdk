@@ -1,0 +1,67 @@
+version: "3"
+
+# Implements the contract in ../Taskfile.yaml. Version comes from ../scripts/version.sh.
+# publish and publish:dry-run run stamp first, so the manifest can never disagree with TAG.
+
+tasks:
+  build:
+    cmds:
+      - cargo build
+
+  test:
+    cmds:
+      - cargo test
+
+  stamp:
+    desc: Set the eyepop package version from TAG (manifest only; revert to 0.0.0 afterwards)
+    requires: { vars: [TAG] }
+    cmds:
+      - |
+        set -eu
+        v=$(../scripts/version.sh "{{.TAG}}" cargo)
+        if command -v cargo-set-version >/dev/null 2>&1; then
+          cargo set-version -p eyepop "$v"
+        else
+          # Rewrite only the first `version = ` line, which is the [package] one.
+          f=crates/eyepop/Cargo.toml
+          sed -E '1,/^version = /s/^version = ".*"/version = "'"$v"'"/' "$f" > "$f.tmp" && mv -f "$f.tmp" "$f"
+        fi
+        grep -qx "version = \"$v\"" crates/eyepop/Cargo.toml
+
+  publish:dry-run:
+    requires: { vars: [TAG] }
+    cmds:
+      - task: stamp
+        vars: { TAG: "{{.TAG}}" }
+      - cargo publish --dry-run --allow-dirty -p eyepop
+
+  publish:
+    requires: { vars: [TAG] }
+    cmds:
+      - task: stamp
+        vars: { TAG: "{{.TAG}}" }
+      - |
+        set -eu
+        v=$(../scripts/version.sh "{{.TAG}}" cargo)
+        code=$(curl -s -o /dev/null -w '%{http_code}' -A "eyepop-sdk-release (https://github.com/eyepop-ai/eyepop-sdk)" "https://crates.io/api/v1/crates/eyepop/$v")
+        case "$code" in
+          200) echo "eyepop $v already published, skipping"; exit 0 ;;
+          404) ;;
+          *) echo "crates.io lookup failed: HTTP $code" >&2; exit 1 ;;
+        esac
+        # CARGO_REGISTRY_TOKEN comes from the CI env.
+        cargo publish --allow-dirty -p eyepop
+
+  verify:
+    requires: { vars: [TAG] }
+    cmds:
+      - |
+        set -eu
+        v=$(../scripts/version.sh "{{.TAG}}" cargo)
+        d=$(mktemp -d); trap 'rm -rf "$d"' EXIT
+        mkdir "$d/src"
+        printf '[package]\nname = "verify"\nversion = "0.0.0"\nedition = "2021"\n\n[dependencies]\neyepop = "=%s"\n' "$v" > "$d/Cargo.toml"
+        echo 'fn main() { println!("{}", eyepop::version()); }' > "$d/src/main.rs"
+        got=$(cd "$d" && cargo run -q)
+        echo "eyepop::version() = $got"
+        [ "$got" = "$v" ] || { echo "expected $v" >&2; exit 1; }
