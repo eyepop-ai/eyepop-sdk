@@ -1,8 +1,10 @@
-version: "3"
+version: '3'
 
-# Module version = git tag go/vX.Y.Z; nothing is stamped into files.
-vars:
-  MODULE: github.com/eyepop-ai/eyepop-sdk/go/v4
+# Go Language SDK. Implements the contract in ../Taskfile.yaml. Tasks only call scripts/.
+# The module version is the git tag go/vX.Y.Z, so nothing is stamped into files.
+# Scripts read TAG from the environment; this makes `task stamp TAG=v1.2.3` work as well as `TAG=v1.2.3 task stamp`.
+env:
+  TAG: '{{.TAG}}'
 
 tasks:
   build:
@@ -13,61 +15,42 @@ tasks:
     cmds:
       - go test ./...
 
+  lint:
+    desc: gofmt check and go vet
+    cmds:
+      - scripts/lint.sh
+
+  typecheck:
+    desc: The Go compiler is the type checker
+    cmds:
+      - go build ./...
+
+  check:
+    desc: The CI gate. lint, typecheck, test
+    cmds:
+      - task: lint
+      - task: typecheck
+      - task: test
+
   stamp:
+    desc: Validate TAG and print the git tag it maps to (nothing is written to files)
     requires: { vars: [TAG] }
     cmds:
-      - echo "go tag {{.TAG}} -> $(../scripts/version.sh "{{.TAG}}" go-tag) (nothing stamped)"
+      - ../scripts/version.sh "$TAG" go-tag
 
   publish:dry-run:
     requires: { vars: [TAG] }
     cmds:
-      - go vet ./...
-      - go list -m
-      - echo "would push tag $(../scripts/version.sh "{{.TAG}}" go-tag)"
+      - scripts/publish.sh --dry-run
 
   publish:
-    desc: Create and push tag go/vX.Y.Z (only if absent on origin), then prime proxy.golang.org
+    desc: Push the go/vX.Y.Z tag (skipped if already on origin), then prime proxy.golang.org
     requires: { vars: [TAG] }
     cmds:
-      - |
-        set -euo pipefail
-        gotag=$(../scripts/version.sh "{{.TAG}}" go-tag)
-        if git ls-remote --exit-code --tags origin "refs/tags/$gotag" >/dev/null 2>&1; then
-          echo "$gotag already on origin, skipping tag push"
-        else
-          head=$(git rev-parse HEAD)
-          if have=$(git rev-parse -q --verify "refs/tags/$gotag^{commit}"); then
-            [ "$have" = "$head" ] || { echo "local tag $gotag points at $have, not HEAD $head" >&2; exit 1; }
-          else
-            git tag "$gotag" "$head"
-          fi
-          git push origin "refs/tags/$gotag"
-        fi
-        d=$(mktemp -d); trap 'rm -rf "$d"' EXIT
-        cd "$d"
-        GOWORK=off GOFLAGS=-mod=mod GOPROXY=https://proxy.golang.org go list -m {{.MODULE}}@{{.TAG}}
+      - scripts/publish.sh
 
   verify:
+    desc: Fetch the published module and assert eyepop.Version() == TAG
     requires: { vars: [TAG] }
     cmds:
-      - |
-        set -euo pipefail
-        ../scripts/version.sh "{{.TAG}}" go-tag >/dev/null
-        d=$(mktemp -d); trap 'rm -rf "$d"' EXIT
-        cd "$d"
-        go mod init scratch >/dev/null 2>&1
-        cat > main.go <<'GO'
-        package main
-
-        import (
-        	"fmt"
-
-        	"{{.MODULE}}"
-        )
-
-        func main() { fmt.Print(eyepop.Version()) }
-        GO
-        GOWORK=off GOFLAGS=-mod=mod GOPROXY=https://proxy.golang.org go get {{.MODULE}}@{{.TAG}}
-        got=$(GOWORK=off GOFLAGS=-mod=mod go run .)
-        [ "$got" = "{{.TAG}}" ] || { echo "version mismatch: got $got want {{.TAG}}" >&2; exit 1; }
-        echo "verified $got"
+      - scripts/verify.sh
