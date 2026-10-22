@@ -8,8 +8,13 @@ cd "$(dirname "$0")/.."
 dry_run=${1:-}
 version=$(../scripts/version.sh "${TAG:?set TAG, e.g. v4.0.0}" cargo)
 
+# cargo needs --allow-dirty because of the stamp, so the stamp must be the only change that gets published.
+if [ -z "$dry_run" ] && [ -n "$(git status --porcelain -- .)" ]; then
+  echo "uncommitted changes in rust/, refusing to publish (revert a leftover stamp with git checkout)" >&2
+  exit 1
+fi
+
 scripts/stamp.sh
-# The stamp leaves the tree dirty on purpose, so cargo must be told that is fine.
 if [ -n "$dry_run" ]; then
   cargo publish --dry-run --allow-dirty -p eyepop
   exit 0
