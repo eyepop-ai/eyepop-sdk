@@ -2,9 +2,7 @@ version: '3'
 
 # Rust Language SDK. Implements the contract in ../Taskfile.yaml. Tasks only call scripts/.
 # TAG=vX.Y.Z is mapped to a cargo version by ../scripts/version.sh.
-# Scripts read TAG from the environment; this makes `task stamp TAG=v1.2.3` work as well as `TAG=v1.2.3 task stamp`.
-env:
-  TAG: '{{.TAG}}'
+# Each script call below passes TAG explicitly, so the task's TAG wins over any TAG already in the environment.
 
 tasks:
   build:
@@ -36,21 +34,21 @@ tasks:
     desc: Write TAG's version into the crate manifest (revert to 0.0.0 afterwards)
     requires: { vars: [TAG] }
     cmds:
-      - scripts/stamp.sh
+      - TAG="{{.TAG}}" scripts/stamp.sh
 
   publish:dry-run:
     requires: { vars: [TAG] }
     cmds:
-      - scripts/publish.sh --dry-run
+      - TAG="{{.TAG}}" scripts/publish.sh --dry-run
 
   publish:
     desc: Stamp, then publish to crates.io; skips a version already published
     requires: { vars: [TAG] }
     cmds:
-      - scripts/publish.sh
+      - TAG="{{.TAG}}" scripts/publish.sh
 
   verify:
     desc: Build against the published crate and assert eyepop::version() == TAG's version
     requires: { vars: [TAG] }
     cmds:
-      - scripts/verify.sh
+      - TAG="{{.TAG}}" scripts/verify.sh
