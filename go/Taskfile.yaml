@@ -1,0 +1,54 @@
+version: '3'
+
+# Go Language SDK. Implements the contract in ../Taskfile.yaml. Tasks only call scripts/.
+# The module version is the git tag go/vX.Y.Z, so nothing is stamped into files.
+# Each script call below passes TAG explicitly, so the task's TAG wins over any TAG already in the environment.
+
+tasks:
+  build:
+    cmds:
+      - go build ./...
+
+  test:
+    cmds:
+      - go test ./...
+
+  lint:
+    desc: gofmt check and go vet
+    cmds:
+      - TAG="{{.TAG}}" scripts/lint.sh
+
+  typecheck:
+    desc: The Go compiler is the type checker
+    cmds:
+      - go build ./...
+
+  check:
+    desc: The CI gate. lint, typecheck, test
+    cmds:
+      - task: lint
+      - task: typecheck
+      - task: test
+
+  stamp:
+    desc: Validate TAG and print the git tag it maps to (nothing is written to files)
+    requires: { vars: [TAG] }
+    cmds:
+      - ../scripts/version.sh "{{.TAG}}" go-tag
+
+  publish:dry-run:
+    requires: { vars: [TAG] }
+    cmds:
+      - TAG="{{.TAG}}" scripts/publish.sh --dry-run
+
+  publish:
+    desc: Push the go/vX.Y.Z tag (skipped if already on origin), then prime proxy.golang.org
+    requires: { vars: [TAG] }
+    cmds:
+      - TAG="{{.TAG}}" scripts/publish.sh
+
+  verify:
+    desc: Fetch the published module and assert eyepop.Version() == TAG
+    requires: { vars: [TAG] }
+    cmds:
+      - TAG="{{.TAG}}" scripts/verify.sh
