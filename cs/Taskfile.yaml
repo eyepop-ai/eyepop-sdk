@@ -1,70 +1,57 @@
-version: "3"
+version: '3'
 
-# C# Language SDK (NuGet package EyePop). Implements the contract in ../Taskfile.yaml.
-# The version is never written to a file: TAG=vX.Y.Z is mapped by ../scripts/version.sh and passed as -p:Version=.
-vars:
-  VERSION:
-    sh: '[ -n "{{.TAG}}" ] && ../scripts/version.sh "{{.TAG}}" nuget || true'
-  VERSION_FLAG: '{{if .VERSION}}-p:Version={{.VERSION}}{{end}}'
+# C# Language SDK (NuGet package EyePop). Implements the contract in ../Taskfile.yaml. Tasks only call scripts/.
+# The version is never written to a file: pack passes TAG, mapped by ../scripts/version.sh, as -p:Version.
+# Scripts read TAG from the environment; this makes `task stamp TAG=v1.2.3` work as well as `TAG=v1.2.3 task stamp`.
+env:
+  TAG: '{{.TAG}}'
 
 tasks:
   build:
     cmds:
-      - dotnet build EyePop.sln -c Release {{.VERSION_FLAG}}
+      - dotnet build EyePop.sln -c Release
 
   test:
-    env: { EXPECTED_VERSION: "{{.VERSION}}" }
     cmds:
-      - dotnet test EyePop.sln -c Release {{.VERSION_FLAG}}
+      - dotnet test EyePop.sln -c Release
+
+  lint:
+    desc: Fail if dotnet format would change anything
+    cmds:
+      - dotnet format EyePop.sln --verify-no-changes
+
+  typecheck:
+    desc: Build with warnings as errors
+    cmds:
+      - dotnet build EyePop.sln -c Release -warnaserror
+
+  check:
+    desc: The CI gate. lint, typecheck, test
+    cmds:
+      - task: lint
+      - task: typecheck
+      - task: test
 
   stamp:
-    desc: Validate the TAG and print the NuGet version it stamps (later tasks pass it as -p:Version=)
+    desc: Validate TAG and print the NuGet version it maps to (pack passes it as -p:Version)
     requires: { vars: [TAG] }
     cmds:
-      - ../scripts/version.sh "{{.TAG}}" nuget
+      - ../scripts/version.sh "$TAG" nuget
 
   publish:dry-run:
     desc: Pack artifacts/EyePop.<version>.nupkg
     requires: { vars: [TAG] }
     cmds:
-      - rm -rf artifacts
-      - dotnet pack src/EyePop/EyePop.csproj -c Release -o artifacts {{.VERSION_FLAG}}
+      - scripts/publish.sh --dry-run
 
   publish:
-    desc: Push to nuget.org; skips a version already published (needs NUGET_API_KEY)
+    desc: Push to nuget.org; a version already there is skipped (needs NUGET_API_KEY)
     requires: { vars: [TAG] }
     cmds:
-      - task: publish:dry-run
-        vars: { TAG: "{{.TAG}}" }
-      - |
-        set -eu
-        v="{{.VERSION}}"
-        : "${NUGET_API_KEY:?NUGET_API_KEY is not set}"
-        idx=$(mktemp); trap 'rm -f "$idx"' EXIT
-        code=$(curl -s -o "$idx" -w '%{http_code}' https://api.nuget.org/v3-flatcontainer/eyepop/index.json)
-        case "$code" in
-          200) if grep -qF "\"$v\"" "$idx"; then echo "EyePop $v already on nuget.org, skipping"; exit 0; fi ;;
-          404) ;;
-          *) echo "nuget.org lookup failed: HTTP $code" >&2; exit 1 ;;
-        esac
-        dotnet nuget push artifacts/*.nupkg --source https://api.nuget.org/v3/index.json --api-key "$NUGET_API_KEY" --skip-duplicate
+      - scripts/publish.sh
 
   verify:
-    desc: Reference the published EyePop at exactly TAG's version from a scratch console app and assert Client.Version()
+    desc: Reference the published package from a scratch app and assert Client.Version() == TAG's version
     requires: { vars: [TAG] }
     cmds:
-      - |
-        set -eu
-        v="{{.VERSION}}"
-        d=$(mktemp -d); trap 'rm -rf "$d"' EXIT
-        printf '<Project Sdk="Microsoft.NET.Sdk">\n<PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net8.0</TargetFramework><ImplicitUsings>enable</ImplicitUsings></PropertyGroup>\n<ItemGroup><PackageReference Include="EyePop" Version="[%s]" /></ItemGroup>\n</Project>\n' "$v" > "$d/verify.csproj"
-        echo 'Console.WriteLine(EyePop.Client.Version());' > "$d/Program.cs"
-        # nuget.org's index lags a fresh push, so retry the restore
-        n=0
-        until (cd "$d" && dotnet restore --no-cache >/dev/null 2>&1); do
-          n=$((n+1)); [ "$n" -lt 6 ] || { echo "cannot restore EyePop $v" >&2; exit 1; }
-          sleep 10
-        done
-        got=$(cd "$d" && dotnet run --no-restore)
-        echo "EyePop.Client.Version() = $got"
-        [ "$got" = "$v" ] || { echo "expected $v" >&2; exit 1; }
+      - scripts/verify.sh
