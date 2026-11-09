@@ -1,0 +1,40 @@
+name: CI cs
+
+on:
+  pull_request:
+    paths: &paths
+      - 'cs/**'
+      - 'scripts/**'
+      - '.github/workflows/ci-cs.yml'
+  push:
+    branches: [main]
+    paths: *paths
+
+concurrency:
+  group: ci-cs-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: cs
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: arduino/setup-task@c0bc642852239c2689f73f4ea6459c29405f3c52 # v3.0.0
+        with:
+          repo-token: ${{ github.token }}
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          global-json-file: cs/global.json
+      # Same as `task cs:check` from the repo root.
+      - run: task check
+      - name: Release dry-run
+        run: task publish:dry-run TAG=v0.0.0-alpha.0
