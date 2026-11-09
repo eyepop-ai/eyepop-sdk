@@ -1,0 +1,62 @@
+version: '3'
+
+# Node Language SDK (npm workspaces under packages/*). Implements the contract in ../Taskfile.yaml.
+# Tasks only call scripts/. TAG=vX.Y.Z is mapped to an npm version by ../scripts/version.sh.
+# Adding a package under packages/ needs no change here: the scripts loop over every workspace.
+# Each script call below passes TAG explicitly, so the task's TAG wins over any TAG already in the environment.
+
+tasks:
+  build:
+    cmds:
+      - npm install --no-audit --no-fund
+      - npm run build --workspaces
+
+  test:
+    cmds:
+      - task: build
+      - npm test --workspaces
+
+  lint:
+    desc: ESLint and Prettier check
+    cmds:
+      - npm install --no-audit --no-fund
+      - npx eslint .
+      - npx prettier --check .
+
+  typecheck:
+    desc: tsc --noEmit in every workspace
+    cmds:
+      - npm install --no-audit --no-fund
+      - npm run typecheck --workspaces
+
+  check:
+    desc: The CI gate. lint, typecheck, test
+    cmds:
+      - task: lint
+      - task: typecheck
+      - task: test
+
+  stamp:
+    desc: Write TAG's version into every workspace manifest
+    requires: { vars: [TAG] }
+    cmds:
+      - TAG="{{.TAG}}" scripts/stamp.sh
+
+  publish:dry-run:
+    requires: { vars: [TAG] }
+    cmds:
+      - task: build
+      - TAG="{{.TAG}}" scripts/publish.sh --dry-run
+
+  publish:
+    desc: Publish every workspace with provenance; skips versions already on the registry
+    requires: { vars: [TAG] }
+    cmds:
+      - task: build
+      - TAG="{{.TAG}}" scripts/publish.sh
+
+  verify:
+    desc: Install the published packages and assert eyepop.version() == TAG's version
+    requires: { vars: [TAG] }
+    cmds:
+      - TAG="{{.TAG}}" scripts/verify.sh
