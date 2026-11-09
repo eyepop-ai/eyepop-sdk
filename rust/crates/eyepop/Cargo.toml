@@ -1,0 +1,7 @@
+[package]
+name = "eyepop"
+version = "0.0.0"
+edition = "2021"
+license = "MIT"
+description = "EyePop SDK for Rust"
+repository = "https://github.com/eyepop-ai/eyepop-sdk"
