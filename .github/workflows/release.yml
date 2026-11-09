@@ -2,12 +2,22 @@ name: Release
 
 # Lockstep release: publishing a GitHub release at tag vX.Y.Z publishes every Language SDK at that version.
 # Re-run failed jobs is safe: every publish task skips a version that is already on its registry.
+# Registry uploads happen only for a published GitHub release with the repo variable PUBLISH_TO_REGISTRIES=true.
+# Without it, every run still builds each package and stores it as a workflow artifact (eyepop-<language>-<tag>),
+# and the publish steps just say where they would upload. Run it by hand on any branch to get the artifacts:
+#   gh workflow run release.yml -f tag=v4.0.0-alpha.1
 on:
   release:
     types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag to build artifacts for, e.g. v4.0.0-alpha.1 (never uploads to a registry)
+        type: string
+        required: true
 
 concurrency:
-  group: release-${{ github.event.release.tag_name }}
+  group: release-${{ github.event.release.tag_name || inputs.tag }}
   cancel-in-progress: false
 
 permissions: {}
@@ -23,7 +33,7 @@ jobs:
           persist-credentials: false
       - name: Validate tag for every ecosystem
         env:
-          TAG: ${{ github.event.release.tag_name }}
+          TAG: ${{ github.event.release.tag_name || inputs.tag }}
         run: scripts/verify-tag.sh "$TAG"
 
   node:
@@ -33,7 +43,8 @@ jobs:
       id-token: write
     uses: ./.github/workflows/_release-node.yml
     with:
-      tag: ${{ github.event.release.tag_name }}
+      tag: ${{ github.event.release.tag_name || inputs.tag }}
+      publish: ${{ github.event_name == 'release' && vars.PUBLISH_TO_REGISTRIES == 'true' }}
 
   python:
     needs: verify-tag
@@ -42,7 +53,8 @@ jobs:
       id-token: write
     uses: ./.github/workflows/_release-python.yml
     with:
-      tag: ${{ github.event.release.tag_name }}
+      tag: ${{ github.event.release.tag_name || inputs.tag }}
+      publish: ${{ github.event_name == 'release' && vars.PUBLISH_TO_REGISTRIES == 'true' }}
 
   go:
     needs: verify-tag
@@ -50,7 +62,8 @@ jobs:
       contents: write # go:publish pushes the go/vX.Y.Z tag
     uses: ./.github/workflows/_release-go.yml
     with:
-      tag: ${{ github.event.release.tag_name }}
+      tag: ${{ github.event.release.tag_name || inputs.tag }}
+      publish: ${{ github.event_name == 'release' && vars.PUBLISH_TO_REGISTRIES == 'true' }}
 
   rust:
     needs: verify-tag
@@ -59,7 +72,8 @@ jobs:
       id-token: write
     uses: ./.github/workflows/_release-rust.yml
     with:
-      tag: ${{ github.event.release.tag_name }}
+      tag: ${{ github.event.release.tag_name || inputs.tag }}
+      publish: ${{ github.event_name == 'release' && vars.PUBLISH_TO_REGISTRIES == 'true' }}
     secrets:
       CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
 
@@ -69,7 +83,8 @@ jobs:
       contents: read
     uses: ./.github/workflows/_release-cs.yml
     with:
-      tag: ${{ github.event.release.tag_name }}
+      tag: ${{ github.event.release.tag_name || inputs.tag }}
+      publish: ${{ github.event_name == 'release' && vars.PUBLISH_TO_REGISTRIES == 'true' }}
     secrets:
       NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
 

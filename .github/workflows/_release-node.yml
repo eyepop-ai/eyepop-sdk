@@ -6,6 +6,9 @@ on:
       tag:
         type: string
         required: true
+      publish:
+        type: boolean
+        default: false
 
 jobs:
   release:
@@ -32,5 +35,17 @@ jobs:
         working-directory: node
       - run: task node:check
       - run: task node:stamp TAG="$TAG"
-      - run: task node:publish TAG="$TAG"
-      - run: task node:verify TAG="$TAG"
+      - run: task node:build
+      - run: mkdir -p "$RUNNER_TEMP/out" && npm pack --workspaces --pack-destination "$RUNNER_TEMP/out"
+        working-directory: node
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: eyepop-node-${{ inputs.tag }}
+          path: ${{ runner.temp }}/out/*.tgz
+          if-no-files-found: error
+      - if: ${{ !inputs.publish }}
+        run: echo "publish is off, would publish to npm here"
+      - if: ${{ inputs.publish }}
+        run: task node:publish TAG="$TAG"
+      - if: ${{ inputs.publish }}
+        run: task node:verify TAG="$TAG"
