@@ -1,11 +1,16 @@
 version: "3"
 
-# Every language dir has its own Taskfile.yaml implementing this contract. CI calls only these tasks.
+# Every language dir has its own Taskfile.yaml implementing this contract, and tasks only call that
+# language's scripts/. Run one from the root as `task node:check`, or from inside the dir as `task check`.
+# CI calls only these tasks.
 #   build           compile / package into the language's standard output
 #   test            run unit tests
-#   stamp           TAG=vX.Y.Z  stamp the tag's version (see scripts/version.sh); no-op if the ecosystem takes it from the build
+#   lint            formatting and static checks
+#   typecheck       type checking
+#   check           the CI gate: lint, typecheck, test
+#   stamp           TAG=vX.Y.Z  write the tag's version into the manifests (see scripts/version.sh); print-only where the build takes it from TAG
 #   publish:dry-run TAG=vX.Y.Z  everything short of uploading
-#   publish         TAG=vX.Y.Z  upload; idempotent, skips a version already published
+#   publish         TAG=vX.Y.Z  upload; safe to re-run, a version already published is skipped
 #   verify          TAG=vX.Y.Z  install the PUBLISHED artifact in a scratch project and assert eyepop version() == the tag's version
 
 includes:
@@ -23,6 +28,10 @@ tasks:
   test:
     desc: Test every Language SDK
     deps: [node:test, python:test, go:test, rust:test, cs:test]
+
+  check:
+    desc: Run the CI gate for every Language SDK
+    deps: [node:check, python:check, go:check, rust:check, cs:check]
 
   test:scripts:
     desc: Self-check the tag-to-version mapping

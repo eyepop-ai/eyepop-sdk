@@ -19,5 +19,10 @@ check v4.0.0-alpha.1 go-tag go/v4.0.0-alpha.1
 check 4.0.0 npm ERROR
 check v4.0 npm ERROR
 check v4.0.0-foo.1 npm ERROR
+check v4.0.0-rc.01 npm ERROR
+check v04.0.0 npm ERROR
+check v4.00.0 npm ERROR
+check v4.0.0-rc.0 npm 4.0.0-rc.0
+check v0.0.0 npm 0.0.0
 check v4.0.0 bogus ERROR
 exit $fail
