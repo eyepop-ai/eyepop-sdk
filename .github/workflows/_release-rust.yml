@@ -6,6 +6,9 @@ on:
       tag:
         type: string
         required: true
+      publish:
+        type: boolean
+        default: false
     secrets:
       CARGO_REGISTRY_TOKEN:
         required: false
@@ -31,13 +34,26 @@ jobs:
           toolchain: stable
           components: rustfmt, clippy
       - run: task rust:check
+      # The dry run stamps the manifest and packages the crate; publish refuses a dirty tree, so revert the stamp after.
+      - run: task rust:publish:dry-run TAG="$TAG"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: eyepop-rust-${{ inputs.tag }}
+          path: rust/target/package/*.crate
+          if-no-files-found: error
+      - run: git checkout -- rust
+      - if: ${{ !inputs.publish }}
+        run: echo "publish is off, would publish to crates.io here"
       # Trusted-publishing token exchange. continue-on-error so the first publish (crate not yet
       # registered, no trusted publisher possible) falls back to the CARGO_REGISTRY_TOKEN secret.
       - id: auth
+        if: ${{ inputs.publish }}
         uses: rust-lang/crates-io-auth-action@3268eb413133e2960fa4ae0e963ca76380c54cd9 # v1.0.6
         continue-on-error: true
       # publish stamps the manifest itself and refuses to run on an already dirty tree.
-      - run: task rust:publish TAG="$TAG"
+      - if: ${{ inputs.publish }}
+        run: task rust:publish TAG="$TAG"
         env:
           CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token || secrets.CARGO_REGISTRY_TOKEN }}
-      - run: task rust:verify TAG="$TAG"
+      - if: ${{ inputs.publish }}
+        run: task rust:verify TAG="$TAG"
