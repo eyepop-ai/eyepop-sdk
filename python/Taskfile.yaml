@@ -1,0 +1,55 @@
+version: '3'
+
+# Python Language SDK. Implements the contract in ../Taskfile.yaml. Tasks only call scripts/.
+# TAG=vX.Y.Z is mapped to a PEP 440 version by ../scripts/version.sh; without TAG a build is 0.0.0.
+# Each script call below passes TAG explicitly, so the task's TAG wins over any TAG already in the environment.
+
+tasks:
+  build:
+    desc: Build sdist and wheel into dist/ (TAG optional)
+    cmds:
+      - TAG="{{.TAG}}" scripts/build.sh
+
+  test:
+    cmds:
+      - uv run pytest
+
+  lint:
+    desc: ruff check and format check
+    cmds:
+      - uv run ruff check .
+      - uv run ruff format --check .
+
+  typecheck:
+    cmds:
+      - uv run pyright
+
+  check:
+    desc: The CI gate. lint, typecheck, test
+    cmds:
+      - task: lint
+      - task: typecheck
+      - task: test
+
+  stamp:
+    desc: Validate TAG and print the PyPI version it maps to (build computes it itself)
+    requires: { vars: [TAG] }
+    cmds:
+      - ../scripts/version.sh "{{.TAG}}" pypi
+
+  publish:dry-run:
+    requires: { vars: [TAG] }
+    cmds:
+      - TAG="{{.TAG}}" scripts/publish.sh --dry-run
+
+  publish:
+    desc: Upload to PyPI via trusted publishing; skips a version already on PyPI
+    requires: { vars: [TAG] }
+    cmds:
+      - TAG="{{.TAG}}" scripts/publish.sh
+
+  verify:
+    desc: Install the published package and assert eyepop.version() == TAG's version
+    requires: { vars: [TAG] }
+    cmds:
+      - TAG="{{.TAG}}" scripts/verify.sh

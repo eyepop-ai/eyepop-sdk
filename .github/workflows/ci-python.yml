@@ -1,0 +1,43 @@
+name: CI python
+
+on:
+  pull_request:
+    paths: &paths
+      - 'python/**'
+      - 'scripts/**'
+      - '.github/workflows/ci-python.yml'
+  push:
+    branches: [main]
+    paths: *paths
+
+concurrency:
+  group: ci-python-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: python
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: arduino/setup-task@c0bc642852239c2689f73f4ea6459c29405f3c52 # v3.0.0
+        with:
+          repo-token: ${{ github.token }}
+      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+        with:
+          enable-cache: true
+          cache-dependency-glob: python/uv.lock
+      # Fails if uv.lock is out of sync with pyproject.toml.
+      - run: uv sync --locked
+      # Same as `task python:check` from the repo root.
+      - run: task check
+      - name: Release dry-run
+        run: task publish:dry-run TAG=v0.0.0-alpha.0

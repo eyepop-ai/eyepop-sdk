@@ -1,0 +1,46 @@
+[build-system]
+requires = ["setuptools>=64", "setuptools-scm>=8"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "eyepop"
+dynamic = ["version"]
+description = "EyePop.ai Python SDK"
+readme = "README.md"
+license = "MIT"
+authors = [{ name = "EyePop.ai", email = "support@eyepop.ai" }]
+requires-python = ">=3.12"
+dependencies = []
+
+[project.urls]
+Homepage = "https://github.com/eyepop-ai/eyepop-sdk"
+
+[dependency-groups]
+dev = [
+    "pyright>=1.1.414",
+    "pytest",
+    "ruff>=0.17.2",
+]
+
+[tool.setuptools.package-data]
+eyepop = ["py.typed"]
+
+# Release tag lives at the repo root; falls back to 0.0.0 when no tag is reachable.
+# SETUPTOOLS_SCM_PRETEND_VERSION overrides both.
+[tool.setuptools_scm]
+root = ".."
+tag_regex = '^v(?P<version>\d+\.\d+\.\d+.*)$'
+fallback_version = "0.0.0"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]
+
+[tool.pyright]
+include = ["src", "tests"]
+typeCheckingMode = "strict"
