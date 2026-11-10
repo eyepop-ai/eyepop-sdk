@@ -97,8 +97,6 @@ jobs:
     with:
       tag: ${{ needs.verify-tag.outputs.tag }}
       publish: ${{ needs.verify-tag.outputs.registries == 'true' || contains(format(',{0},', needs.verify-tag.outputs.registries), ',cs,') }}
-    secrets:
-      NUGET_USER: ${{ secrets.NUGET_USER }}
 
   # Red until all five languages are published (including when verify-tag failed and the rest were skipped).
   release-summary:

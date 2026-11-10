@@ -9,9 +9,10 @@ on:
       publish:
         type: boolean
         default: false
-    secrets:
-      NUGET_USER:
-        required: false
+
+# nuget.org profile name that owns the trusted publishing policy. Not a secret.
+env:
+  NUGET_USER: eyepop-ai
 
 jobs:
   release:
@@ -42,7 +43,7 @@ jobs:
         if: ${{ inputs.publish }}
         uses: NuGet/login@8d196754b4036150537f80ac539e15c2f1028841 # v1.2.0
         with:
-          user: ${{ secrets.NUGET_USER }} # nuget.org profile name, not an email address
+          user: ${{ env.NUGET_USER }} # nuget.org profile name, not an email address
       - if: ${{ inputs.publish }}
         run: task cs:publish TAG="$TAG"
         env:
