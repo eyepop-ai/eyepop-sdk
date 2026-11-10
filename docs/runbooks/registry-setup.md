@@ -1,20 +1,23 @@
 # Registry setup (manual, one-time)
 
-Working assumption: the name `eyepop` (`EyePop` on NuGet) is available or ours everywhere. Each registry needs a trusted publisher (OIDC) pointing at the `eyepop-ai/eyepop-sdk` repo and `.github/workflows/release.yml`.
+Working assumption: the name `eyepop` (`EyePop.Sdk` on NuGet) is available or ours everywhere. Each registry needs a trusted publisher (OIDC) pointing at the `eyepop-ai/eyepop-sdk` repo and `.github/workflows/release.yml`.
 
 | Registry | Name | Status / do |
 |---|---|---|
-| npm | `@eyepop.ai/pipeline` (later `@eyepop.ai/dataset`) | Org owned (`@eyepop.ai`, shared with the old 3.x packages); add trusted publisher |
+| npm | `@eyepop.ai/pipeline` (later `@eyepop.ai/dataset`) | Org owned (`@eyepop.ai`). Separate from the existing `@eyepop.ai/eyepop`, which this repo never publishes to, so both variants coexist during the transition; add trusted publisher |
 | PyPI | `eyepop` (existing project) | Org owned. Add trusted publisher for this repo alongside the old one |
 | crates.io | `eyepop` | Reserve (first publish claims it); add trusted publisher |
-| NuGet | `EyePop` | Not started, see below |
+| NuGet | `EyePop.Sdk` | Not started, see below |
 | Go | `github.com/eyepop-ai/eyepop-sdk/go` | No registry. Repo must be public; CI pushes the `go/vX.Y.Z` tag |
 
 ## NuGet (nuget.org)
 
-- Packages are claimed by first publish: the ID `EyePop` is yours once you push it. There is no separate reserve step. Optionally request an ID prefix reservation (`EyePop.*`) from nuget.org so others can't publish look-alikes.
-- Sign in at nuget.org with a Microsoft account, ideally one shared by the team, or create an organization that owns the package.
-- Publishing from CI: nuget.org supports Trusted Publishing for GitHub Actions (a policy tied to the nuget.org account, repo and workflow). Verify whether a policy can be created before the package exists. If not, the first alpha is pushed with a scoped API key, then switched to trusted publishing.
+- Packages are claimed by first publish: the ID `EyePop.Sdk` is yours once you push it. There is no separate reserve step. Optionally request an ID prefix reservation (`EyePop.*`) from nuget.org so others can't publish look-alikes.
+- The package is owned by the `eyepop-ai` organization on nuget.org.
+- Publishing from CI uses Trusted Publishing, no API key. Policy owner `eyepop-ai`, Repository Owner `eyepop-ai`, Repository `eyepop-sdk`, Workflow File `release.yml` (file name only, no path), scope matching `EyePop.Sdk` and allowed to publish new packages.
+- The repo secret `NUGET_USER` holds the nuget.org profile name (not an email address). The job gets a 1-hour API key from `NuGet/login` right before the push.
+- Unconfirmed until the first real publish: whether nuget.org matches the calling `release.yml` for a job running in the reusable `_release-cs.yml`, and whether the policy can publish a package ID that does not exist yet. If it cannot, push the first alpha once with a scoped API key, then switch back.
+- To publish only to NuGet, set the repo variable `PUBLISH_TO_REGISTRIES` to `cs`. `true` publishes every registry.
 
 ## C# dev environment (macOS)
 
