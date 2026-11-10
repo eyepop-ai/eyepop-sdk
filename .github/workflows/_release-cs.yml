@@ -10,7 +10,7 @@ on:
         type: boolean
         default: false
     secrets:
-      NUGET_API_KEY:
+      NUGET_USER:
         required: false
 
 jobs:
@@ -19,6 +19,7 @@ jobs:
     timeout-minutes: 30
     permissions:
       contents: read
+      id-token: write # NuGet trusted publishing
     env:
       TAG: ${{ inputs.tag }}
     steps:
@@ -36,10 +37,15 @@ jobs:
           if-no-files-found: error
       - if: ${{ !inputs.publish }}
         run: echo "publish is off, would publish to nuget.org here"
-      # shortcut: scoped API key; upgrade to NuGet trusted publishing (OIDC, NuGet/login) once a policy exists, then drop the secret.
+      # Trusted publishing: exchanges the job's OIDC token for an API key that lives 1 hour, so it comes right before the push.
+      - id: login
+        if: ${{ inputs.publish }}
+        uses: NuGet/login@8d196754b4036150537f80ac539e15c2f1028841 # v1.2.0
+        with:
+          user: ${{ secrets.NUGET_USER }} # nuget.org profile name, not an email address
       - if: ${{ inputs.publish }}
         run: task cs:publish TAG="$TAG"
         env:
-          NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
+          NUGET_API_KEY: ${{ steps.login.outputs.NUGET_API_KEY }}
       - if: ${{ inputs.publish }}
         run: task cs:verify TAG="$TAG"
