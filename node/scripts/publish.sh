@@ -1,18 +1,17 @@
 #!/usr/bin/env bash
-# Publish every workspace to npm at the release tag's version. Safe to re-run.
+# Stamp, build and publish every workspace to npm at the release tag's version. Safe to re-run. Leaves the tree unchanged.
 # usage: publish.sh [--dry-run]
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
 dry_run=${1:-}
 want=$(../scripts/version.sh "${TAG:?set TAG, e.g. v4.0.0}" npm)
+
+# shellcheck source=node/scripts/stamped-build.sh
+source scripts/stamped-build.sh
+
 workspaces=$(node scripts/workspaces.mjs list) # "dir name version" lines, dependencies first
 [ -n "$workspaces" ] || { echo "no workspaces found" >&2; exit 1; }
-
-# Publish nothing unless every manifest carries the tag's version.
-while read -r _ name version; do
-  [ "$version" = "$want" ] || { echo "$name is $version, expected $want: run stamp first" >&2; exit 1; }
-done <<<"$workspaces"
 
 # Prereleases go to the "next" dist-tag so a plain `npm install` never picks them up.
 case $want in *-*) dist_tag=next ;; *) dist_tag=latest ;; esac

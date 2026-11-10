@@ -30,11 +30,11 @@ tasks:
       - task: typecheck
       - task: test
 
-  stamp:
-    desc: Validate TAG and print the NuGet version it maps to (pack passes it as -p:Version)
-    requires: { vars: [TAG] }
+  package:
+    desc: Pack EyePop.<version>.nupkg at TAG's version into OUT
+    requires: { vars: [TAG, OUT] }
     cmds:
-      - ../scripts/version.sh "{{.TAG}}" nuget
+      - TAG="{{.TAG}}" OUT="{{.OUT}}" scripts/package.sh
 
   publish:dry-run:
     desc: Pack artifacts/EyePop.<version>.nupkg

@@ -31,11 +31,11 @@ tasks:
       - task: typecheck
       - task: test
 
-  stamp:
-    desc: Validate TAG and print the PyPI version it maps to (build computes it itself)
-    requires: { vars: [TAG] }
+  package:
+    desc: Build sdist and wheel at TAG's version into OUT
+    requires: { vars: [TAG, OUT] }
     cmds:
-      - ../scripts/version.sh "{{.TAG}}" pypi
+      - TAG="{{.TAG}}" OUT="{{.OUT}}" scripts/package.sh
 
   publish:dry-run:
     requires: { vars: [TAG] }

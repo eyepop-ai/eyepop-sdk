@@ -30,11 +30,11 @@ tasks:
       - task: typecheck
       - task: test
 
-  stamp:
-    desc: Validate TAG and print the git tag it maps to (nothing is written to files)
-    requires: { vars: [TAG] }
+  package:
+    desc: Archive the go/ module at HEAD into OUT as eyepop-go-TAG.zip
+    requires: { vars: [TAG, OUT] }
     cmds:
-      - ../scripts/version.sh "{{.TAG}}" go-tag
+      - TAG="{{.TAG}}" OUT="{{.OUT}}" scripts/package.sh
 
   publish:dry-run:
     requires: { vars: [TAG] }
