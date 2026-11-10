@@ -25,11 +25,11 @@ echo 'Console.WriteLine(EyePop.Client.Version());' >Program.cs
 # Restore only from nuget.org into an empty package directory, so a cached or local copy cannot pass.
 export NUGET_PACKAGES="$scratch/packages"
 
-# A fresh push takes a moment to show up on nuget.org.
-for attempt in 1 2 3 4 5 6; do
+# A fresh push is validated and indexed by nuget.org before it restores: minutes for a first version. Wait up to 10 minutes.
+for attempt in $(seq 30); do
   dotnet restore --source https://api.nuget.org/v3/index.json --no-cache >restore.log 2>&1 && break
-  [ "$attempt" -lt 6 ] || { cat restore.log >&2; echo "cannot restore EyePop.Sdk $version" >&2; exit 1; }
-  sleep 10
+  [ "$attempt" -lt 30 ] || { cat restore.log >&2; echo "cannot restore EyePop.Sdk $version" >&2; exit 1; }
+  sleep 20
 done
 
 got=$(dotnet run --no-restore)
