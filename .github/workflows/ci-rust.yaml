@@ -1,18 +1,18 @@
-name: CI go
+name: CI rust
 
 on:
   pull_request:
     paths: &paths
-      - 'go/**'
+      - 'rust/**'
       - 'scripts/**'
-      - '.github/workflows/ci-go.yml'
-      - '.github/actions/setup-go/**'
+      - '.github/workflows/ci-rust.yaml'
+      - '.github/actions/setup-rust/**'
   push:
     branches: [main]
     paths: *paths
 
 concurrency:
-  group: ci-go-${{ github.ref }}
+  group: ci-rust-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
@@ -24,15 +24,15 @@ jobs:
     timeout-minutes: 15
     defaults:
       run:
-        working-directory: go
+        working-directory: rust
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: ./.github/actions/setup-go
-      # Same as `task go:check` from the repo root.
+      - uses: ./.github/actions/setup-rust
+      # Same as `task rust:check` from the repo root.
       - run: task check
       - name: Release dry-run
         run: |
-          task package TAG=v4.0.0-alpha.0 OUT="$RUNNER_TEMP/out"
-          task publish:dry-run TAG=v4.0.0-alpha.0
+          task package TAG=v0.0.0-alpha.0 OUT="$RUNNER_TEMP/out"
+          task publish:dry-run TAG=v0.0.0-alpha.0

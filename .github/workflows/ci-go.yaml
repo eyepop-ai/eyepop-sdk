@@ -1,18 +1,18 @@
-name: CI node
+name: CI go
 
 on:
   pull_request:
     paths: &paths
-      - 'node/**'
+      - 'go/**'
       - 'scripts/**'
-      - '.github/workflows/ci-node.yml'
-      - '.github/actions/setup-node/**'
+      - '.github/workflows/ci-go.yaml'
+      - '.github/actions/setup-go/**'
   push:
     branches: [main]
     paths: *paths
 
 concurrency:
-  group: ci-node-${{ github.ref }}
+  group: ci-go-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
@@ -24,17 +24,15 @@ jobs:
     timeout-minutes: 15
     defaults:
       run:
-        working-directory: node
+        working-directory: go
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: ./.github/actions/setup-node
-        with:
-          cache: 'true'
-      # Same as `task node:check` from the repo root.
+      - uses: ./.github/actions/setup-go
+      # Same as `task go:check` from the repo root.
       - run: task check
       - name: Release dry-run
         run: |
-          task package TAG=v0.0.0-alpha.0 OUT="$RUNNER_TEMP/out"
-          task publish:dry-run TAG=v0.0.0-alpha.0
+          task package TAG=v4.0.0-alpha.0 OUT="$RUNNER_TEMP/out"
+          task publish:dry-run TAG=v4.0.0-alpha.0
