@@ -6,7 +6,7 @@ name: Release
 # `true` uploads every Language SDK, or a comma list such as `cs` or `node,python` uploads only those.
 # Without it, every run still builds each package and stores it as a workflow artifact (eyepop-<language>-<tag>),
 # and the publish steps just say where they would upload. Run it by hand on any branch to get the artifacts:
-#   gh workflow run release.yml -f tag=v4.0.0-alpha.1
+#   gh workflow run release.yaml -f tag=v4.0.0-alpha.1
 on:
   release:
     types: [published]
@@ -52,7 +52,7 @@ jobs:
     permissions:
       contents: read
       id-token: write
-    uses: ./.github/workflows/_release-node.yml
+    uses: ./.github/workflows/_release-node.yaml
     with:
       tag: ${{ needs.verify-tag.outputs.tag }}
       publish: ${{ needs.verify-tag.outputs.registries == 'true' || contains(format(',{0},', needs.verify-tag.outputs.registries), ',node,') }}
@@ -62,7 +62,7 @@ jobs:
     permissions:
       contents: read
       id-token: write
-    uses: ./.github/workflows/_release-python.yml
+    uses: ./.github/workflows/_release-python.yaml
     with:
       tag: ${{ needs.verify-tag.outputs.tag }}
       publish: ${{ needs.verify-tag.outputs.registries == 'true' || contains(format(',{0},', needs.verify-tag.outputs.registries), ',python,') }}
@@ -71,7 +71,7 @@ jobs:
     needs: verify-tag
     permissions:
       contents: write # go:publish pushes the go/vX.Y.Z tag
-    uses: ./.github/workflows/_release-go.yml
+    uses: ./.github/workflows/_release-go.yaml
     with:
       tag: ${{ needs.verify-tag.outputs.tag }}
       publish: ${{ needs.verify-tag.outputs.registries == 'true' || contains(format(',{0},', needs.verify-tag.outputs.registries), ',go,') }}
@@ -81,7 +81,7 @@ jobs:
     permissions:
       contents: read
       id-token: write
-    uses: ./.github/workflows/_release-rust.yml
+    uses: ./.github/workflows/_release-rust.yaml
     with:
       tag: ${{ needs.verify-tag.outputs.tag }}
       publish: ${{ needs.verify-tag.outputs.registries == 'true' || contains(format(',{0},', needs.verify-tag.outputs.registries), ',rust,') }}
@@ -93,7 +93,7 @@ jobs:
     permissions:
       contents: read
       id-token: write
-    uses: ./.github/workflows/_release-cs.yml
+    uses: ./.github/workflows/_release-cs.yaml
     with:
       tag: ${{ needs.verify-tag.outputs.tag }}
       publish: ${{ needs.verify-tag.outputs.registries == 'true' || contains(format(',{0},', needs.verify-tag.outputs.registries), ',cs,') }}
