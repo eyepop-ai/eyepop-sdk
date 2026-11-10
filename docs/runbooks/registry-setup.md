@@ -14,9 +14,10 @@ Working assumption: the name `eyepop` (`EyePop.Sdk` on NuGet) is available or ou
 
 - Packages are claimed by first publish: the ID `EyePop.Sdk` is yours once you push it. There is no separate reserve step. Optionally request an ID prefix reservation (`EyePop.*`) from nuget.org so others can't publish look-alikes.
 - The package is owned by the `eyepop-ai` organization on nuget.org.
-- Publishing from CI uses Trusted Publishing, no API key. Policy owner `eyepop-ai`, Repository Owner `eyepop-ai`, Repository `eyepop-sdk`, Workflow File `release.yaml` (file name only, no path), scope matching `EyePop.Sdk` and allowed to publish new packages.
+- Publishing from CI uses Trusted Publishing, no API key. Policy owner `eyepop-ai`, Repository Owner `eyepop-ai`, Repository `eyepop-sdk`, Workflow File `_release-cs.yaml` (file name only, no path), scope `*` (or `EyePop.Sdk`) with "Push new packages and package versions". The Workflow File is the reusable workflow that runs the job, not the calling `release.yaml`: nuget.org rejects `release.yaml` with "Workflow mismatch ... actual `_release-cs.yaml`".
 - `NUGET_USER` at the top of `_release-cs.yaml` is the nuget.org username of the person who created the policy (not the owning org `eyepop-ai`, not an email, not a secret). NuGet rejects the org name with a 401. The job gets a 1-hour API key from `NuGet/login` right before the push.
-- Unconfirmed until the first real publish: whether nuget.org matches the calling `release.yaml` for a job running in the reusable `_release-cs.yaml`, and whether the policy can publish a package ID that does not exist yet. If it cannot, push the first alpha once with a scoped API key, then switch back.
+- Confirmed by the first publish (`EyePop.Sdk` 0.0.1-alpha.2): a policy can publish a package ID that does not exist yet, and the first version takes several minutes to appear in the nuget.org index. `cs:verify` waits up to 10 minutes for it.
+- Test releases need a tag that fits every language. The Go module path ends in `/v4`, so use `v4.0.0-alpha.N`, never `v0.x`.
 - To publish only to NuGet, set the repo variable `PUBLISH_TO_REGISTRIES` to `cs`. `true` publishes every registry.
 
 ## C# dev environment (macOS)
