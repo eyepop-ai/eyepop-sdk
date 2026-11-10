@@ -1,0 +1,22 @@
+{
+  "$schema": "https://raw.githubusercontent.com/jetify-com/devbox/main/.schema/devbox.schema.json",
+  "packages": [
+    "go-task@3",
+    "nodejs@24",
+    "python@3.12",
+    "uv@latest",
+    "go@1.24",
+    "dotnet-sdk@8",
+    "rustc@latest",
+    "cargo@latest",
+    "clippy@latest",
+    "rustfmt@latest",
+    "jq@latest",
+    "shellcheck@latest",
+    "actionlint@latest"
+  ],
+  "env": {
+    "DOTNET_NOLOGO": "1",
+    "DOTNET_CLI_TELEMETRY_OPTOUT": "1"
+  }
+}

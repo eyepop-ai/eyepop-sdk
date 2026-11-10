@@ -1,6 +1,6 @@
 version: '3'
 
-# C# Language SDK (NuGet package EyePop). Implements the contract in ../Taskfile.yaml. Tasks only call scripts/.
+# C# Language SDK (NuGet package EyePop.Sdk). Implements the contract in ../Taskfile.yaml. Tasks only call scripts/.
 # The version is never written to a file: pack passes TAG, mapped by ../scripts/version.sh, as -p:Version.
 # Each script call below passes TAG explicitly, so the task's TAG wins over any TAG already in the environment.
 
@@ -31,13 +31,13 @@ tasks:
       - task: test
 
   package:
-    desc: Pack EyePop.<version>.nupkg at TAG's version into OUT
+    desc: Pack EyePop.Sdk.<version>.nupkg at TAG's version into OUT
     requires: { vars: [TAG, OUT] }
     cmds:
       - TAG="{{.TAG}}" OUT="{{.OUT}}" scripts/package.sh
 
   publish:dry-run:
-    desc: Pack artifacts/EyePop.<version>.nupkg
+    desc: Pack artifacts/EyePop.Sdk.<version>.nupkg
     requires: { vars: [TAG] }
     cmds:
       - TAG="{{.TAG}}" scripts/publish.sh --dry-run

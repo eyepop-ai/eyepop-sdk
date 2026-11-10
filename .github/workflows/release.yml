@@ -2,7 +2,8 @@ name: Release
 
 # Lockstep release: publishing a GitHub release at tag vX.Y.Z publishes every Language SDK at that version.
 # Re-run failed jobs is safe: every publish task skips a version that is already on its registry.
-# Registry uploads happen only for a published GitHub release with the repo variable PUBLISH_TO_REGISTRIES=true.
+# Registry uploads happen only for a published GitHub release with the repo variable PUBLISH_TO_REGISTRIES set:
+# `true` uploads every Language SDK, or a comma list such as `cs` or `node,python` uploads only those.
 # Without it, every run still builds each package and stores it as a workflow artifact (eyepop-<language>-<tag>),
 # and the publish steps just say where they would upload. Run it by hand on any branch to get the artifacts:
 #   gh workflow run release.yml -f tag=v4.0.0-alpha.1
@@ -30,7 +31,7 @@ jobs:
       contents: read
     outputs:
       tag: ${{ steps.release.outputs.tag }}
-      publish: ${{ steps.release.outputs.publish }}
+      registries: ${{ steps.release.outputs.registries }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -39,11 +40,12 @@ jobs:
         name: Validate tag for every ecosystem
         env:
           TAG: ${{ github.event.release.tag_name || inputs.tag }}
-          PUBLISH: ${{ github.event_name == 'release' && vars.PUBLISH_TO_REGISTRIES == 'true' }}
+          REGISTRIES: ${{ github.event_name == 'release' && vars.PUBLISH_TO_REGISTRIES || '' }}
         run: |
           scripts/verify-tag.sh "$TAG"
+          [[ $REGISTRIES =~ ^[a-z,]*$ ]] || { echo "PUBLISH_TO_REGISTRIES must be true or a comma list like cs,node" >&2; exit 1; }
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
-          echo "publish=$PUBLISH" >> "$GITHUB_OUTPUT"
+          echo "registries=$REGISTRIES" >> "$GITHUB_OUTPUT"
 
   node:
     needs: verify-tag
@@ -53,7 +55,7 @@ jobs:
     uses: ./.github/workflows/_release-node.yml
     with:
       tag: ${{ needs.verify-tag.outputs.tag }}
-      publish: ${{ needs.verify-tag.outputs.publish == 'true' }}
+      publish: ${{ needs.verify-tag.outputs.registries == 'true' || contains(format(',{0},', needs.verify-tag.outputs.registries), ',node,') }}
 
   python:
     needs: verify-tag
@@ -63,7 +65,7 @@ jobs:
     uses: ./.github/workflows/_release-python.yml
     with:
       tag: ${{ needs.verify-tag.outputs.tag }}
-      publish: ${{ needs.verify-tag.outputs.publish == 'true' }}
+      publish: ${{ needs.verify-tag.outputs.registries == 'true' || contains(format(',{0},', needs.verify-tag.outputs.registries), ',python,') }}
 
   go:
     needs: verify-tag
@@ -72,7 +74,7 @@ jobs:
     uses: ./.github/workflows/_release-go.yml
     with:
       tag: ${{ needs.verify-tag.outputs.tag }}
-      publish: ${{ needs.verify-tag.outputs.publish == 'true' }}
+      publish: ${{ needs.verify-tag.outputs.registries == 'true' || contains(format(',{0},', needs.verify-tag.outputs.registries), ',go,') }}
 
   rust:
     needs: verify-tag
@@ -82,7 +84,7 @@ jobs:
     uses: ./.github/workflows/_release-rust.yml
     with:
       tag: ${{ needs.verify-tag.outputs.tag }}
-      publish: ${{ needs.verify-tag.outputs.publish == 'true' }}
+      publish: ${{ needs.verify-tag.outputs.registries == 'true' || contains(format(',{0},', needs.verify-tag.outputs.registries), ',rust,') }}
     secrets:
       CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
 
@@ -90,12 +92,13 @@ jobs:
     needs: verify-tag
     permissions:
       contents: read
+      id-token: write
     uses: ./.github/workflows/_release-cs.yml
     with:
       tag: ${{ needs.verify-tag.outputs.tag }}
-      publish: ${{ needs.verify-tag.outputs.publish == 'true' }}
+      publish: ${{ needs.verify-tag.outputs.registries == 'true' || contains(format(',{0},', needs.verify-tag.outputs.registries), ',cs,') }}
     secrets:
-      NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
+      NUGET_USER: ${{ secrets.NUGET_USER }}
 
   # Red until all five languages are published (including when verify-tag failed and the rest were skipped).
   release-summary:
