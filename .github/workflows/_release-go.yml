@@ -23,20 +23,14 @@ jobs:
         with:
           fetch-depth: 0 # go:publish checks and pushes tags
           persist-credentials: true # go:publish pushes the go/vX.Y.Z tag with the checkout's token
-      - uses: arduino/setup-task@c0bc642852239c2689f73f4ea6459c29405f3c52 # v3.0.0
-        with:
-          repo-token: ${{ github.token }}
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-        with:
-          go-version-file: go/go.mod
+      - uses: ./.github/actions/setup-go
       - run: task go:check
       - run: task go:publish:dry-run TAG="$TAG"
-      # Go has no package file: the module is the go/ directory at the tagged commit, which this archives.
-      - run: mkdir -p "$RUNNER_TEMP/out" && git archive --format=zip -o "$RUNNER_TEMP/out/eyepop-go-$TAG.zip" HEAD go
+      - run: task go:package TAG="$TAG" OUT="$RUNNER_TEMP/out"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: eyepop-go-${{ inputs.tag }}
-          path: ${{ runner.temp }}/out/*.zip
+          path: ${{ runner.temp }}/out/*
           if-no-files-found: error
       - if: ${{ !inputs.publish }}
         run: echo "publish is off, would publish to proxy.golang.org (git tag go/vX.Y.Z) here"

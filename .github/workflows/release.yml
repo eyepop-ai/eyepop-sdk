@@ -23,18 +23,27 @@ concurrency:
 permissions: {}
 
 jobs:
+  # The one place that decides the tag and whether this run uploads to registries; every release job reads these outputs.
   verify-tag:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+    outputs:
+      tag: ${{ steps.release.outputs.tag }}
+      publish: ${{ steps.release.outputs.publish }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - name: Validate tag for every ecosystem
+      - id: release
+        name: Validate tag for every ecosystem
         env:
           TAG: ${{ github.event.release.tag_name || inputs.tag }}
-        run: scripts/verify-tag.sh "$TAG"
+          PUBLISH: ${{ github.event_name == 'release' && vars.PUBLISH_TO_REGISTRIES == 'true' }}
+        run: |
+          scripts/verify-tag.sh "$TAG"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "publish=$PUBLISH" >> "$GITHUB_OUTPUT"
 
   node:
     needs: verify-tag
@@ -43,8 +52,8 @@ jobs:
       id-token: write
     uses: ./.github/workflows/_release-node.yml
     with:
-      tag: ${{ github.event.release.tag_name || inputs.tag }}
-      publish: ${{ github.event_name == 'release' && vars.PUBLISH_TO_REGISTRIES == 'true' }}
+      tag: ${{ needs.verify-tag.outputs.tag }}
+      publish: ${{ needs.verify-tag.outputs.publish == 'true' }}
 
   python:
     needs: verify-tag
@@ -53,8 +62,8 @@ jobs:
       id-token: write
     uses: ./.github/workflows/_release-python.yml
     with:
-      tag: ${{ github.event.release.tag_name || inputs.tag }}
-      publish: ${{ github.event_name == 'release' && vars.PUBLISH_TO_REGISTRIES == 'true' }}
+      tag: ${{ needs.verify-tag.outputs.tag }}
+      publish: ${{ needs.verify-tag.outputs.publish == 'true' }}
 
   go:
     needs: verify-tag
@@ -62,8 +71,8 @@ jobs:
       contents: write # go:publish pushes the go/vX.Y.Z tag
     uses: ./.github/workflows/_release-go.yml
     with:
-      tag: ${{ github.event.release.tag_name || inputs.tag }}
-      publish: ${{ github.event_name == 'release' && vars.PUBLISH_TO_REGISTRIES == 'true' }}
+      tag: ${{ needs.verify-tag.outputs.tag }}
+      publish: ${{ needs.verify-tag.outputs.publish == 'true' }}
 
   rust:
     needs: verify-tag
@@ -72,8 +81,8 @@ jobs:
       id-token: write
     uses: ./.github/workflows/_release-rust.yml
     with:
-      tag: ${{ github.event.release.tag_name || inputs.tag }}
-      publish: ${{ github.event_name == 'release' && vars.PUBLISH_TO_REGISTRIES == 'true' }}
+      tag: ${{ needs.verify-tag.outputs.tag }}
+      publish: ${{ needs.verify-tag.outputs.publish == 'true' }}
     secrets:
       CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
 
@@ -83,8 +92,8 @@ jobs:
       contents: read
     uses: ./.github/workflows/_release-cs.yml
     with:
-      tag: ${{ github.event.release.tag_name || inputs.tag }}
-      publish: ${{ github.event_name == 'release' && vars.PUBLISH_TO_REGISTRIES == 'true' }}
+      tag: ${{ needs.verify-tag.outputs.tag }}
+      publish: ${{ needs.verify-tag.outputs.publish == 'true' }}
     secrets:
       NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
 

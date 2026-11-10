@@ -8,8 +8,8 @@ version: "3"
 #   lint            formatting and static checks
 #   typecheck       type checking
 #   check           the CI gate: lint, typecheck, test
-#   stamp           TAG=vX.Y.Z  write the tag's version into the manifests (see scripts/version.sh); print-only where the build takes it from TAG
-#   publish:dry-run TAG=vX.Y.Z  everything short of uploading
+#   package         TAG=vX.Y.Z OUT=dir  write the release artifact(s) at the tag's version into OUT (see scripts/version.sh); leaves the tree unchanged
+#   publish:dry-run TAG=vX.Y.Z  everything short of uploading; leaves the tree unchanged
 #   publish         TAG=vX.Y.Z  upload; safe to re-run, a version already published is skipped
 #   verify          TAG=vX.Y.Z  install the PUBLISHED artifact in a scratch project and assert eyepop version() == the tag's version
 

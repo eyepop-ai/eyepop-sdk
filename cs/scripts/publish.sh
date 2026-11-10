@@ -7,7 +7,8 @@ cd "$(dirname "$0")/.."
 
 dry_run=${1:-}
 
-scripts/pack.sh
+rm -rf artifacts
+OUT=artifacts scripts/package.sh
 [ -z "$dry_run" ] || exit 0
 
 : "${NUGET_API_KEY:?set NUGET_API_KEY}"

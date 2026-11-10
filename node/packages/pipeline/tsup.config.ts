@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { defineConfig } from 'tsup'
 
-// The tag is the only version source: `task stamp` rewrites package.json, the build bakes it in.
+// The tag is the only version source: package and publish stamp package.json, then the build bakes it in.
 const { version } = JSON.parse(readFileSync('./package.json', 'utf8'))
 
 export default defineConfig({

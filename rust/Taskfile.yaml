@@ -30,11 +30,11 @@ tasks:
       - task: typecheck
       - task: test
 
-  stamp:
-    desc: Write TAG's version into the crate manifest (revert to 0.0.0 afterwards)
-    requires: { vars: [TAG] }
+  package:
+    desc: Package the crate at TAG's version into OUT (stamps and restores the manifest)
+    requires: { vars: [TAG, OUT] }
     cmds:
-      - TAG="{{.TAG}}" scripts/stamp.sh
+      - TAG="{{.TAG}}" OUT="{{.OUT}}" scripts/package.sh
 
   publish:dry-run:
     requires: { vars: [TAG] }

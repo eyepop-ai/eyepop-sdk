@@ -2,6 +2,7 @@ version: '3'
 
 # Node Language SDK (npm workspaces under packages/*). Implements the contract in ../Taskfile.yaml.
 # Tasks only call scripts/. TAG=vX.Y.Z is mapped to an npm version by ../scripts/version.sh.
+# package and publish stamp that version into the manifests, build, and restore the manifests afterwards.
 # Adding a package under packages/ needs no change here: the scripts loop over every workspace.
 # Each script call below passes TAG explicitly, so the task's TAG wins over any TAG already in the environment.
 
@@ -36,23 +37,21 @@ tasks:
       - task: typecheck
       - task: test
 
-  stamp:
-    desc: Write TAG's version into every workspace manifest
-    requires: { vars: [TAG] }
+  package:
+    desc: Pack every workspace at TAG's version into OUT (stamps and restores the manifests)
+    requires: { vars: [TAG, OUT] }
     cmds:
-      - TAG="{{.TAG}}" scripts/stamp.sh
+      - TAG="{{.TAG}}" OUT="{{.OUT}}" scripts/package.sh
 
   publish:dry-run:
     requires: { vars: [TAG] }
     cmds:
-      - task: build
       - TAG="{{.TAG}}" scripts/publish.sh --dry-run
 
   publish:
-    desc: Publish every workspace with provenance; skips versions already on the registry
+    desc: Stamp, build and publish every workspace with provenance; skips versions already on the registry
     requires: { vars: [TAG] }
     cmds:
-      - task: build
       - TAG="{{.TAG}}" scripts/publish.sh
 
   verify:

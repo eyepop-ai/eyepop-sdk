@@ -19,3 +19,7 @@ _Avoid_: unified release, full release
 **Scaffold package**:
 A package that exports only a no-op `eyepop` symbol reporting its own version, used to prove the Lockstep release flow before any real SDK code exists.
 _Avoid_: stub, placeholder, hello-world package
+
+**Release artifact**:
+The file or files a Language SDK's `package` task writes into `OUT` at the Release tag's version, stored as a workflow artifact by every release run. A publish rebuilds from source rather than uploading these files. Packaging leaves the working tree unchanged.
+_Avoid_: build output, dist
