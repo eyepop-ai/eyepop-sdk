@@ -27,3 +27,12 @@ Run `bd show <id>`.
 ## Git
 
 Per `CLAUDE.md`, do not commit, push, or sync Dolt remotes unless asked.
+
+## Sharing the database
+
+The beads database is shared through the Dolt ref `refs/dolt/data` on `origin`, which is a public repository: write nothing in a bead you would not put in a public issue.
+
+- **Fresh clone**: `bd bootstrap` pulls the database, then `bd hooks install --beads` points git at the hooks in `.beads/hooks`.
+- **Push and pull**: the `pre-push` hook runs `bd dolt push` and the `post-merge` hook runs `bd dolt pull`. Neither blocks git when it fails. Run `bd dolt push` or `bd dolt pull` yourself after a bead change that should not wait for a code push.
+- **Not automatic**: `dolt.auto-push` does nothing in embedded mode (verified 2026-11-18: a write left `refs/dolt/data` unchanged), so do not rely on it.
+- The two custom blocks sit below the `END BEADS INTEGRATION` marker in those hooks; `bd hooks install` keeps content outside its markers.
