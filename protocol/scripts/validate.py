@@ -5,15 +5,16 @@
 import json
 import sys
 from pathlib import Path
-from typing import NamedTuple
+from types import MappingProxyType
+from typing import Mapping, NamedTuple
 
 from jsonschema import Draft202012Validator
-from jsonschema.exceptions import best_match
+from jsonschema.exceptions import SchemaError, best_match
 from referencing import Registry, Resource
 from referencing.jsonschema import DRAFT202012
 
 ROOT = Path(__file__).resolve().parent.parent
-SCHEMAS = {"command": "command.json", "message": "message.json"}
+UNIONS = MappingProxyType({"command": "command.json", "message": "message.json"})
 EXPECTED = "expected.json"
 
 
@@ -30,11 +31,11 @@ def load_registry(root: Path) -> Registry:
     return registry
 
 
-def schema_for(example: Path) -> str:
+def schema_for(example: Path, unions: Mapping[str, str]) -> str:
     kind = example.name.split("-", 1)[0]
-    if kind not in SCHEMAS:
-        raise SystemExit(f"{example.name}: file name must start with one of {sorted(SCHEMAS)} followed by '-'")
-    return SCHEMAS[kind]
+    if kind not in unions:
+        raise SystemExit(f"{example.name}: file name must start with one of {sorted(unions)} followed by '-'")
+    return unions[kind]
 
 
 def validator(root: Path, registry: Registry, schema_file: str) -> Draft202012Validator:
@@ -48,6 +49,8 @@ def rejection(root: Path, registry: Registry, union: str, instance: object) -> t
     variant = f"{instance.get('type')}.json" if isinstance(instance, dict) else None
     schema_file = variant if variant and (root / "schema" / variant).exists() else union
     error = best_match(validator(root, registry, schema_file).iter_errors(instance))
+    if error is None:
+        error = best_match(validator(root, registry, union).iter_errors(instance))
     path = "".join(f"/{part}" for part in error.absolute_path)
     return path, error.validator
 
@@ -73,9 +76,9 @@ def refs(node: object) -> list[str]:
     return []
 
 
-def reachable(root: Path) -> set[str]:
+def reachable(root: Path, unions: Mapping[str, str]) -> set[str]:
     seen: set[str] = set()
-    pending = [Path(union).stem for union in SCHEMAS.values()]
+    pending = [Path(union).stem for union in unions.values()]
     while pending:
         name = pending.pop()
         path = root / "schema" / f"{name}.json"
@@ -86,11 +89,22 @@ def reachable(root: Path) -> set[str]:
     return seen
 
 
-def check(root: Path) -> list[Failure]:
-    listed = [name for union in SCHEMAS.values() for name in members(root, union)]
+def is_schema(path: Path) -> bool:
+    try:
+        Draft202012Validator.check_schema(json.loads(path.read_text()))
+    except SchemaError:
+        return False
+    return True
+
+
+def check(root: Path, unions: Mapping[str, str] = UNIONS) -> list[Failure]:
+    listed = [name for union in unions.values() for name in members(root, union)]
     missing = [name for name in listed if not (root / "schema" / f"{name}.json").exists()]
     if missing:
         return [Failure(f"schema/{name}.json", "missing_variant") for name in missing]
+    broken = [path.stem for path in sorted((root / "schema").glob("*.json")) if not is_schema(path)]
+    if broken:
+        return [Failure(f"schema/{name}.json", "invalid_schema") for name in broken]
     registry = load_registry(root)
     manifest = root / "examples" / "invalid" / EXPECTED
     expected = json.loads(manifest.read_text()) if manifest.exists() else {}
@@ -99,11 +113,11 @@ def check(root: Path) -> list[Failure]:
     ]
     failures += [
         Failure(f"schema/{name}.json", "type_mismatch")
-        for union in SCHEMAS.values()
+        for union in unions.values()
         for name in members(root, union)
         if const_type(root, name) not in (None, name)
     ]
-    seen = reachable(root)
+    seen = reachable(root, unions)
     failures += [
         Failure(f"schema/{path.stem}.json", "unreachable")
         for path in sorted((root / "schema").glob("*.json"))
@@ -115,7 +129,7 @@ def check(root: Path) -> list[Failure]:
             if example.name == EXPECTED:
                 continue
             count += 1
-            union = schema_for(example)
+            union = schema_for(example, unions)
             instance = json.loads(example.read_text())
             name = f"{folder}/{example.name}"
             if validator(root, registry, union).is_valid(instance) != accepted:
@@ -135,7 +149,7 @@ def check(root: Path) -> list[Failure]:
 
 
 def main() -> int:
-    failures = check(ROOT)
+    failures = check(ROOT, UNIONS)
     for failure in failures:
         print(f"{failure.example}: {failure.kind}", file=sys.stderr)
     print(f"{'FAILED' if failures else 'ok'}: {len(failures)} failure(s)")

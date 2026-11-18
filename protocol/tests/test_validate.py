@@ -1,14 +1,11 @@
-from conftest import schema
+from conftest import missing_id, schema, valid_ping
 from validate import Failure, check
-
-MISSING_ID = {"command-ping-missing-id.json": {"type": "ping"}}
-VALID_PING = {"command-ping.json": {"type": "ping", "id": "p1"}}
 
 
 def test_an_invalid_example_rejected_for_another_rule_fails(make_root):
     root = make_root(
-        valid=VALID_PING,
-        invalid=MISSING_ID,
+        valid=valid_ping(),
+        invalid=missing_id(),
         expected={"command-ping-missing-id.json": {"path": "", "keyword": "enum"}},
     )
 
@@ -17,8 +14,8 @@ def test_an_invalid_example_rejected_for_another_rule_fails(make_root):
 
 def test_an_invalid_example_rejected_for_its_expected_rule_passes(make_root):
     root = make_root(
-        valid=VALID_PING,
-        invalid=MISSING_ID,
+        valid=valid_ping(),
+        invalid=missing_id(),
         expected={"command-ping-missing-id.json": {"path": "", "keyword": "required"}},
     )
 
@@ -26,15 +23,15 @@ def test_an_invalid_example_rejected_for_its_expected_rule_passes(make_root):
 
 
 def test_an_invalid_example_with_no_expected_rule_fails(make_root):
-    root = make_root(valid=VALID_PING, invalid=MISSING_ID, expected={})
+    root = make_root(valid=valid_ping(), invalid=missing_id(), expected={})
 
     assert check(root) == [Failure("invalid/command-ping-missing-id.json", "no_expectation")]
 
 
 def test_an_expected_rule_for_a_missing_example_fails(make_root):
     root = make_root(
-        valid=VALID_PING,
-        invalid=MISSING_ID,
+        valid=valid_ping(),
+        invalid=missing_id(),
         expected={
             "command-ping-missing-id.json": {"path": "", "keyword": "required"},
             "command-ping-gone.json": {"path": "", "keyword": "required"},
@@ -50,7 +47,7 @@ def test_a_variant_whose_type_const_differs_from_its_file_name_fails(make_root):
             "pong": schema("pong", {"type": "object", "properties": {"type": {"const": "pang"}}, "required": ["type"]}),
             "command": schema("command", {"oneOf": [{"$ref": "ping.json"}, {"$ref": "pong.json"}]}),
         },
-        valid=VALID_PING,
+        valid=valid_ping(),
     )
 
     assert check(root) == [Failure("schema/pong.json", "type_mismatch")]
@@ -59,7 +56,7 @@ def test_a_variant_whose_type_const_differs_from_its_file_name_fails(make_root):
 def test_a_variant_missing_from_its_union_fails(make_root):
     root = make_root(
         schemas={"pong": schema("pong", {"type": "object", "properties": {"type": {"const": "pong"}}, "required": ["type"]})},
-        valid=VALID_PING,
+        valid=valid_ping(),
     )
 
     assert check(root) == [Failure("schema/pong.json", "unreachable")]
@@ -79,7 +76,7 @@ def test_a_typed_schema_reached_through_another_schema_passes(make_root):
                 },
             ),
         },
-        valid=VALID_PING,
+        valid=valid_ping(),
     )
 
     assert check(root) == []
@@ -88,13 +85,33 @@ def test_a_typed_schema_reached_through_another_schema_passes(make_root):
 def test_a_union_member_with_no_schema_file_fails(make_root):
     root = make_root(
         schemas={"command": schema("command", {"oneOf": [{"$ref": "ping.json"}, {"$ref": "ghost.json"}]})},
-        valid=VALID_PING,
+        valid=valid_ping(),
     )
 
     assert check(root) == [Failure("schema/ghost.json", "missing_variant")]
 
 
 def test_a_variant_in_both_unions_fails(make_root):
-    root = make_root(schemas={"message": schema("message", {"oneOf": [{"$ref": "ping.json"}]})}, valid=VALID_PING)
+    root = make_root(schemas={"message": schema("message", {"oneOf": [{"$ref": "ping.json"}]})}, valid=valid_ping())
 
     assert check(root) == [Failure("schema/ping.json", "in_two_unions")]
+
+
+def test_an_invalid_example_the_variant_accepts_but_the_union_rejects_is_attributed_to_the_union(make_root):
+    root = make_root(
+        schemas={
+            "loose": schema("loose", {"type": "object"}),
+            "command": schema("command", {"oneOf": [{"$ref": "ping.json"}, {"$ref": "loose.json"}]}),
+        },
+        valid={},
+        invalid={"command-ping-overlap.json": {"type": "ping", "id": "p1"}},
+        expected={"command-ping-overlap.json": {"path": "", "keyword": "oneOf"}},
+    )
+
+    assert check(root) == []
+
+
+def test_a_schema_that_breaks_the_metaschema_fails(make_root):
+    root = make_root(schemas={"bad": schema("bad", {"type": 5})}, valid=valid_ping())
+
+    assert check(root) == [Failure("schema/bad.json", "invalid_schema")]
