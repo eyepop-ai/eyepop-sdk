@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-# Self-check for version.sh. Run: scripts/version.test.sh
 set -euo pipefail
 cd "$(dirname "$0")"
 fail=0

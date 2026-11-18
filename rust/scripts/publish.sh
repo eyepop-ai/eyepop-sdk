@@ -1,7 +1,4 @@
 #!/usr/bin/env bash
-# Stamp the release tag's version and publish the eyepop crate to crates.io. Safe to re-run. Leaves the tree unchanged.
-# CARGO_REGISTRY_TOKEN comes from the CI environment.
-# usage: publish.sh [--dry-run]
 set -euo pipefail
 cd "$(dirname "$0")/.."
 

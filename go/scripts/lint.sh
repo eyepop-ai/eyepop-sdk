@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-# Fail if any file is not gofmt-formatted, then run go vet.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 

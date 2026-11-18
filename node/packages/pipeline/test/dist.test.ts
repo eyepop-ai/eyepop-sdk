@@ -2,7 +2,6 @@ import { readFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { expect, test } from 'vitest'
 
-// Tests the built output, so run after `npm run build`.
 const { version } = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'))
 
 test('ESM build reports the stamped version', async () => {

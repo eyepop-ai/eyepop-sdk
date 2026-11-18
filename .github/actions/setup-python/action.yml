@@ -14,7 +14,6 @@ runs:
       with:
         enable-cache: ${{ inputs.cache }}
         cache-dependency-glob: python/uv.lock
-    # Fails if uv.lock is out of sync with pyproject.toml.
     - run: uv sync --locked
       shell: bash
       working-directory: python

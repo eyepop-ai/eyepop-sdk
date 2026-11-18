@@ -1,9 +1,5 @@
 version: '3'
 
-# Go Language SDK. Implements the contract in ../Taskfile.yaml. Tasks only call scripts/.
-# The module version is the git tag go/vX.Y.Z, so nothing is stamped into files.
-# Each script call below passes TAG explicitly, so the task's TAG wins over any TAG already in the environment.
-
 tasks:
   build:
     cmds:

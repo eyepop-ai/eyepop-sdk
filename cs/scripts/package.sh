@@ -1,6 +1,4 @@
 #!/usr/bin/env bash
-# Pack EyePop.Sdk.<version>.nupkg at the release tag's version into OUT.
-# usage: TAG=v4.0.0 OUT=dir package.sh
 set -euo pipefail
 mkdir -p "${OUT:?set OUT}"
 out=$(cd "$OUT" && pwd)

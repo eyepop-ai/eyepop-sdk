@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-# Install each published package from npm and check eyepop.version() equals the release tag's version.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -12,7 +11,6 @@ cd "$scratch"
 npm init -y >/dev/null
 
 for name in $names; do
-  # A fresh publish takes a moment to show up on the registry.
   for attempt in 1 2 3 4 5 6; do
     npm install --no-audit --no-fund --prefer-online "$name@$want" >/dev/null 2>&1 && break
     [ "$attempt" -lt 6 ] || { echo "cannot install $name@$want" >&2; exit 1; }

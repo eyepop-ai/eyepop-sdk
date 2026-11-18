@@ -1,9 +1,5 @@
 version: '3'
 
-# Rust Language SDK. Implements the contract in ../Taskfile.yaml. Tasks only call scripts/.
-# TAG=vX.Y.Z is mapped to a cargo version by ../scripts/version.sh.
-# Each script call below passes TAG explicitly, so the task's TAG wins over any TAG already in the environment.
-
 tasks:
   build:
     cmds:

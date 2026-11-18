@@ -1,6 +1,5 @@
 name: CI repo
 
-# Checks that belong to no single language: the shared scripts and the workflows themselves.
 on:
   pull_request:
     paths: &paths
@@ -26,7 +25,6 @@ jobs:
         with:
           persist-credentials: false
       - run: scripts/version.test.sh
-      # Every tracked shell script, wherever it lives. shellcheck is preinstalled on the runner.
       - run: git ls-files -z '*.sh' | xargs -0 shellcheck
 
   workflows:

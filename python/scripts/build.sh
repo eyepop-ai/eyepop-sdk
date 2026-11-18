@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-# Build the sdist and wheel into dist/. Without TAG the version is 0.0.0.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 

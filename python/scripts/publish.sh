@@ -1,6 +1,4 @@
 #!/usr/bin/env bash
-# Build at the release tag's version and upload it to PyPI. Safe to re-run: files PyPI already has are skipped.
-# usage: publish.sh [--dry-run]
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
