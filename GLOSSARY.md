@@ -23,3 +23,41 @@ _Avoid_: stub, placeholder, hello-world package
 **Release artifact**:
 The file or files a Language SDK's `package` task writes into `OUT` at the Release tag's version, stored as a workflow artifact by every release run. A publish rebuilds from source rather than uploading these files. Packaging leaves the working tree unchanged.
 _Avoid_: build output, dist
+
+## Pipeline socket
+
+**Pipeline socket**:
+The WebSocket at `GET /api/v1/pipeline`, subprotocol `eyepop.v1`. Each one runs a pipeline of its own and takes commands. It is the only thing the Language SDK interface covers.
+_Avoid_: worker, worker endpoint, stream
+
+**Session**:
+One open Pipeline socket and its one pipeline, from `connect` until it closes. Not a compute session of the old SDKs.
+_Avoid_: endpoint, connection, client
+
+**Pop**:
+The description of the pipeline a Session runs: components, where an inference component holds an Ability.
+_Avoid_: pipeline definition, graph
+
+**Ability**:
+A named model capability, given as an alias such as `eyepop.person:latest` or a uuid, with params.
+_Avoid_: model, worker
+
+**Source**:
+One input a Session processes: a url, an asset, an upload or a group.
+_Avoid_: job, request, item
+
+**Job**:
+The handle of one Source on a Session: its id, its messages, and its `cancel`.
+_Avoid_: task, stream
+
+**Environment**:
+A named row (`production`, `staging`, `local`) giving a pipeline URL and an auth URL. Chosen by `EYEPOP_ENV`.
+_Avoid_: stage, mode
+
+**Protocol schema**:
+The JSON Schema in `protocol/` that defines every command, message and value of the Pipeline socket. SDK types are generated from it.
+_Avoid_: spec, API definition
+
+**Conformance transcript**:
+A scripted exchange between a fake pipeline API and an SDK, in `conformance/`, that every Language SDK's tests replay.
+_Avoid_: fixture, recording
