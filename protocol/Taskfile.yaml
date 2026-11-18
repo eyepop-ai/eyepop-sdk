@@ -2,7 +2,7 @@ version: '3'
 
 tasks:
   validate:
-    desc: Every example in examples/valid passes, every example in examples/invalid fails for its expected rule, and the unions agree with the schema files
+    desc: Check the examples and the unions against the schemas
     cmds:
       - uv run scripts/validate.py
 
