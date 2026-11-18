@@ -128,13 +128,35 @@ bd prime                # Refresh Beads context
 
 ## Build & Test
 
-_Add your build and test commands here_
+### Toolchain: always Devbox
+
+`devbox.json` at the repo root pins every toolchain (`dotnet-sdk@8`, node, python, go, rust, `go-task`). Run every toolchain command through it, from any directory in the repo. Never call a host `dotnet`, `node`, `cargo` and so on: `dotnet` is not installed on this machine, and host versions would drift from CI.
 
 ```bash
-# Example:
-# npm install
-# npm test
+devbox run -- task cs:check        # the C# CI gate: lint, typecheck, test
+devbox run -- dotnet <args>        # any one-off dotnet command
+devbox shell                       # interactive shell with everything on PATH
 ```
+
+The first run downloads the packages into the Nix store (a few minutes). Later runs start in seconds. `devbox.lock` pins the exact versions; commit it when `devbox.json` changes.
+
+### C# (`cs/`)
+
+Tasks are defined in `cs/Taskfile.yaml` and run from the repo root as `task cs:<name>`, or inside `cs/` as `task <name>`. Wrap them in `devbox run --`.
+
+| Command | What it does |
+|---|---|
+| `devbox run -- task cs:build` | Build `cs/EyePop.sln` (Release) |
+| `devbox run -- task cs:test` | Run the xUnit tests |
+| `devbox run -- task cs:lint` | `dotnet format --verify-no-changes`; fix with `devbox run -- dotnet format cs/EyePop.sln` |
+| `devbox run -- task cs:typecheck` | Build with warnings as errors |
+| `devbox run -- task cs:check` | The CI gate: lint, typecheck, test. Run before every commit |
+| `devbox run -- dotnet test cs/EyePop.sln --filter "FullyQualifiedName~Name"` | One test |
+
+- Target framework is `net8.0`; `cs/global.json` pins SDK 8.0.100 with `rollForward: latestFeature`. CI installs the same SDK with `actions/setup-dotnet`, not Devbox.
+- The version is never in a file. `package`, `publish` and `verify` take `TAG=vX.Y.Z`; do not run them locally except `publish:dry-run`.
+- `bin/`, `obj/` and `artifacts/` are ignored. After a failed restore, delete `cs/**/bin` and `cs/**/obj` and rerun.
+- Tests must not call a real environment. Hit staging or production only when the user names it.
 
 ## Architecture Overview
 
