@@ -1,0 +1,67 @@
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+inheritance: true
+language: en-US
+tone_instructions: "Be direct and concise. Prioritize correctness, regressions, security, and missing tests over style nits. Flag any violation of the repository rules."
+
+reviews:
+  profile: chill
+  request_changes_workflow: false
+  high_level_summary: true
+  review_status: false
+  review_details: false
+  commit_status: false
+  collapse_walkthrough: true
+  poem: false
+
+  auto_review:
+    enabled: false
+    auto_incremental_review: false
+    drafts: false
+    labels:
+      - needs-review
+      - "!skip-review"
+      - "!no-review"
+    base_branches:
+      - main
+    ignore_title_keywords:
+      - "[skip review]"
+      - "DO NOT MERGE"
+    ignore_usernames:
+      - "dependabot[bot]"
+      - "github-actions[bot]"
+
+  path_instructions:
+    - path: "**"
+      instructions: |
+        Repository rules. Flag every violation.
+        - Comments: no explanatory or rationale comments, and no comments that restate the code. A comment is allowed only for a constraint a reader cannot see in the code. Shebangs, linter directives and public API doc comments are fine.
+        - Docs: keep READMEs short. Do not document what changes often: file lists, line numbers, counts, step-by-step of the code.
+        - Pure core, IO in a thin shell. Values are immutable. No module-level mutable state. Dependencies are passed in, not created.
+        - Parse, don't validate: turn input into a type that cannot hold an invalid value, and do not re-check downstream.
+        - Tests: written first, at the public interface. Assert on concrete types and values, never on message strings. Unit and integration suites stay separate.
+        - Simplicity: no speculative features, flags or abstractions for a single use. Remove code the change makes unused.
+        - This repository is public. No internal service, customer or private repository names. No token or API key in code, logs, errors, fixtures or URLs.
+        - Names are the wire names. The JSON Schema in protocol/ is the single source for the pipeline socket types.
+
+  tools:
+    actionlint:
+      enabled: true
+    gitleaks:
+      enabled: true
+    shellcheck:
+      enabled: true
+    yamllint:
+      enabled: true
+
+knowledge_base:
+  code_guidelines:
+    enabled: true
+    filePatterns:
+      - "AGENTS.md"
+      - "CLAUDE.md"
+      - "GLOSSARY.md"
+      - "docs/adr/**/*.md"
+
+chat:
+  auto_reply: false
+  art: false
