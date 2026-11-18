@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.eyepop.ai/pipeline-socket/v1/dropped.json",
+  "title": "dropped",
+  "type": "object",
+  "properties": {
+    "type": { "const": "dropped" },
+    "id": { "$ref": "id.json" },
+    "count": { "type": "integer", "minimum": 0 }
+  },
+  "required": ["type", "id", "count"]
+}

@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.eyepop.ai/pipeline-socket/v1/setSource.json",
+  "title": "setSource",
+  "type": "object",
+  "properties": {
+    "type": { "const": "setSource" },
+    "id": { "$ref": "id.json" },
+    "url": { "type": "string" },
+    "assetUuid": { "type": "string" },
+    "upload": {
+      "type": "object",
+      "properties": { "contentType": { "type": "string" } },
+      "required": ["contentType"],
+      "additionalProperties": false
+    },
+    "group": { "type": "array", "items": { "$ref": "groupMember.json" } },
+    "params": { "type": "array", "items": { "$ref": "componentParams.json" } },
+    "fps": { "type": "string" },
+    "roi": { "$ref": "roi.json" },
+    "camera": { "$ref": "camera.json" },
+    "live": { "type": "boolean" },
+    "mode": { "enum": ["queue", "preempt"] }
+  },
+  "required": ["type", "id"],
+  "oneOf": [{ "required": ["url"] }, { "required": ["assetUuid"] }, { "required": ["upload"] }, { "required": ["group"] }],
+  "additionalProperties": false
+}

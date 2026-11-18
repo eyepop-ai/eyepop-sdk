@@ -1,0 +1,33 @@
+name: CI protocol
+
+on:
+  pull_request:
+    paths: &paths
+      - 'protocol/**'
+      - '.github/workflows/ci-protocol.yaml'
+  push:
+    branches: [main]
+    paths: *paths
+
+concurrency:
+  group: ci-protocol-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: arduino/setup-task@c0bc642852239c2689f73f4ea6459c29405f3c52 # v3.0.0
+        with:
+          repo-token: ${{ github.token }}
+      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+      # Same as `task protocol:check` from the repo root.
+      - run: task check
+        working-directory: protocol

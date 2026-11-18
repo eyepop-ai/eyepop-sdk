@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.eyepop.ai/pipeline-socket/v1/quit.json",
+  "title": "quit",
+  "type": "object",
+  "properties": {
+    "type": { "const": "quit" },
+    "id": { "$ref": "id.json" }
+  },
+  "required": ["type", "id"],
+  "additionalProperties": false
+}

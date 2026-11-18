@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.eyepop.ai/pipeline-socket/v1/uploaded.json",
+  "title": "uploaded",
+  "type": "object",
+  "properties": {
+    "type": { "const": "uploaded" },
+    "id": { "$ref": "id.json" },
+    "member": { "type": "integer", "minimum": 0 }
+  },
+  "required": ["type", "id"],
+  "additionalProperties": false
+}

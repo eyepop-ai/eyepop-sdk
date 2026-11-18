@@ -1,0 +1,1 @@
+{"type":"setPop","id":"p1","pop":{"components":[{"type":"inference","ability":"eyepop.person:latest","params":{"confidenceThreshold":0.5}},{"type":"tracking","maxAgeSeconds":2,"futureField":true}]}}

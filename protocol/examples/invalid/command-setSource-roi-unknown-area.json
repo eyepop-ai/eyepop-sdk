@@ -1,0 +1,1 @@
+{"type":"setSource","id":"s1","url":"https://example.com/a.jpg","roi":{"type":"circle","x":0.5,"y":0.5,"radius":0.2}}

@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.eyepop.ai/pipeline-socket/v1/popDepthMap.json",
+  "title": "popDepthMap",
+  "type": "object",
+  "properties": {
+    "ability": { "type": "string" },
+    "abilityUuid": { "type": "string" },
+    "toWorld": { "type": "boolean" }
+  },
+  "oneOf": [{ "required": ["ability"] }, { "required": ["abilityUuid"] }],
+  "additionalProperties": false
+}

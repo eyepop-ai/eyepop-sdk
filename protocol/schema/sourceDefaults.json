@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.eyepop.ai/pipeline-socket/v1/sourceDefaults.json",
+  "title": "sourceDefaults",
+  "type": "object",
+  "properties": {
+    "camera": { "$ref": "camera.json" },
+    "fps": { "type": "string" },
+    "roi": { "$ref": "roi.json" },
+    "motionDetect": { "type": "boolean" },
+    "motionSensitivity": { "type": "number" },
+    "motionThreshold": { "type": "number" },
+    "motionGap": { "type": "integer" },
+    "motionGridX": { "type": "integer" },
+    "motionGridY": { "type": "integer" }
+  },
+  "additionalProperties": false
+}

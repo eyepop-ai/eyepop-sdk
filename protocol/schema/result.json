@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.eyepop.ai/pipeline-socket/v1/result.json",
+  "title": "result",
+  "type": "object",
+  "properties": {
+    "type": { "const": "result" },
+    "id": { "$ref": "id.json" }
+  },
+  "required": ["type", "id"]
+}

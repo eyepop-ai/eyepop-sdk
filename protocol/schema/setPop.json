@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.eyepop.ai/pipeline-socket/v1/setPop.json",
+  "title": "setPop",
+  "type": "object",
+  "properties": {
+    "type": { "const": "setPop" },
+    "id": { "$ref": "id.json" },
+    "pop": { "$ref": "pop.json" }
+  },
+  "required": ["type", "id", "pop"],
+  "additionalProperties": false
+}

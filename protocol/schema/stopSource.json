@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.eyepop.ai/pipeline-socket/v1/stopSource.json",
+  "title": "stopSource",
+  "type": "object",
+  "properties": {
+    "type": { "const": "stopSource" },
+    "id": { "$ref": "id.json" }
+  },
+  "required": ["type", "id"],
+  "additionalProperties": false
+}

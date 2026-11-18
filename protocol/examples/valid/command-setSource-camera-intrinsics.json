@@ -1,0 +1,1 @@
+{"type":"setSource","id":"s1","url":"https://example.com/a.jpg","camera":{"intrinsics":{"fx":0.9,"fy":1.6,"cx":0.5,"cy":0.5},"distortion":{"k1":0,"k2":0,"p1":0,"p2":0,"k3":0},"extrinsics":{"rotation":{"w":1,"x":0,"y":0,"z":0},"translation":{"x":0,"y":0,"z":2.5}}}}
