@@ -24,7 +24,11 @@ def render(language: str, source: str) -> str:
 
 
 def main(argv: list[str]) -> int:
-    generated = generate(load_schemas(ROOT / "schema"), ROOTS)
+    try:
+        generated = generate(load_schemas(ROOT / "schema"), ROOTS)
+    except ValueError as error:
+        print(f"error: {error}", file=sys.stderr)
+        return 1
     outputs = {language: render(language, source) for language, source in generated.items()}
     if "--check" in argv:
         stale = [path for language, path in TARGETS.items() if not path.exists() or path.read_text() != outputs[language]]
