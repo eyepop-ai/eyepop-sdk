@@ -186,8 +186,9 @@ def test_an_inline_union_variant_without_a_name_is_rejected():
     rejects({"either": union}, "either.json#/oneOf/0: an inline union variant needs")
 
 
-def variant(properties: dict, required: list[str]) -> dict:
-    return {"type": "object", "properties": {key: {"type": "string"} if prop is None else prop for key, prop in properties.items()}, "required": required}
+def variant(properties: dict, required: list[str], closed: bool = True) -> dict:
+    body = {"type": "object", "properties": {key: {"type": "string"} if prop is None else prop for key, prop in properties.items()}, "required": required}
+    return body | {"additionalProperties": False} if closed else body
 
 
 def either(**variants) -> dict:
@@ -198,12 +199,15 @@ def dispatch(schemas: dict) -> tuple[Variant, ...]:
     return parse(schemas, ()).unions[0].variants
 
 
+def raw(excluded: str = "a") -> dict:
+    return variant({"type": {"type": "string", "not": {"const": excluded}}}, ["type"])
+
+
 def test_a_union_tries_tags_and_keys_in_schema_order_and_the_open_type_last():
-    raw = variant({"type": None}, ["type"])
     a = variant({"type": {"const": "a"}}, ["type"])
     k = variant({"k": None}, ["k"])
 
-    assert dispatch(either(raw=raw, a=a, k=k)) == (Variant("A", Tag("a")), Variant("K", Key("k")), Variant("Raw", Always()))
+    assert dispatch(either(raw=raw(), a=a, k=k)) == (Variant("A", Tag("a")), Variant("K", Key("k")), Variant("Raw", Always()))
 
 
 def test_two_variants_with_one_tag_are_rejected():
@@ -213,11 +217,39 @@ def test_two_variants_with_one_tag_are_rejected():
     rejects(either(a=a, b=b), "either.json#/oneOf/1: variants A and B both have the `type` const 'x'")
 
 
-def test_two_variants_with_an_open_type_are_rejected():
-    a = variant({"type": None}, ["type"])
-    b = variant({"type": None, "q": None}, ["type"])
+def test_a_tag_that_is_not_required_is_rejected():
+    a = variant({"type": {"const": "a"}, "x": None}, ["x"])
+    b = variant({"type": {"const": "b"}}, ["type"])
 
-    rejects(either(a=a, b=b), "either.json#/oneOf/1: variants A and B both have an open `type`")
+    rejects(either(a=a, b=b), "either.json#/oneOf/0: variant A has the `type` const 'a' but does not require `type`")
+
+
+def test_two_variants_with_an_open_type_are_rejected():
+    rejects(either(a=raw("x"), b=raw("y")), "either.json#/oneOf/1: variants A and B both have an open `type`")
+
+
+@pytest.mark.parametrize(
+    "type_, tag",
+    [({"type": "string"}, "a"), ({"type": "string", "not": {"const": "a"}}, "b"), ({"enum": ["a", "c"]}, "a")],
+    ids=["no-not", "not-one-of-two-tags", "enum-with-a-tag"],
+)
+def test_an_open_type_that_accepts_a_sibling_tag_is_rejected(type_, tag):
+    a = variant({"type": {"const": "a"}, "x": None}, ["type", "x"])
+    b = variant({"type": {"const": "b"}}, ["type"])
+
+    rejects(either(a=a, b=b, raw=variant({"type": type_}, ["type"])), f"either.json#/oneOf/2: variant Raw has an open `type` that accepts the `type` const {tag!r} of variant")
+
+
+def test_an_enum_type_without_a_sibling_tag_is_the_open_type():
+    a = variant({"type": {"const": "a"}}, ["type"])
+
+    assert dispatch(either(a=a, raw=variant({"type": {"enum": ["b", "c"]}}, ["type"]))) == (Variant("A", Tag("a")), Variant("Raw", Always()))
+
+
+def test_a_variant_listed_twice_is_rejected():
+    union = schema("either", {"oneOf": [{"$ref": "k.json"}, {"$ref": "k.json"}]})
+
+    rejects({"either": union, "k": variant({"k": None}, ["k"])}, "either.json#/oneOf/1: variant K is listed twice")
 
 
 def test_a_key_required_by_another_variant_is_not_a_selector():
@@ -225,7 +257,7 @@ def test_a_key_required_by_another_variant_is_not_a_selector():
 
 
 def test_a_key_that_is_only_a_property_of_another_variant_is_not_a_selector():
-    a = variant({"x": None}, ["x"]) | {"additionalProperties": False}
+    a = variant({"x": None}, ["x"])
     b = variant({"x": None, "y": None}, ["y"])
 
     rejects(
@@ -246,6 +278,28 @@ def test_the_selector_is_the_first_required_key_by_name_that_no_other_variant_ha
     b = variant({"c": None, "y": None}, ["y"])
 
     assert dispatch(either(a=a, b=b)) == (Variant("A", Key("d")), Variant("B", Key("y")))
+
+
+@pytest.mark.parametrize(
+    "others, unclosed",
+    [
+        ({"k2": variant({"k2": None}, ["k2"], closed=False)}, "K2"),
+        ({"t": variant({"type": {"const": "t"}}, ["type"], closed=False)}, "T"),
+        ({"raw": variant({"type": None}, ["type"], closed=False)}, "Raw"),
+    ],
+    ids=["key", "tag", "open-type"],
+)
+def test_a_key_selector_needs_every_other_variant_closed(others, unclosed):
+    k1 = variant({"k1": None, "z": None}, ["k1", "z"])
+
+    rejects(either(k1=k1, **others), f"variant K1 is picked by its key k1, so every variant must set `additionalProperties: false`, and {unclosed} does not")
+
+
+def test_a_key_selector_needs_its_own_variant_closed():
+    t = variant({"type": {"const": "t"}}, ["type"])
+    k = variant({"k": None}, ["k"], closed=False)
+
+    rejects(either(t=t, k=k), "either.json#/oneOf/1: variant K is picked by its key k, so every variant must set `additionalProperties: false`, and K does not")
 
 
 def test_two_object_types_with_one_name_are_rejected():
@@ -319,9 +373,7 @@ def test_a_description_leaves_the_generated_output_unchanged():
 @pytest.mark.parametrize(
     "keyword, value, at",
     [
-        ("additionalProperties", False, "object"),
         ("additionalProperties", True, "object"),
-        ("not", {"const": "x"}, "value"),
         ("title", "a thing", "value"),
         ("description", "a thing", "value"),
         ("$comment", "a note", "object"),
@@ -338,3 +390,12 @@ def test_ignored_keywords_and_annotations_are_accepted_and_change_nothing(keywor
     (marked if at == "object" else marked["properties"]["name"])[keyword] = value
 
     assert parse({"thing": marked}, ()) == parse({"thing": plain}, ())
+
+
+def test_additional_properties_false_and_an_excluded_const_are_kept_in_the_model_and_change_no_output():
+    marked = thing(name={"type": "string", "not": {"const": "x"}}) | {"additionalProperties": False}
+    plain = thing(name={"type": "string"})
+
+    (obj,) = parse({"thing": marked}, ()).objects
+    assert obj.closed and obj.fields[1].excluded == "x"
+    assert generate({"thing": marked}, ()) == generate({"thing": plain}, ())

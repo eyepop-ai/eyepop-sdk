@@ -46,6 +46,7 @@ class Field:
     name: str
     type: Type
     required: bool
+    excluded: str | None = None
 
 
 @dataclass(frozen=True)
@@ -53,6 +54,7 @@ class Object:
     name: str
     fields: tuple[Field, ...]
     exactly_one: tuple[str, ...] = ()
+    closed: bool = False
 
 
 @dataclass(frozen=True)
@@ -111,11 +113,11 @@ ANNOTATIONS = ("$schema", "$id", "title", "description", "$comment", "examples",
 IGNORED = {
     "additionalProperties": (
         "true or false",
-        "decoders are tolerant readers: they accept and keep fields the schema does not name",
+        "decoders are tolerant readers: they accept and keep fields the schema does not name; `false` is read only to check union dispatch",
     ),
     "not": (
         '{"const": <string>} on a string',
-        "a union tries its tagged variants first, so a value with the excluded tag never reaches this variant through the union",
+        "a union tries its open-`type` variant last, and the model checks that it excludes every tagged sibling; a decoder does not check it",
     ),
 }
 
@@ -289,8 +291,10 @@ def parse(schemas: Mapping[str, dict], roots: Sequence[str]) -> Model:
 
     def add_object(name: str, body: dict) -> str:
         properties, required, exactly_one = flatten(body)
-        fields = tuple(Field(key, type_of(prop, name + pascal(key)), key in required) for key, prop in properties.items())
-        objects[claim(name)] = Object(name, fields, exactly_one)
+        fields = tuple(
+            Field(key, type_of(prop, name + pascal(key)), key in required, prop.get("not", {}).get("const")) for key, prop in properties.items()
+        )
+        objects[claim(name)] = Object(name, fields, exactly_one, body.get("additionalProperties") is False)
         return name
 
     def type_of(prop: dict, hint: str) -> Type:
@@ -352,29 +356,49 @@ def tag_of(obj: Object) -> str | None:
     return None
 
 
+def type_field(obj: Object) -> Field | None:
+    return next((f for f in obj.fields if f.name == "type"), None)
+
+
 def open_type(obj: Object) -> bool:
-    return tag_of(obj) is None and any(f.name == "type" for f in obj.fields)
+    return tag_of(obj) is None and type_field(obj) is not None
+
+
+def accepts(field: Field, tag: str) -> bool:
+    if isinstance(field.type, Enum):
+        return tag in field.type.values
+    return tag != field.excluded
 
 
 def variants_of(name: str, objects: list[Object]) -> tuple[Variant, ...]:
+    names = [o.name for o in objects]
+    for i, obj in enumerate(objects):
+        if obj.name in names[:i]:
+            raise ValueError(f"{name}.json#/oneOf/{i}: variant {obj.name} is listed twice")
     variants = []
     for i, obj in enumerate(objects):
         def fail(message: str) -> NoReturn:
             raise ValueError(f"{name}.json#/oneOf/{i}: {message}")
 
+        others = objects[:i] + objects[i + 1 :]
         tag = tag_of(obj)
         if tag is not None:
             twin = next((o for o in objects[:i] if tag_of(o) == tag), None)
             if twin:
                 fail(f"variants {twin.name} and {obj.name} both have the `type` const {tag!r}")
+            if not type_field(obj).required:
+                fail(f"variant {obj.name} has the `type` const {tag!r} but does not require `type`")
             match: Match = Tag(tag)
         elif open_type(obj):
             twin = next((o for o in objects[:i] if open_type(o)), None)
             if twin:
                 fail(f"variants {twin.name} and {obj.name} both have an open `type`")
+            taken = next((o for o in others if tag_of(o) is not None and accepts(type_field(obj), tag_of(o))), None)
+            if taken:
+                fail(f"variant {obj.name} has an open `type` that accepts the `type` const {tag_of(taken)!r} of variant {taken.name}")
             match = Always()
         else:
-            holders = {f.name: o.name for o in reversed(objects) if o is not obj for f in o.fields}
+            holders = {f.name: o.name for o in reversed(others) for f in o.fields}
             required = sorted(f.name for f in obj.fields if f.required)
             own = [key for key in required if key not in holders]
             if not required:
@@ -382,6 +406,9 @@ def variants_of(name: str, objects: list[Object]) -> tuple[Variant, ...]:
             if not own:
                 taken = ", ".join(f"{key} (a property of {holders[key]})" for key in required)
                 fail(f"variant {obj.name} has no `type` const and no required key that is not a property of another variant: {taken}")
+            unclosed = next((o for o in objects if not o.closed), None)
+            if unclosed:
+                fail(f"variant {obj.name} is picked by its key {own[0]}, so every variant must set `additionalProperties: false`, and {unclosed.name} does not")
             match = Key(own[0])
         variants.append(Variant(obj.name, match))
     return tuple(sorted(variants, key=lambda v: isinstance(v.match, Always)))
