@@ -301,19 +301,10 @@ func mapList[T any](items []T, convert func(T) any) []any {
 GO_TYPES = {"string": "string", "integer": "int64", "number": "float64", "boolean": "bool"}
 PARSERS = {"string": "parseString", "integer": "parseInteger", "number": "parseNumber", "boolean": "parseBoolean"}
 LENGTHS = {"code point": "len([]rune(text))"}
-KEYWORDS = {
-    *("break", "case", "chan", "const", "continue", "default", "defer", "else", "fallthrough", "for", "func", "go", "goto"),
-    *("if", "import", "interface", "map", "package", "range", "return", "select", "struct", "switch", "type", "var"),
-}
-
-
-def field_name(name: str) -> str:
-    exported = pascal(name)
-    return exported + "_" if exported in KEYWORDS else exported
 
 
 NAMING = Naming(
-    field=lambda owner, name: field_name(name),
+    field=lambda owner, name: pascal(name),
     reserved=lambda field, fields: {"Raw", "ToJSON"},
     value=value_name,
     values=frozenset({"FromJSON"}),
@@ -429,7 +420,7 @@ def emit_object(obj: Object, unions: list[str]) -> str:
     decls = []
     for f in obj.typed:
         t = go_type(f.type)
-        decls.append(f"\t{field_name(f.name)} {t if f.required or not is_plain(f.type) else '*' + t}")
+        decls.append(f"\t{pascal(f.name)} {t if f.required or not is_plain(f.type) else '*' + t}")
     reads = []
     inits = []
     for i, f in enumerate(obj.typed):
@@ -442,7 +433,7 @@ def emit_object(obj: Object, unions: list[str]) -> str:
         reads.append(
             f'\tv{i}, err := {call}(obj, "{f.name}", {parser(f.type)})\n\tif err != nil {{\n\t\treturn {obj.name}{{}}, err\n\t}}'
         )
-        inits.append(f"{field_name(f.name)}: v{i}")
+        inits.append(f"{pascal(f.name)}: v{i}")
     checks = "".join(
         f'\tif _, err := required(obj, "{f.name}", {parser(f.type)}); err != nil {{\n\t\treturn {obj.name}{{}}, err\n\t}}\n'
         for f in obj.consts
@@ -452,7 +443,7 @@ def emit_object(obj: Object, unions: list[str]) -> str:
         checks += f"\tif err := exactlyOne(obj, {keys}); err != nil {{\n\t\treturn {obj.name}{{}}, err\n\t}}\n"
     writes = []
     for f in obj.typed:
-        field = f"v.{field_name(f.name)}"
+        field = f"v.{pascal(f.name)}"
         if f.required:
             writes.append(
                 f'\tputNumber(out, "{f.name}", {field})' if is_number(f.type) else f'\tout["{f.name}"] = {dump(f.type, field)}'

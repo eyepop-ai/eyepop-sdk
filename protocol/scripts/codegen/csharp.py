@@ -379,19 +379,6 @@ internal static class Wire
 CS_TYPES = {"string": "string", "integer": "long", "number": "double", "boolean": "bool"}
 PARSERS = {"string": "Wire.String", "integer": "Wire.Integer", "number": "Wire.Number", "boolean": "Wire.Boolean"}
 LENGTHS = {"code point": "text.EnumerateRunes().Count()"}
-KEYWORDS = {
-    *("abstract", "as", "base", "bool", "break", "byte", "case", "catch", "char", "checked", "class", "const", "continue"),
-    *("decimal", "default", "delegate", "do", "double", "else", "enum", "event", "explicit", "extern", "false", "finally"),
-    *("fixed", "float", "for", "foreach", "goto", "if", "implicit", "in", "int", "interface", "internal", "is", "lock"),
-    *("long", "namespace", "new", "null", "object", "operator", "out", "override", "params", "private", "protected"),
-    *("public", "readonly", "ref", "return", "sbyte", "sealed", "short", "sizeof", "stackalloc", "static", "string"),
-    *("struct", "switch", "this", "throw", "true", "try", "typeof", "uint", "ulong", "unchecked", "unsafe", "ushort"),
-    *("using", "virtual", "void", "volatile", "while"),
-}
-
-
-def identifier(name: str) -> str:
-    return "@" + name if name in KEYWORDS else name
 
 
 def constants(wire: Wire) -> str:
@@ -478,12 +465,12 @@ def node(type_: Type, expr: str) -> str:
 
 
 def prop_name(owner: str, wire: str) -> str:
-    name = identifier(pascal(wire))
+    name = pascal(wire)
     return name + "Value" if name == owner else name
 
 
 MEMBERS = {
-    *("Raw", "FromJson", "ToJson", "Wire", "JsonValue", "Clone", "Deconstruct", "EqualityContract", "Equals", "GetHashCode"),
+    *("Raw", "FromJson", "ToJson", "Decode", "Wire", "JsonValue", "Clone", "Deconstruct", "EqualityContract", "Equals", "GetHashCode"),
     *("GetType", "MemberwiseClone", "PrintMembers", "ReferenceEquals", "ToString"),
 }
 
@@ -505,11 +492,11 @@ def reserved(field: Field, fields: Sequence[Field]) -> set[str]:
     return (MEMBERS | {name for f in fields for name in references(f.type)}) - own
 
 
-NAMING = Naming(field=prop_name, reserved=reserved, value=lambda value: identifier(value_name(value)))
+NAMING = Naming(field=prop_name, reserved=reserved, value=value_name)
 
 
 def emit_enum(enum: Enum) -> str:
-    names = [identifier(n) for n in enum.value_names]
+    names = enum.value_names
     reads = "\n".join(f'            "{v}" => {enum.name}.{n},' for v, n in zip(enum.values, names))
     writes = "\n".join(f'            {enum.name}.{n} => "{v}",' for v, n in zip(enum.values, names))
     return f"""

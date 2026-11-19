@@ -196,8 +196,14 @@ def check_fields(owner: str, where: str, fields: Sequence[Field], places: Mappin
             taken[name] = f.name
 
 
+def check_literal(where: str, what: str, text: str) -> None:
+    if not text.isprintable() or any(c in text for c in "\\\"'"):
+        raise ValueError(f"{where}: {what} holds a quote, a backslash or a character that is not printable, which a generated string literal cannot hold")
+
+
 def check_values(enum: Enum, where: str, namings: Mapping[str, Naming]) -> None:
     for v in enum.values:
+        check_literal(where, f"enum value {v!r} of {enum.name}", v)
         if not IDENTIFIER.fullmatch(value_name(v)):
             raise ValueError(f"{where}: enum value {v!r} of {enum.name} does not start with a letter, so it has no identifier")
     for language, naming in namings.items():
@@ -418,6 +424,9 @@ def parse(schemas: Mapping[str, dict], roots: Sequence[str], namings: Mapping[st
             Field(key, type_of(prop, name + pascal(key), places[key]), key in required, prop.get("not", {}).get("const"))
             for key, prop in properties.items()
         )
+        for f in fields:
+            if isinstance(f.type, Const):
+                check_literal(places[f.name], f"const property key {f.name!r} of {name}", f.name)
         check_fields(name, where, [f for f in fields if not isinstance(f.type, Const)], places, namings)
         objects[claim(name)] = Object(name, fields, exactly_one, body.get("additionalProperties") is False)
         return name
@@ -427,6 +436,7 @@ def parse(schemas: Mapping[str, dict], roots: Sequence[str], namings: Mapping[st
             target = schemas[ref_name(prop)]
             return type_of(target, hint, f"{ref_name(prop)}.json#") if kind(target) == "scalar" else Ref(pascal(ref_name(prop)))
         if "const" in prop:
+            check_literal(where, f"const value {prop['const']!r}", prop["const"])
             return Const(prop["const"])
         if "enum" in prop:
             enum = Enum(tuple(prop["enum"]), claim(hint))
@@ -447,7 +457,13 @@ def parse(schemas: Mapping[str, dict], roots: Sequence[str], namings: Mapping[st
         names = []
         for i, item in enumerate(body["oneOf"]):
             origin = f"{name}.json#/oneOf/{i}"
-            names.append(pascal(ref_name(item)) if "$ref" in item else add_object(pascal(name) + variant_suffix(item), item, origin))
+            if "$ref" in item:
+                names.append(pascal(ref_name(item)))
+                continue
+            type_name = pascal(name) + variant_suffix(item)
+            if not IDENTIFIER.fullmatch(type_name):
+                raise ValueError(f"{origin}: the inline variant's type name {type_name} is not an identifier ([A-Za-z][A-Za-z0-9_]*)")
+            names.append(add_object(type_name, item, origin))
         return names
 
     for name, body in schemas.items():
