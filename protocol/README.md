@@ -17,6 +17,10 @@ JSON Schema (draft 2020-12) for the messages on the pipeline socket: `GET /api/v
 devbox run -- task protocol:check
 ```
 
+## Generated types
+
+`task protocol:generate` writes the types into each Language SDK from these schemas, and `task protocol:generate:check` fails when a generated file is stale. Run the first after any schema change and commit the result. Never edit a generated file. [ADR 0003](../docs/adr/0003-one-in-repo-generator-writes-the-protocol-types.md) has the rules.
+
 ## Binary frames
 
 JSON Schema cannot describe these. Every binary message starts with one kind byte.

@@ -6,13 +6,24 @@ tasks:
     cmds:
       - uv run scripts/validate.py
 
+  generate:
+    desc: Regenerate the types in every Language SDK from the schemas
+    cmds:
+      - uv run scripts/generate.py
+
+  generate:check:
+    desc: Fail when a generated file differs from what the schemas produce
+    cmds:
+      - uv run scripts/generate.py --check
+
   test:
-    desc: Test the validator on fixture schemas
+    desc: Test the validator and the generator
     cmds:
       - uv run --with pytest --with jsonschema --with referencing pytest -q
 
   check:
-    desc: The CI gate. test, validate
+    desc: The CI gate. test, validate, generate:check
     cmds:
       - task: test
       - task: validate
+      - task: generate:check

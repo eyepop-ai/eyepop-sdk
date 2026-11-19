@@ -15,6 +15,11 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Content Include="..\..\..\protocol\examples\decoding.json" Link="protocol-decoding.json" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\..\..\protocol\examples\valid\*.json" Link="protocol-examples\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\..\src\EyePop\EyePop.csproj" />
   </ItemGroup>
 

@@ -55,3 +55,13 @@ def make_root(tmp_path):
 def write(path: Path, body: dict) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(body))
+
+
+def load_python(source: str):
+    import sys
+    import types
+
+    module = types.ModuleType("generated_protocol")
+    sys.modules[module.__name__] = module
+    exec(compile(source, "generated_protocol.py", "exec"), module.__dict__)
+    return module

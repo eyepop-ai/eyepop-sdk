@@ -4,6 +4,7 @@ on:
   pull_request:
     paths: &paths
       - 'cs/**'
+      - 'protocol/**'
       - 'scripts/**'
       - '.github/workflows/ci-cs.yaml'
       - '.github/actions/setup-cs/**'

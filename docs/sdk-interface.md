@@ -84,7 +84,7 @@ Names are the wire names (above). A language changes casing only. Types that car
 
 ## Protocol schema and conformance
 
-- `protocol/` holds JSON Schema 2020-12 for every command, message, `Source`, `Pop`, `Ability`, `Camera` and `Prediction`, with a `const` discriminator on `type`. Types are generated from it; the generation approach is decided by a spike (ADR 0002).
+- `protocol/` holds JSON Schema 2020-12 for every command, message, `Source`, `Pop`, `Ability`, `Camera` and `Prediction`, with a `const` discriminator on `type`. Types are generated from it ([ADR 0003](adr/0003-one-in-repo-generator-writes-the-protocol-types.md)).
 - `conformance/` holds scripted transcripts of a fake pipeline API and a fake auth service. Every SDK's integration suite replays them, and CI validates every transcript message against `protocol/`.
 - Unit tests of the pure core use a fake transport. Integration tests run the shell against in-process fakes. The two suites run apart.
 

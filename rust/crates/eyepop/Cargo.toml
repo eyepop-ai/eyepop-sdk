@@ -5,3 +5,6 @@ edition = "2021"
 license = "MIT"
 description = "EyePop SDK for Rust"
 repository = "https://github.com/eyepop-ai/eyepop-sdk"
+
+[dependencies]
+serde_json = "1"
