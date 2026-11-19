@@ -4,6 +4,7 @@ on:
   pull_request:
     paths: &paths
       - 'go/**'
+      - 'protocol/**'
       - 'scripts/**'
       - '.github/workflows/ci-go.yaml'
       - '.github/actions/setup-go/**'

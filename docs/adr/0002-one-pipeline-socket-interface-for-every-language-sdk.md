@@ -27,7 +27,7 @@ Both old SDKs drifted apart (different result readers, error names, environment 
 
 - **Port the old interface per language.** It is built around sessions and an endpoint-wide mutable pop, and it differs between Python and Node.
 - **A class-based `EyePopClient` as in the pipeline API's spec 012 contract.** It predates the command socket (spec 019) and reads no environment variable; this decision replaces it for the SDKs. The contract lives in `eyepop-instance`, so that repository should note the change.
-- **Generate everything with an off-the-shelf tool.** Generators flatten discriminated unions: Modelina merges the branches, and typify emits untagged unions unless every branch pins a `const` tag. We generate the structs with a tool and expect to generate the two unions (`Message`, `Command`) with a small script. A spike on C# plus one more language decides this before the generator is committed to.
+- **Generate everything with an off-the-shelf tool.** Generators flatten discriminated unions: Modelina merges the branches, and typify emits untagged unions unless every branch pins a `const` tag. We generate the structs with a tool and expect to generate the two unions (`Message`, `Command`) with a small script. The spike rejected the tools: [ADR 0003](0003-one-in-repo-generator-writes-the-protocol-types.md) generates everything with one in-repo script.
 - **Unbounded per-job buffers.** They hide a slow consumer from the server and grow without limit, which is what the old Node SDK did.
 
 ## Consequences

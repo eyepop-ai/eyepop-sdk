@@ -4,6 +4,7 @@ on:
   pull_request:
     paths: &paths
       - 'rust/**'
+      - 'protocol/**'
       - 'scripts/**'
       - '.github/workflows/ci-rust.yaml'
       - '.github/actions/setup-rust/**'
