@@ -1,6 +1,6 @@
 import re
 
-from .model import Always, Array, Const, Constrained, Enum, Field, Free, Key, Model, Object, Ref, Tag, Type, Union, Variant
+from .model import Always, Array, Const, Constrained, Enum, Field, Free, Key, Model, Object, Ref, Tag, Type, Union, Variant, Wire
 
 HEADER = """// Generated from protocol/schema by protocol/scripts/generate.py. Do not edit.
 #![allow(dead_code, non_snake_case, clippy::all)]
@@ -29,19 +29,24 @@ fn parse_string(value: &Value) -> std::result::Result<String, DecodeError> {
 }
 
 fn parse_integer(value: &Value) -> std::result::Result<i64, DecodeError> {
-    if let Some(number) = value.as_i64() {
-        return Ok(number);
-    }
-    match value.as_f64() {
-        Some(number) if number.fract() == 0.0 && number.abs() < 9.2e18 => Ok(number as i64),
-        _ => fail(format!("expected an integer, got {value}")),
+    let whole = match value {
+        Value::Number(number) => number
+            .as_i64()
+            .map(i128::from)
+            .or_else(|| number.as_u64().map(i128::from))
+            .or_else(|| number.as_f64().filter(|f| f.is_finite() && f.fract() == 0.0).map(|f| f as i128)),
+        _ => None,
+    };
+    match whole {
+        Some(whole) if (INTEGER_MINIMUM..=INTEGER_MAXIMUM).contains(&whole) => Ok(whole as i64),
+        _ => fail(format!("expected an integer from {INTEGER_MINIMUM} to {INTEGER_MAXIMUM}, got {value}")),
     }
 }
 
 fn parse_number(value: &Value) -> std::result::Result<f64, DecodeError> {
-    match value {
-        Value::Number(number) => Ok(number.as_f64().unwrap_or(f64::NAN)),
-        _ => fail(format!("expected a number, got {value}")),
+    match value.as_f64() {
+        Some(number) if number.is_finite() => Ok(number),
+        _ => fail(format!("expected a finite number, got {value}")),
     }
 }
 
@@ -78,6 +83,14 @@ fn exactly_one(obj: &Map<String, Value>, keys: &[&str]) -> std::result::Result<(
         Ok(())
     } else {
         fail(format!("expected exactly one of {keys:?}, got {present}"))
+    }
+}
+
+fn within(value: &Value, levels: usize) -> bool {
+    match value {
+        Value::Object(map) => levels > 0 && map.values().all(|item| within(item, levels - 1)),
+        Value::Array(items) => levels > 0 && items.iter().all(|item| within(item, levels - 1)),
+        _ => true,
     }
 }
 
@@ -138,6 +151,7 @@ fn number_to_json(number: f64) -> Value {
 KEYWORDS = {"type", "match", "ref", "in", "mod", "use", "fn", "as", "loop", "move", "impl", "trait", "struct", "enum"}
 RUST_TYPES = {"string": "String", "integer": "i64", "number": "f64", "boolean": "bool"}
 PARSERS = {"string": "parse_string", "integer": "parse_integer", "number": "parse_number", "boolean": "parse_boolean"}
+LENGTHS = {"code point": "text.chars().count() as f64"}
 
 
 def emit(model: Model) -> str:
@@ -145,7 +159,14 @@ def emit(model: Model) -> str:
     parts = [emit_enum(e) for e in enums]
     parts += [emit_object(o) for o in model.objects]
     parts += [emit_union(u) for u in model.unions]
-    return HEADER + "\n" + "\n".join(parts)
+    return HEADER + "\n" + constants(model.wire) + "\n".join(parts)
+
+
+def constants(wire: Wire) -> str:
+    return (
+        f"const INTEGER_MINIMUM: i128 = {wire.integer_minimum};\nconst INTEGER_MAXIMUM: i128 = {wire.integer_maximum};\n"
+        f"const MAX_DEPTH: usize = {wire.max_depth};\n\nfn length(text: &String) -> f64 {{\n    {LENGTHS[wire.length_unit]}\n}}\n"
+    )
 
 
 def collect_enums(model: Model) -> list[Enum]:
@@ -194,7 +215,7 @@ def bound(value: float | None) -> str:
 def parser(type_: Type) -> str:
     match type_:
         case Constrained(kind, minimum, exclusive_minimum, exclusive_maximum, min_length):
-            measure = "|text: &String| text.chars().count() as f64" if kind == "string" else "|n| *n as f64"
+            measure = "length" if kind == "string" else "|n| *n as f64"
             low = float(min_length) if min_length is not None else minimum
             return f"limit({PARSERS[kind]}, {measure}, {bound(low)}, {bound(exclusive_minimum)}, {bound(exclusive_maximum)})"
         case Const(value):
@@ -346,6 +367,9 @@ def emit_union(union: Union) -> str:
         dumps += f"\n            {name}::Unknown(raw) => Value::Object(raw.clone()),"
         decode = f"""
     pub fn decode(value: &Value) -> {name} {{
+        if !within(value, MAX_DEPTH) {{
+            return {name}::Unknown(Map::new());
+        }}
         {name}::from_json(value)
             .unwrap_or_else(|_| {name}::Unknown(value.as_object().cloned().unwrap_or_default()))
     }}

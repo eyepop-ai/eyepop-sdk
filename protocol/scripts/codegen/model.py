@@ -89,9 +89,44 @@ class Union:
 
 
 @dataclass(frozen=True)
+class Wire:
+    integer_minimum: int
+    integer_maximum: int
+    length_unit: str
+    max_depth: int
+
+    @property
+    def integer_digits(self) -> int:
+        return max(len(str(abs(self.integer_minimum))), len(str(abs(self.integer_maximum))))
+
+
+WIRE = Wire(integer_minimum=-(2**63), integer_maximum=2**63 - 1, length_unit="code point", max_depth=64)
+
+WIRE_RULES = {
+    "integer": (
+        f"An integer is a JSON number whose exact decimal value is whole and lies from {WIRE.integer_minimum} to {WIRE.integer_maximum}"
+        " (int64), however the token is written (1.0, 1e3 and 10e-1 are integers; 1.5, 1.00000000000000001 and 1e-1000000 are not)."
+        " A decoder that reads the token as text normalises it to a sign, significant digits without leading or trailing zeros"
+        " and a base-ten exponent; it rejects a negative exponent, more digits plus exponent than the bounds have digits,"
+        " or a value outside the bounds. A decoder that reads a binary double checks that double's exact value the same way."
+    ),
+    "number": "A number is a JSON number whose value as a double is finite; one that overflows a double (1e400) is rejected.",
+    "length": f"`minLength` counts Unicode {WIRE.length_unit}s: a character outside the Basic Multilingual Plane counts once.",
+    "exactly one": "Exactly one of the listed keys is present in the object; a key whose value is null counts as present.",
+    "depth": (
+        f"A value nests at most {WIRE.max_depth} levels: an object or array is one level deeper than the value holding it,"
+        " and the message object is level 1. A union decoder handed a deeper value returns Unknown with no fields and does"
+        " not read below that level."
+    ),
+    "duplicate keys": "When an object repeats a key, the last value wins.",
+}
+
+
+@dataclass(frozen=True)
 class Model:
     objects: tuple[Object, ...]
     unions: tuple[Union, ...]
+    wire: Wire = WIRE
 
 
 def pascal(name: str) -> str:

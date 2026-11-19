@@ -19,6 +19,17 @@ def exact(text: str) -> Any:
     return json.loads(text, parse_float=Decimal)
 
 
+def dumps(value: Any) -> str:
+    if isinstance(value, dict):
+        obj = cast(dict[str, Any], value)
+        return "{" + ",".join(f"{json.dumps(key)}:{dumps(item)}" for key, item in obj.items()) + "}"
+    if isinstance(value, list):
+        return "[" + ",".join(dumps(item) for item in cast(list[Any], value)) + "]"
+    if isinstance(value, Decimal):
+        return str(value)
+    return json.dumps(value, allow_nan=False)
+
+
 def same(a: Any, b: Any) -> bool:
     if isinstance(a, dict) and isinstance(b, dict):
         x, y = cast(dict[str, Any], a), cast(dict[str, Any], b)
@@ -34,8 +45,8 @@ def same(a: Any, b: Any) -> bool:
 def problem(case: dict[str, Any]) -> str | None:
     text = (EXAMPLES / case["file"]).read_text() if "file" in case else case["text"]
     decode = decode_command if case["union"] == "command" else decode_message
-    value = decode(json.loads(text))
-    encoded = json.dumps(value.to_json())
+    value = decode(exact(text))
+    encoded = dumps(value.to_json())
     unknown = isinstance(value, UnknownCommand | UnknownMessage)
     variant = "Unknown" if unknown else value.to_json()["type"]
     if variant != case["variant"]:

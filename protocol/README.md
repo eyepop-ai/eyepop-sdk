@@ -8,13 +8,20 @@ JSON Schema (draft 2020-12) for the messages on the pipeline socket: `GET /api/v
 - Commands and the `Pop`, `SourceDefaults`, `Camera` and `roi` values are closed. Server messages are open, so a field the server adds does not break a client.
 - An `inference` component is typed (one of `ability` or `abilityUuid`, plus `params`). Any other component kind passes through as raw JSON.
 - The `error` code is an open string. Clients accept codes they do not know.
-- An `integer` is an int64 on the wire. A decoder rejects a value outside that range even where the schema alone accepts it, because the schemas say only `integer` and a `maximum` is not modelled.
+- Wire values follow rules the schemas cannot state, defined once in `scripts/codegen/model.py` (`WIRE`, `WIRE_RULES`) and applied by every generated decoder, even where the schema alone would accept the value:
+  - An `integer` is an int64: its exact decimal value is whole and lies from -2^63 to 2^63-1, however it is written (`1.0` and `1e3` are integers; `1.00000000000000001` and `1e19` are not). The schemas say only `integer`, and a `maximum` is not modelled.
+  - A `number` is finite as a double: `1e400` is rejected.
+  - `minLength` counts Unicode code points.
+  - A value nests at most 64 levels (the message object is level 1). A union decoder returns `Unknown` with no fields for anything deeper.
+  - When an object repeats a key, the last value wins.
 
 ## Examples
 
 `examples/valid` must pass and `examples/invalid` must fail. A file name starts with `command-` or `message-`, which picks the union it is checked against. `examples/invalid/expected.json` names where and by which keyword each invalid example fails.
 
-`examples/decoding.json` is the conformance set every Language SDK replays through its generated decoder. It has one case per example file (`file`) plus edge cases written as JSON text (`name` and `text`). Each case names its `union`, the `variant` it decodes to (a `type` tag, or `Unknown`), whether it encodes back `unchanged` (numbers compared by exact value), and optionally a number token the output `keeps`. A case whose decoder outcome differs from the schema states the `reason`: an invalid example decoders accept, or a schema-valid text case they reject, such as an integer beyond int64. `diverges` maps a language (`python`, `rust`, `go`, `csharp`) to why that SDK gets the case wrong today; that SDK's replay fails if the case starts passing, so whoever fixes it removes the marker.
+`examples/decoding.json` is the conformance set every Language SDK replays through its generated decoder. It has one case per example file (`file`) plus edge cases written as JSON text (`name` and `text`). Each case names its `union`, the `variant` it decodes to (a `type` tag, or `Unknown`), whether it encodes back `unchanged` (numbers compared by exact value), and optionally a number token the output `keeps`. A case whose decoder outcome differs from the schema states the `reason`: an invalid example decoders accept, or a schema-valid text case they reject, such as an integer beyond int64. `diverges` maps a language (`python`, `rust`, `go`, `csharp`) to why that SDK does not give the stated outcome: a known divergence still to fix, or a documented limit of its host JSON parser (the reason starts with "Documented limit"). That SDK's replay fails if the case starts passing, so whoever fixes it removes the marker.
+
+The edge cases cover integer forms and the int64 bounds, a non-finite number, a duplicate key, a character outside the Basic Multilingual Plane, and values nested 64, 65, 601 and 5001 levels deep. The Python replay reads text with `json.loads(text, parse_float=Decimal)`, which its decoders handle exactly. The Rust cases serde_json rounds or refuses before the decoder sees them are documented limits; [ADR 0003](../docs/adr/0003-one-in-repo-generator-writes-the-protocol-types.md) lists them.
 
 ```sh
 devbox run -- task protocol:check

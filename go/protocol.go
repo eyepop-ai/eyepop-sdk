@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
+	"math/big"
 	"strconv"
 	"strings"
 )
@@ -27,10 +28,11 @@ func parseString(value any) (string, error) {
 }
 
 func wholeInt64(number float64) (int64, bool) {
-	if number != math.Trunc(number) || math.Abs(number) >= 9.2e18 {
+	if math.IsInf(number, 0) || number != math.Trunc(number) {
 		return 0, false
 	}
-	return int64(number), true
+	whole, accuracy := big.NewFloat(number).Int64()
+	return whole, accuracy == big.Exact
 }
 
 func integerToken(token string) (int64, bool) {
@@ -55,7 +57,7 @@ func integerToken(token string) (int64, bool) {
 	exponent -= int64(len(fraction))
 	trimmed := strings.TrimRight(digits, "0")
 	exponent += int64(len(digits) - len(trimmed))
-	if exponent < 0 || int64(len(trimmed))+exponent > 19 {
+	if exponent < 0 || int64(len(trimmed))+exponent > integerDigits {
 		return 0, false
 	}
 	parsed, err := strconv.ParseInt(sign+trimmed+strings.Repeat("0", int(exponent)), 10, 64)
@@ -63,30 +65,29 @@ func integerToken(token string) (int64, bool) {
 }
 
 func parseInteger(value any) (int64, error) {
+	whole, ok := int64(0), false
 	switch number := value.(type) {
 	case int64:
-		return number, nil
+		whole, ok = number, true
 	case int:
-		return int64(number), nil
+		whole, ok = int64(number), true
 	case float64:
-		if whole, ok := wholeInt64(number); ok {
-			return whole, nil
-		}
+		whole, ok = wholeInt64(number)
 	case json.Number:
-		if exact, err := number.Int64(); err == nil {
-			return exact, nil
-		}
-		if exact, ok := integerToken(string(number)); ok {
-			return exact, nil
-		}
+		whole, ok = integerToken(string(number))
 	}
-	return 0, fmt.Errorf("expected an integer, got %v", value)
+	if !ok || whole < integerMinimum || whole > integerMaximum {
+		return 0, fmt.Errorf("expected an integer from %d to %d, got %v", int64(integerMinimum), int64(integerMaximum), value)
+	}
+	return whole, nil
 }
 
 func parseNumber(value any) (float64, error) {
 	switch number := value.(type) {
 	case float64:
-		return number, nil
+		if !math.IsInf(number, 0) && !math.IsNaN(number) {
+			return number, nil
+		}
 	case int64:
 		return float64(number), nil
 	case int:
@@ -149,7 +150,7 @@ func limitString(parse func(any) (string, error), minLength int) func(any) (stri
 		if err != nil {
 			return parsed, err
 		}
-		if len([]rune(parsed)) < minLength {
+		if length(parsed) < minLength {
 			return "", fmt.Errorf("shorter than %d", minLength)
 		}
 		return parsed, nil
@@ -167,6 +168,29 @@ func exactlyOne(obj map[string]any, keys ...string) error {
 		return fmt.Errorf("expected exactly one of %v, got %d", keys, present)
 	}
 	return nil
+}
+
+func within(value any, levels int) bool {
+	var items []any
+	switch typed := value.(type) {
+	case map[string]any:
+		for _, item := range typed {
+			items = append(items, item)
+		}
+	case []any:
+		items = typed
+	default:
+		return true
+	}
+	if levels == 0 {
+		return false
+	}
+	for _, item := range items {
+		if !within(item, levels-1) {
+			return false
+		}
+	}
+	return true
 }
 
 func putNumber(out map[string]any, key string, number float64) {
@@ -269,6 +293,17 @@ func mapList[T any](items []T, convert func(T) any) []any {
 		out = append(out, convert(item))
 	}
 	return out
+}
+
+const (
+	integerMinimum = -9223372036854775808
+	integerMaximum = 9223372036854775807
+	integerDigits  = 19
+	maxDepth       = 64
+)
+
+func length(text string) int {
+	return len([]rune(text))
 }
 
 type EndReason string
@@ -2008,6 +2043,9 @@ func (u UnknownCommand) ToJSON() any {
 }
 
 func DecodeCommand(value any) Command {
+	if !within(value, maxDepth) {
+		return UnknownCommand{Raw: map[string]any{}}
+	}
 	parsed, err := CommandFromJSON(value)
 	if err != nil {
 		raw, _ := value.(map[string]any)
@@ -2144,6 +2182,9 @@ func (u UnknownMessage) ToJSON() any {
 }
 
 func DecodeMessage(value any) Message {
+	if !within(value, maxDepth) {
+		return UnknownMessage{Raw: map[string]any{}}
+	}
 	parsed, err := MessageFromJSON(value)
 	if err != nil {
 		raw, _ := value.(map[string]any)

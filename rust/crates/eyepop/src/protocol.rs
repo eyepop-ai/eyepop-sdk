@@ -25,19 +25,24 @@ fn parse_string(value: &Value) -> std::result::Result<String, DecodeError> {
 }
 
 fn parse_integer(value: &Value) -> std::result::Result<i64, DecodeError> {
-    if let Some(number) = value.as_i64() {
-        return Ok(number);
-    }
-    match value.as_f64() {
-        Some(number) if number.fract() == 0.0 && number.abs() < 9.2e18 => Ok(number as i64),
-        _ => fail(format!("expected an integer, got {value}")),
+    let whole = match value {
+        Value::Number(number) => number
+            .as_i64()
+            .map(i128::from)
+            .or_else(|| number.as_u64().map(i128::from))
+            .or_else(|| number.as_f64().filter(|f| f.is_finite() && f.fract() == 0.0).map(|f| f as i128)),
+        _ => None,
+    };
+    match whole {
+        Some(whole) if (INTEGER_MINIMUM..=INTEGER_MAXIMUM).contains(&whole) => Ok(whole as i64),
+        _ => fail(format!("expected an integer from {INTEGER_MINIMUM} to {INTEGER_MAXIMUM}, got {value}")),
     }
 }
 
 fn parse_number(value: &Value) -> std::result::Result<f64, DecodeError> {
-    match value {
-        Value::Number(number) => Ok(number.as_f64().unwrap_or(f64::NAN)),
-        _ => fail(format!("expected a number, got {value}")),
+    match value.as_f64() {
+        Some(number) if number.is_finite() => Ok(number),
+        _ => fail(format!("expected a finite number, got {value}")),
     }
 }
 
@@ -74,6 +79,14 @@ fn exactly_one(obj: &Map<String, Value>, keys: &[&str]) -> std::result::Result<(
         Ok(())
     } else {
         fail(format!("expected exactly one of {keys:?}, got {present}"))
+    }
+}
+
+fn within(value: &Value, levels: usize) -> bool {
+    match value {
+        Value::Object(map) => levels > 0 && map.values().all(|item| within(item, levels - 1)),
+        Value::Array(items) => levels > 0 && items.iter().all(|item| within(item, levels - 1)),
+        _ => true,
     }
 }
 
@@ -130,6 +143,13 @@ fn number_to_json(number: f64) -> Value {
     }
 }
 
+const INTEGER_MINIMUM: i128 = -9223372036854775808;
+const INTEGER_MAXIMUM: i128 = 9223372036854775807;
+const MAX_DEPTH: usize = 64;
+
+fn length(text: &String) -> f64 {
+    text.chars().count() as f64
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EndReason {
@@ -524,7 +544,7 @@ impl Credit {
         let obj = parse_object(value)?;
         required(obj, "type", parse_const("credit"))?;
         Ok(Credit {
-            id: required(obj, "id", limit(parse_string, |text: &String| text.chars().count() as f64, Some(1.0), None, None))?,
+            id: required(obj, "id", limit(parse_string, length, Some(1.0), None, None))?,
             bytes: required(obj, "bytes", limit(parse_integer, |n| *n as f64, Some(0.0), None, None))?,
             member: optional(obj, "member", limit(parse_integer, |n| *n as f64, Some(0.0), None, None))?,
             raw: obj.clone(),
@@ -582,7 +602,7 @@ impl Dropped {
         let obj = parse_object(value)?;
         required(obj, "type", parse_const("dropped"))?;
         Ok(Dropped {
-            id: required(obj, "id", limit(parse_string, |text: &String| text.chars().count() as f64, Some(1.0), None, None))?,
+            id: required(obj, "id", limit(parse_string, length, Some(1.0), None, None))?,
             count: required(obj, "count", limit(parse_integer, |n| *n as f64, Some(0.0), None, None))?,
             raw: obj.clone(),
         })
@@ -612,7 +632,7 @@ impl End {
         let obj = parse_object(value)?;
         required(obj, "type", parse_const("end"))?;
         Ok(End {
-            id: required(obj, "id", limit(parse_string, |text: &String| text.chars().count() as f64, Some(1.0), None, None))?,
+            id: required(obj, "id", limit(parse_string, length, Some(1.0), None, None))?,
             reason: required(obj, "reason", EndReason::from_json)?,
             message: optional(obj, "message", parse_string)?,
             milliComputeUnits: optional(obj, "milliComputeUnits", limit(parse_integer, |n| *n as f64, Some(0.0), None, None))?,
@@ -653,8 +673,8 @@ impl Error {
         let obj = parse_object(value)?;
         required(obj, "type", parse_const("error"))?;
         Ok(Error {
-            id: optional(obj, "id", limit(parse_string, |text: &String| text.chars().count() as f64, Some(1.0), None, None))?,
-            error: required(obj, "error", limit(parse_string, |text: &String| text.chars().count() as f64, Some(1.0), None, None))?,
+            id: optional(obj, "id", limit(parse_string, length, Some(1.0), None, None))?,
+            error: required(obj, "error", limit(parse_string, length, Some(1.0), None, None))?,
             message: required(obj, "message", parse_string)?,
             raw: obj.clone(),
         })
@@ -688,7 +708,7 @@ impl GetGraph {
         let obj = parse_object(value)?;
         required(obj, "type", parse_const("getGraph"))?;
         Ok(GetGraph {
-            id: required(obj, "id", limit(parse_string, |text: &String| text.chars().count() as f64, Some(1.0), None, None))?,
+            id: required(obj, "id", limit(parse_string, length, Some(1.0), None, None))?,
             format: required(obj, "format", GetGraphFormat::from_json)?,
             verbose: optional(obj, "verbose", parse_boolean)?,
             raw: obj.clone(),
@@ -772,7 +792,7 @@ impl Ping {
         let obj = parse_object(value)?;
         required(obj, "type", parse_const("ping"))?;
         Ok(Ping {
-            id: required(obj, "id", limit(parse_string, |text: &String| text.chars().count() as f64, Some(1.0), None, None))?,
+            id: required(obj, "id", limit(parse_string, length, Some(1.0), None, None))?,
             raw: obj.clone(),
         })
     }
@@ -797,7 +817,7 @@ impl Pong {
         let obj = parse_object(value)?;
         required(obj, "type", parse_const("pong"))?;
         Ok(Pong {
-            id: required(obj, "id", limit(parse_string, |text: &String| text.chars().count() as f64, Some(1.0), None, None))?,
+            id: required(obj, "id", limit(parse_string, length, Some(1.0), None, None))?,
             raw: obj.clone(),
         })
     }
@@ -909,7 +929,7 @@ impl Prediction {
         let obj = parse_object(value)?;
         required(obj, "type", parse_const("prediction"))?;
         Ok(Prediction {
-            id: required(obj, "id", limit(parse_string, |text: &String| text.chars().count() as f64, Some(1.0), None, None))?,
+            id: required(obj, "id", limit(parse_string, length, Some(1.0), None, None))?,
             prediction: required(obj, "prediction", parse_free)?,
             raw: obj.clone(),
         })
@@ -936,7 +956,7 @@ impl Quit {
         let obj = parse_object(value)?;
         required(obj, "type", parse_const("quit"))?;
         Ok(Quit {
-            id: required(obj, "id", limit(parse_string, |text: &String| text.chars().count() as f64, Some(1.0), None, None))?,
+            id: required(obj, "id", limit(parse_string, length, Some(1.0), None, None))?,
             raw: obj.clone(),
         })
     }
@@ -984,7 +1004,7 @@ impl Result {
         let obj = parse_object(value)?;
         required(obj, "type", parse_const("result"))?;
         Ok(Result {
-            id: required(obj, "id", limit(parse_string, |text: &String| text.chars().count() as f64, Some(1.0), None, None))?,
+            id: required(obj, "id", limit(parse_string, length, Some(1.0), None, None))?,
             raw: obj.clone(),
         })
     }
@@ -1011,7 +1031,7 @@ impl Send {
         let obj = parse_object(value)?;
         required(obj, "type", parse_const("send"))?;
         Ok(Send {
-            id: required(obj, "id", limit(parse_string, |text: &String| text.chars().count() as f64, Some(1.0), None, None))?,
+            id: required(obj, "id", limit(parse_string, length, Some(1.0), None, None))?,
             credit: required(obj, "credit", limit(parse_integer, |n| *n as f64, Some(0.0), None, None))?,
             member: optional(obj, "member", limit(parse_integer, |n| *n as f64, Some(0.0), None, None))?,
             raw: obj.clone(),
@@ -1045,7 +1065,7 @@ impl SetPop {
         let obj = parse_object(value)?;
         required(obj, "type", parse_const("setPop"))?;
         Ok(SetPop {
-            id: required(obj, "id", limit(parse_string, |text: &String| text.chars().count() as f64, Some(1.0), None, None))?,
+            id: required(obj, "id", limit(parse_string, length, Some(1.0), None, None))?,
             pop: required(obj, "pop", Pop::from_json)?,
             raw: obj.clone(),
         })
@@ -1106,7 +1126,7 @@ impl SetSource {
         required(obj, "type", parse_const("setSource"))?;
         exactly_one(obj, &["url", "assetUuid", "upload", "group"])?;
         Ok(SetSource {
-            id: required(obj, "id", limit(parse_string, |text: &String| text.chars().count() as f64, Some(1.0), None, None))?,
+            id: required(obj, "id", limit(parse_string, length, Some(1.0), None, None))?,
             url: optional(obj, "url", parse_string)?,
             assetUuid: optional(obj, "assetUuid", parse_string)?,
             upload: optional(obj, "upload", SetSourceUpload::from_json)?,
@@ -1274,7 +1294,7 @@ impl Start {
         let obj = parse_object(value)?;
         required(obj, "type", parse_const("start"))?;
         Ok(Start {
-            id: required(obj, "id", limit(parse_string, |text: &String| text.chars().count() as f64, Some(1.0), None, None))?,
+            id: required(obj, "id", limit(parse_string, length, Some(1.0), None, None))?,
             raw: obj.clone(),
         })
     }
@@ -1299,7 +1319,7 @@ impl StopSource {
         let obj = parse_object(value)?;
         required(obj, "type", parse_const("stopSource"))?;
         Ok(StopSource {
-            id: required(obj, "id", limit(parse_string, |text: &String| text.chars().count() as f64, Some(1.0), None, None))?,
+            id: required(obj, "id", limit(parse_string, length, Some(1.0), None, None))?,
             raw: obj.clone(),
         })
     }
@@ -1325,7 +1345,7 @@ impl Uploaded {
         let obj = parse_object(value)?;
         required(obj, "type", parse_const("uploaded"))?;
         Ok(Uploaded {
-            id: required(obj, "id", limit(parse_string, |text: &String| text.chars().count() as f64, Some(1.0), None, None))?,
+            id: required(obj, "id", limit(parse_string, length, Some(1.0), None, None))?,
             member: optional(obj, "member", limit(parse_integer, |n| *n as f64, Some(0.0), None, None))?,
             raw: obj.clone(),
         })
@@ -1357,7 +1377,7 @@ impl Usage {
         let obj = parse_object(value)?;
         required(obj, "type", parse_const("usage"))?;
         Ok(Usage {
-            id: required(obj, "id", limit(parse_string, |text: &String| text.chars().count() as f64, Some(1.0), None, None))?,
+            id: required(obj, "id", limit(parse_string, length, Some(1.0), None, None))?,
             milliComputeUnits: required(obj, "milliComputeUnits", limit(parse_integer, |n| *n as f64, Some(0.0), None, None))?,
             raw: obj.clone(),
         })
@@ -1574,6 +1594,9 @@ impl Command {
     }
 
     pub fn decode(value: &Value) -> Command {
+        if !within(value, MAX_DEPTH) {
+            return Command::Unknown(Map::new());
+        }
         Command::from_json(value)
             .unwrap_or_else(|_| Command::Unknown(value.as_object().cloned().unwrap_or_default()))
     }
@@ -1676,6 +1699,9 @@ impl Message {
     }
 
     pub fn decode(value: &Value) -> Message {
+        if !within(value, MAX_DEPTH) {
+            return Message::Unknown(Map::new());
+        }
         Message::from_json(value)
             .unwrap_or_else(|_| Message::Unknown(value.as_object().cloned().unwrap_or_default()))
     }

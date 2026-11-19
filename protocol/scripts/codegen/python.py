@@ -1,10 +1,12 @@
-from .model import Always, Array, Const, Constrained, Enum, Field, Free, Key, Model, Object, Ref, Tag, Type, Union, Variant
+from .model import Always, Array, Const, Constrained, Enum, Field, Free, Key, Model, Object, Ref, Tag, Type, Union, Variant, Wire
 
 HEADER = '''# Generated from protocol/schema by protocol/scripts/generate.py. Do not edit.
 from __future__ import annotations
 
 import copy
-from collections.abc import Callable, Mapping, Sequence
+import math
+from collections.abc import Callable, Iterable, Mapping, Sequence
+from decimal import Decimal
 from dataclasses import dataclass, field
 from typing import Any, Literal, cast
 
@@ -34,17 +36,23 @@ def _string(value: Any) -> str:
 
 
 def _integer(value: Any) -> int:
-    if isinstance(value, float) and value.is_integer():
-        return int(value)
-    if isinstance(value, bool) or not isinstance(value, int):
+    if isinstance(value, bool) or not isinstance(value, int | float | Decimal):
         raise ValueError(f"expected an integer, got {type(value).__name__}")
-    return value
+    if not _INTEGER_MINIMUM <= value <= _INTEGER_MAXIMUM or int(value) != value:
+        raise ValueError(f"{value} is not an integer from {_INTEGER_MINIMUM} to {_INTEGER_MAXIMUM}")
+    return int(value)
 
 
 def _number(value: Any) -> float:
-    if isinstance(value, bool) or not isinstance(value, (int, float)):
+    if isinstance(value, bool) or not isinstance(value, int | float | Decimal):
         raise ValueError(f"expected a number, got {type(value).__name__}")
-    return value
+    try:
+        number = float(value)
+    except OverflowError:
+        number = math.inf
+    if not math.isfinite(number):
+        raise ValueError(f"{value} is not a finite double")
+    return value if isinstance(value, int) else number
 
 
 def _boolean(value: Any) -> bool:
@@ -72,7 +80,7 @@ def _limit(
             raise ValueError(f"{parsed} is not above {exclusive_minimum}")
         if exclusive_maximum is not None and parsed >= exclusive_maximum:
             raise ValueError(f"{parsed} is not below {exclusive_maximum}")
-        if min_length is not None and len(parsed) < min_length:
+        if min_length is not None and _LENGTH(parsed) < min_length:
             raise ValueError(f"shorter than {min_length}")
         return parsed
 
@@ -124,6 +132,17 @@ def _always(obj: dict[str, Any]) -> bool:
     return True
 
 
+def _within(value: Any, levels: int) -> bool:
+    children: Iterable[Any]
+    if isinstance(value, dict):
+        children = cast(dict[str, Any], value).values()
+    elif isinstance(value, list):
+        children = cast(list[Any], value)
+    else:
+        return True
+    return levels > 0 and all(_within(child, levels - 1) for child in children)
+
+
 def _dispatch(value: Any, variants: _Variants) -> Any:
     obj = _object(value)
     for matches, parse in variants:
@@ -144,12 +163,20 @@ def _dump(value: Any) -> Any:
 '''
 
 PY_TYPES = {"string": "str", "integer": "int", "number": "float", "boolean": "bool"}
+LENGTHS = {"code point": "len"}
 
 
 def emit(model: Model) -> str:
     unions = frozenset(u.name for u in model.unions)
     parts = [emit_object(obj, unions) for obj in model.objects] + [emit_union(u) for u in model.unions]
-    return HEADER + "\n" + "\n\n".join(parts) + "\n"
+    return HEADER + "\n" + constants(model.wire) + "\n" + "\n\n".join(parts) + "\n"
+
+
+def constants(wire: Wire) -> str:
+    return (
+        f"_INTEGER_MINIMUM = {wire.integer_minimum}\n_INTEGER_MAXIMUM = {wire.integer_maximum}\n"
+        f"_MAX_DEPTH = {wire.max_depth}\n_LENGTH = {LENGTHS[wire.length_unit]}\n"
+    )
 
 
 def annotation(type_: Type) -> str:
@@ -285,6 +312,8 @@ class {unknown}:
 
 
 def decode_{union.name.lower()}(value: Any) -> {union.name}:
+    if not _within(value, _MAX_DEPTH):
+        return {unknown}({{}})
     try:
         return _dispatch(value, {table})
     except ValueError:

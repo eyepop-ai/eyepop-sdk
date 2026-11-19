@@ -53,7 +53,8 @@ public class ProtocolDecodingTests
         var text = c["file"] is { } file
             ? File.ReadAllText(Path.Combine(Examples, file.GetValue<string>()))
             : c["text"]!.GetValue<string>();
-        var data = JsonNode.Parse(text);
+        var options = new JsonDocumentOptions { MaxDepth = int.MaxValue };
+        var data = JsonNode.Parse(text, documentOptions: options);
         var (unknown, encoded) = c["union"]!.GetValue<string>() == "command"
             ? Result(Command.Decode(data))
             : Result(Message.Decode(data));
@@ -62,7 +63,8 @@ public class ProtocolDecodingTests
         {
             return $"decoded to {variant}, want {c["variant"]}";
         }
-        if (Same(encoded, data) != c["unchanged"]!.GetValue<bool>())
+        using var input = JsonDocument.Parse(text, options);
+        if (Same(encoded, input.RootElement) != c["unchanged"]!.GetValue<bool>())
         {
             return $"encoded {encoded.ToJsonString()}, want unchanged = {c["unchanged"]}";
         }
@@ -77,14 +79,19 @@ public class ProtocolDecodingTests
 
     private static (bool, JsonNode) Result(Message message) => (message is UnknownMessage, message.ToJson());
 
-    private static bool Same(JsonNode? a, JsonNode? b) => (a, b) switch
+    private static bool Same(JsonNode? a, JsonElement b) => (a, b.ValueKind) switch
     {
-        (JsonObject x, JsonObject y) => x.Count == y.Count && x.All(p => y.TryGetPropertyValue(p.Key, out var v) && Same(p.Value, v)),
-        (JsonArray x, JsonArray y) => x.Count == y.Count && x.Zip(y).All(p => Same(p.First, p.Second)),
-        (JsonValue x, JsonValue y) when x.GetValueKind() == JsonValueKind.Number && y.GetValueKind() == JsonValueKind.Number =>
-            Canonical(x.ToJsonString()) == Canonical(y.ToJsonString()),
-        _ => JsonNode.DeepEquals(a, b),
+        (JsonObject x, JsonValueKind.Object) => LastWins(b) is var y
+            && x.Count == y.Count
+            && x.All(p => y.TryGetValue(p.Key, out var v) && Same(p.Value, v)),
+        (JsonArray x, JsonValueKind.Array) => x.Count == b.GetArrayLength() && x.Zip(b.EnumerateArray()).All(p => Same(p.First, p.Second)),
+        (JsonValue x, JsonValueKind.Number) when x.GetValueKind() == JsonValueKind.Number =>
+            Canonical(x.ToJsonString()) == Canonical(b.GetRawText()),
+        _ => b.ValueKind is not (JsonValueKind.Object or JsonValueKind.Array) && JsonNode.DeepEquals(a, JsonValue.Create(b)),
     };
+
+    private static Dictionary<string, JsonElement> LastWins(JsonElement obj) =>
+        obj.EnumerateObject().GroupBy(p => p.Name).ToDictionary(g => g.Key, g => g.Last().Value);
 
     private static string Canonical(string number)
     {
