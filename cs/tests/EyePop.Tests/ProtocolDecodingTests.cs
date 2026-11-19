@@ -74,6 +74,30 @@ public class ProtocolDecodingTests
         Assert.Equal(9007199254740993L, credit.Bytes);
     }
 
+    [Theory]
+    [InlineData("1e3", 1000L)]
+    [InlineData("1.50e1", 15L)]
+    [InlineData("10e-1", 1L)]
+    [InlineData("2E+2", 200L)]
+    public void An_integer_in_exponent_form_is_read_exactly(string token, long expected)
+    {
+        var credit = Assert.IsType<Credit>(Message.Decode(JsonNode.Parse("{\"type\":\"credit\",\"id\":\"c1\",\"bytes\":" + token + "}")));
+
+        Assert.Equal(expected, credit.Bytes);
+    }
+
+    [Theory]
+    [InlineData("1e-1")]
+    [InlineData("1e-29")]
+    [InlineData("1e19")]
+    [InlineData("1e1000000")]
+    [InlineData("1e-1000000")]
+    [InlineData("9223372036854775808")]
+    public void A_number_that_is_not_an_int64_is_rejected(string token)
+    {
+        Assert.IsType<UnknownMessage>(Message.Decode(JsonNode.Parse("{\"type\":\"credit\",\"id\":\"c1\",\"bytes\":" + token + "}")));
+    }
+
     [Fact]
     public void An_integer_held_as_a_clr_int_is_accepted()
     {

@@ -141,22 +141,38 @@ func TestDecodedJSONIsASnapshotOfTheInput(t *testing.T) {
 	}
 }
 
-func TestAnIntegerTokenIsNeverRounded(t *testing.T) {
-	decode := func(text string) Message {
-		decoder := json.NewDecoder(strings.NewReader(text))
-		decoder.UseNumber()
-		var value any
-		if err := decoder.Decode(&value); err != nil {
-			t.Fatal(err)
-		}
-		return DecodeMessage(value)
+func decodeExact(t *testing.T, text string) Message {
+	t.Helper()
+	decoder := json.NewDecoder(strings.NewReader(text))
+	decoder.UseNumber()
+	var value any
+	if err := decoder.Decode(&value); err != nil {
+		t.Fatal(err)
 	}
+	return DecodeMessage(value)
+}
 
-	if _, unknown := decode(`{"type":"credit","id":"c1","bytes":1.00000000000000001}`).(UnknownMessage); !unknown {
+func TestAnIntegerTokenIsNeverRounded(t *testing.T) {
+	if _, unknown := decodeExact(t, `{"type":"credit","id":"c1","bytes":1.00000000000000001}`).(UnknownMessage); !unknown {
 		t.Fatal("a fraction that rounds to a whole number was accepted")
 	}
-	credit, ok := decode(`{"type":"credit","id":"c1","bytes":9007199254740993.0}`).(Credit)
+	credit, ok := decodeExact(t, `{"type":"credit","id":"c1","bytes":9007199254740993.0}`).(Credit)
 	if !ok || credit.Bytes != 9007199254740993 {
 		t.Fatalf("got %v", credit)
+	}
+}
+
+func TestIntegerTokensInExponentFormAreReadExactly(t *testing.T) {
+	cases := map[string]int64{"1e3": 1000, "1.50e1": 15, "10e-1": 1, "2E+2": 200}
+	for token, want := range cases {
+		credit, ok := decodeExact(t, `{"type":"credit","id":"c1","bytes":`+token+`}`).(Credit)
+		if !ok || credit.Bytes != want {
+			t.Fatalf("%s: got %v, want %d", token, credit, want)
+		}
+	}
+	for _, token := range []string{"1e-1", "1e-29", "1e19", "1e1000000", "1e-1000000", "9223372036854775808"} {
+		if _, unknown := decodeExact(t, `{"type":"credit","id":"c1","bytes":`+token+`}`).(UnknownMessage); !unknown {
+			t.Fatalf("%s was accepted", token)
+		}
 	}
 }

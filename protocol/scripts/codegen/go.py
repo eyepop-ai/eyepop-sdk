@@ -10,7 +10,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
-	"math/big"
+	"strconv"
+	"strings"
 )
 
 func parseObject(value any) (map[string]any, error) {
@@ -36,6 +37,35 @@ func wholeInt64(number float64) (int64, bool) {
 	return int64(number), true
 }
 
+func integerToken(token string) (int64, bool) {
+	sign := ""
+	if strings.HasPrefix(token, "-") {
+		sign, token = "-", token[1:]
+	}
+	mantissa, exponentText, _ := strings.Cut(strings.ToLower(token), "e")
+	whole, fraction, _ := strings.Cut(mantissa, ".")
+	digits := strings.TrimLeft(whole+fraction, "0")
+	if digits == "" {
+		return 0, true
+	}
+	exponent := int64(0)
+	if exponentText != "" {
+		parsed, err := strconv.ParseInt(strings.TrimPrefix(exponentText, "+"), 10, 32)
+		if err != nil {
+			return 0, false
+		}
+		exponent = parsed
+	}
+	exponent -= int64(len(fraction))
+	trimmed := strings.TrimRight(digits, "0")
+	exponent += int64(len(digits) - len(trimmed))
+	if exponent < 0 || int64(len(trimmed))+exponent > 19 {
+		return 0, false
+	}
+	parsed, err := strconv.ParseInt(sign+trimmed+strings.Repeat("0", int(exponent)), 10, 64)
+	return parsed, err == nil
+}
+
 func parseInteger(value any) (int64, error) {
 	switch number := value.(type) {
 	case int64:
@@ -50,8 +80,8 @@ func parseInteger(value any) (int64, error) {
 		if exact, err := number.Int64(); err == nil {
 			return exact, nil
 		}
-		if exact, ok := new(big.Rat).SetString(string(number)); ok && exact.IsInt() && exact.Num().IsInt64() {
-			return exact.Num().Int64(), nil
+		if exact, ok := integerToken(string(number)); ok {
+			return exact, nil
 		}
 	}
 	return 0, fmt.Errorf("expected an integer, got %v", value)

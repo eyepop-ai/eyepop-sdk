@@ -20,17 +20,31 @@ internal static class Wire
         {
             if (v.TryGetValue<long>(out var exact)) return exact;
             if (v.TryGetValue<int>(out var small)) return small;
-            if (v.TryGetValue<decimal>(out var exactDecimal))
-            {
-                if (exactDecimal == decimal.Truncate(exactDecimal) && exactDecimal >= long.MinValue && exactDecimal <= long.MaxValue)
-                    return (long)exactDecimal;
-            }
-            else if (v.TryGetValue<double>(out var approximate) && approximate == Math.Truncate(approximate) && Math.Abs(approximate) < 9.2e18)
-            {
-                return (long)approximate;
-            }
+            if (IntegerToken(v.ToJsonString()) is { } token) return token;
         }
         throw new FormatException($"expected an integer, got {Show(value)}");
+    }
+
+    private static long? IntegerToken(string token)
+    {
+        var sign = token.StartsWith('-') ? "-" : "";
+        var body = token.TrimStart('-').ToLowerInvariant();
+        var split = body.Split('e');
+        var mantissa = split[0].Split('.');
+        var fraction = mantissa.Length > 1 ? mantissa[1] : "";
+        var digits = (mantissa[0] + fraction).TrimStart('0');
+        if (digits.Length == 0) return 0;
+        long exponent = 0;
+        if (split.Length > 1)
+        {
+            if (!int.TryParse(split[1], System.Globalization.NumberStyles.AllowLeadingSign, null, out var parsed)) return null;
+            exponent = parsed;
+        }
+        exponent -= fraction.Length;
+        var trimmed = digits.TrimEnd('0');
+        exponent += digits.Length - trimmed.Length;
+        if (exponent < 0 || trimmed.Length + exponent > 19) return null;
+        return long.TryParse(sign + trimmed + new string('0', (int)exponent), out var result) ? result : null;
     }
 
     public static bool TryNumber(JsonNode? value, out double number)
