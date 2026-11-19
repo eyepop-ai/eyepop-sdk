@@ -1,4 +1,6 @@
-from .model import Always, Array, Const, Constrained, Enum, Field, Free, Key, Model, Object, Ref, Tag, Type, Union, Variant, Wire, is_number
+import keyword
+
+from .model import Always, Array, Const, Constrained, Enum, Field, Free, Key, Model, Naming, Object, Ref, Tag, Type, Union, Variant, Wire, is_number
 
 HEADER = '''# Generated from protocol/schema by protocol/scripts/generate.py. Do not edit.
 from __future__ import annotations
@@ -198,6 +200,14 @@ PY_TYPES = {"string": "str", "integer": "int", "number": "float", "boolean": "bo
 LENGTHS = {"code point": "len"}
 
 
+def field_name(name: str) -> str:
+    return name + "_" if keyword.iskeyword(name) else name
+
+
+MEMBERS = frozenset({"raw", "from_json", "to_json", "field", "dict", "staticmethod"})
+NAMING = Naming(field=lambda owner, name: field_name(name), reserved=lambda field, fields: MEMBERS)
+
+
 def emit(model: Model) -> str:
     unions = frozenset(u.name for u in model.unions)
     parts = [emit_object(obj, unions) for obj in model.objects] + [emit_union(u) for u in model.unions]
@@ -255,15 +265,17 @@ def parser(type_: Type, unions: frozenset[str]) -> str:
 
 
 def declaration(f: Field) -> str:
-    return f"    {f.name}: {annotation(f.type)}" if f.required else f"    {f.name}: {annotation(f.type)} | None = None"
+    name = field_name(f.name)
+    return f"    {name}: {annotation(f.type)}" if f.required else f"    {name}: {annotation(f.type)} | None = None"
 
 
 def write(f: Field) -> str:
-    put = f"_put_number(out, {f.name!r}, self.{f.name})" if is_number(f.type) else f"out[{f.name!r}] = _dump(self.{f.name})"
+    attribute = f"self.{field_name(f.name)}"
+    put = f"_put_number(out, {f.name!r}, {attribute})" if is_number(f.type) else f"out[{f.name!r}] = _dump({attribute})"
     if f.required:
         return f"        {put}"
     return (
-        f"        if self.{f.name} is not None:\n            {put}\n"
+        f"        if {attribute} is not None:\n            {put}\n"
         f"        else:\n            out.pop({f.name!r}, None)"
     )
 
@@ -276,7 +288,7 @@ def emit_object(obj: Object, unions: frozenset[str] = frozenset()) -> str:
         checks += f"        _exactly_one(obj, {obj.exactly_one!r})\n"
     reads = ", ".join(
         [
-            f"{f.name}={'_required' if f.required else '_optional'}(obj, {f.name!r}, {parser(f.type, unions)})"
+            f"{field_name(f.name)}={'_required' if f.required else '_optional'}(obj, {f.name!r}, {parser(f.type, unions)})"
             for f in typed
         ]
         + ["raw=copy.deepcopy(obj)"]

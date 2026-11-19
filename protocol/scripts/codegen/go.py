@@ -1,4 +1,4 @@
-from .model import Always, Array, Const, Constrained, Enum, Field, Free, Key, Model, Object, Ref, Tag, Type, Union, Variant, Wire, is_number, pascal
+from .model import Always, Array, Const, Constrained, Enum, Field, Free, Key, Model, Naming, Object, Ref, Tag, Type, Union, Variant, Wire, is_number, pascal, value_name
 
 HEADER = """// Generated from protocol/schema by protocol/scripts/generate.py. Do not edit.
 
@@ -301,6 +301,14 @@ func mapList[T any](items []T, convert func(T) any) []any {
 GO_TYPES = {"string": "string", "integer": "int64", "number": "float64", "boolean": "bool"}
 PARSERS = {"string": "parseString", "integer": "parseInteger", "number": "parseNumber", "boolean": "parseBoolean"}
 LENGTHS = {"code point": "len([]rune(text))"}
+
+
+NAMING = Naming(
+    field=lambda owner, name: pascal(name),
+    reserved=lambda field, fields: {"Raw", "ToJSON"},
+    value=value_name,
+    values=frozenset({"FromJSON"}),
+)
 
 
 def constants(wire: Wire) -> str:
