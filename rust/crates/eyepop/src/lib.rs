@@ -1,3 +1,6 @@
+#[rustfmt::skip]
+pub mod protocol;
+
 /// Version of this SDK, stamped from the release tag.
 pub fn version() -> &'static str {
     env!("CARGO_PKG_VERSION")

@@ -8,7 +8,10 @@ from codegen import generate, load_schemas
 
 ROOT = Path(__file__).resolve().parent.parent
 ROOTS = ("command", "message")
-TARGETS = {"python": ROOT.parent / "python" / "src" / "eyepop" / "protocol.py"}
+TARGETS = {
+    "python": ROOT.parent / "python" / "src" / "eyepop" / "protocol.py",
+    "rust": ROOT.parent / "rust" / "crates" / "eyepop" / "src" / "protocol.rs",
+}
 
 
 def main(argv: list[str]) -> int:

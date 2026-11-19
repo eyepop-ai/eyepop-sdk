@@ -1,3 +1,4 @@
+# Generated from protocol/schema by protocol/scripts/generate.py. Do not edit.
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping, Sequence

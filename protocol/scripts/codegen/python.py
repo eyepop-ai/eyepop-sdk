@@ -1,6 +1,7 @@
 from .model import Always, Array, Const, Enum, Field, Free, Key, Model, Object, Ref, Tag, Type, Union, Variant
 
-HEADER = '''from __future__ import annotations
+HEADER = '''# Generated from protocol/schema by protocol/scripts/generate.py. Do not edit.
+from __future__ import annotations
 
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
