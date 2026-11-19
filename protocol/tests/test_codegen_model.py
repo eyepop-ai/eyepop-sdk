@@ -240,6 +240,13 @@ def test_an_open_type_that_accepts_a_sibling_tag_is_rejected(type_, tag):
     rejects(either(a=a, b=b, raw=variant({"type": type_}, ["type"])), f"either.json#/oneOf/2: variant Raw has an open `type` that accepts the `type` const {tag!r} of variant")
 
 
+def test_an_open_type_listed_before_a_tag_it_accepts_is_rejected():
+    o = variant({"type": {"type": "string"}}, ["type"])
+    a = variant({"type": {"const": "a"}}, ["type"])
+
+    rejects(either(o=o, a=a), "either.json#/oneOf/0: variant O has an open `type` that accepts the `type` const 'a' of variant A")
+
+
 def test_an_enum_type_without_a_sibling_tag_is_the_open_type():
     a = variant({"type": {"const": "a"}}, ["type"])
 
