@@ -358,7 +358,11 @@ def emit_union(union: Union) -> str:
     for v in union.variants:
         branch = f"{name}::{v.name}({v.name}::from_json(value)?)"
         cond = condition(v)
-        arms.append(f"        if {cond} {{\n            return Ok({branch});\n        }}" if cond else f"        return Ok({branch});")
+        check = ""
+        if isinstance(v.match, Key):
+            keys = ", ".join(f'"{k}"' for k in union.selectors)
+            check = f"            exactly_one(obj, &[{keys}])?;\n"
+        arms.append(f"        if {cond} {{\n{check}            return Ok({branch});\n        }}" if cond else f"        return Ok({branch});")
     if not any(condition(v) is None for v in union.variants):
         arms.append('        fail("no variant matches".to_string())')
     dumps = "\n".join(f"            {name}::{v.name}(v) => v.to_json()," for v in union.variants)

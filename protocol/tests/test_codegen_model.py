@@ -287,6 +287,14 @@ def test_the_selector_is_the_first_required_key_by_name_that_no_other_variant_ha
     assert dispatch(either(a=a, b=b)) == (Variant("A", Key("d")), Variant("B", Key("y")))
 
 
+def test_a_union_lists_the_selectors_of_its_keyed_variants_in_schema_order():
+    t = variant({"type": {"const": "t"}}, ["type"])
+    k = variant({"k": None}, ["k"])
+    j = variant({"j": None}, ["j"])
+
+    assert parse(either(k=k, t=t, j=j), ()).unions[0].selectors == ("k", "j")
+
+
 @pytest.mark.parametrize(
     "others, unclosed",
     [

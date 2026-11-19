@@ -517,6 +517,9 @@ def emit_union(union: Union) -> str:
     branches = []
     for v in union.variants:
         body = f"\t\tparsed, err := {v.name}FromJSON(value)\n\t\tif err != nil {{\n\t\t\treturn nil, err\n\t\t}}\n\t\treturn parsed, nil"
+        if isinstance(v.match, Key):
+            keys = ", ".join(f'"{k}"' for k in union.selectors)
+            body = f"\t\tif err := exactlyOne(obj, {keys}); err != nil {{\n\t\t\treturn nil, err\n\t\t}}\n" + body
         cond = condition(v)
         branches.append(f"\tif {cond} {{\n{body}\n\t}}" if cond else body.replace("\t\t", "\t"))
     tail = "" if any(condition(v) is None for v in union.variants) else '\treturn nil, fmt.Errorf("no variant matches")\n'

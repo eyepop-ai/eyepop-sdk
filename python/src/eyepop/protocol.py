@@ -124,8 +124,13 @@ def _tag(expected: str) -> Callable[[dict[str, Any]], bool]:
     return lambda obj: obj.get("type") == expected
 
 
-def _key(name: str) -> Callable[[dict[str, Any]], bool]:
-    return lambda obj: name in obj
+def _key(name: str, selectors: Sequence[str]) -> Callable[[dict[str, Any]], bool]:
+    def matches(obj: dict[str, Any]) -> bool:
+        if name in obj:
+            _exactly_one(obj, selectors)
+        return name in obj
+
+    return matches
 
 
 def _always(obj: dict[str, Any]) -> bool:
@@ -1203,8 +1208,8 @@ def decode_command(value: Any) -> Command:
 
 
 _GROUPMEMBER_VARIANTS: _Variants = [
-    (_key('url'), GroupMemberUrl.from_json),
-    (_key('upload'), GroupMemberUpload.from_json),
+    (_key('url', ('url', 'upload')), GroupMemberUrl.from_json),
+    (_key('upload', ('url', 'upload')), GroupMemberUpload.from_json),
 ]
 
 GroupMember = GroupMemberUrl | GroupMemberUpload

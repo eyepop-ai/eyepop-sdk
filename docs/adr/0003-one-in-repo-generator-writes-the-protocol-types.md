@@ -43,7 +43,7 @@ Using the tools for structs and a script for the unions would leave four differe
   - A variant is listed once.
   - A variant whose `type` is a `const` is picked by that tag. It must require `type`, and no two variants may share a tag.
   - At most one variant has an open `type` (a `type` that is not a `const`, as in `rawComponent`). It is picked when nothing else matches, and must not accept any sibling's tag: a string `type` excludes it with `not: {"const": ...}`, so a union with an open `type` can have only one tagged variant; an `enum` `type` must not list it.
-  - Any other variant is picked by a selector key: the first key by name that it requires and that no other variant has as a property, required or not. A variant with no such key fails.
+  - Any other variant is picked by a selector key: the first key by name that it requires and that no other variant has as a property, required or not. A variant with no such key fails. A value that holds the selector keys of two keyed variants matches neither, so it decodes as `Unknown`, as an exactly-one object with two of its keys does.
   - A union with a keyed variant needs every variant closed with `additionalProperties: false`, so a key the schema does not name cannot appear in another variant's value.
 
   The error names the schema file, the `oneOf` index and the variants involved. The rules judge property names, tags and closedness; the schema's own `oneOf` and `task protocol:validate` still check that two variants never accept one value.
