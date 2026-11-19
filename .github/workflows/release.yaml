@@ -1,12 +1,5 @@
 name: Release
 
-# Lockstep release: publishing a GitHub release at tag vX.Y.Z publishes every Language SDK at that version.
-# Re-run failed jobs is safe: every publish task skips a version that is already on its registry.
-# Registry uploads happen only for a published GitHub release with the repo variable PUBLISH_TO_REGISTRIES set:
-# `true` uploads every Language SDK, or a comma list such as `cs` or `node,python` uploads only those.
-# Without it, every run still builds each package and stores it as a workflow artifact (eyepop-<language>-<tag>),
-# and the publish steps just say where they would upload. Run it by hand on any branch to get the artifacts:
-#   gh workflow run release.yaml -f tag=v4.0.0-alpha.1
 on:
   release:
     types: [published]
@@ -24,7 +17,6 @@ concurrency:
 permissions: {}
 
 jobs:
-  # The one place that decides the tag and whether this run uploads to registries; every release job reads these outputs.
   verify-tag:
     runs-on: ubuntu-latest
     permissions:
@@ -98,7 +90,6 @@ jobs:
       tag: ${{ needs.verify-tag.outputs.tag }}
       publish: ${{ needs.verify-tag.outputs.registries == 'true' || contains(format(',{0},', needs.verify-tag.outputs.registries), ',cs,') }}
 
-  # Red until all five languages are published (including when verify-tag failed and the rest were skipped).
   release-summary:
     if: always()
     needs: [verify-tag, node, python, go, rust, cs]

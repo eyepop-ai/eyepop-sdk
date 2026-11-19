@@ -25,8 +25,6 @@ dev = [
 [tool.setuptools.package-data]
 eyepop = ["py.typed"]
 
-# Release tag lives at the repo root; falls back to 0.0.0 when no tag is reachable.
-# SETUPTOOLS_SCM_PRETEND_VERSION overrides both.
 [tool.setuptools_scm]
 root = ".."
 tag_regex = '^v(?P<version>\d+\.\d+\.\d+.*)$'

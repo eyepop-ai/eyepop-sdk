@@ -30,7 +30,6 @@ jobs:
         with:
           persist-credentials: false
       - uses: ./.github/actions/setup-go
-      # Same as `task go:check` from the repo root.
       - run: task check
       - name: Release dry-run
         run: |

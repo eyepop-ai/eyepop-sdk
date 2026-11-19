@@ -1,6 +1,4 @@
 # shellcheck shell=bash
-# Sourced by package.sh and publish.sh, from node/, with TAG set. Installs, stamps the release tag's version
-# into the manifests, builds, and puts the manifests back on exit so the tree is left as it was found.
 stamped=(package.json package-lock.json packages/*/package.json)
 
 npm ci --no-audit --no-fund

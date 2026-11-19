@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-# Fail unless the release tag maps to a valid version in every ecosystem.
 # usage: verify-tag.sh vX.Y.Z
 set -euo pipefail
 cd "$(dirname "$0")"

@@ -16,7 +16,6 @@ runs:
         registry-url: https://registry.npmjs.org
         cache: ${{ inputs.cache == 'true' && 'npm' || '' }}
         cache-dependency-path: node/package-lock.json
-    # Fails if package-lock.json is out of sync with the manifests, before anything stamps them.
     - run: npm ci --no-audit --no-fund
       shell: bash
       working-directory: node

@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-# Write the release tag's version into every workspace manifest.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 

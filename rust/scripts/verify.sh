@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-# Build a scratch project against the published crate and check eyepop::version() equals the release tag's version.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -20,7 +19,6 @@ eyepop = "=$version"
 TOML
 echo 'fn main() { println!("{}", eyepop::version()); }' >src/main.rs
 
-# A fresh publish takes a moment to show up in the index.
 for attempt in 1 2 3 4 5 6; do
   cargo build -q && break
   [ "$attempt" -lt 6 ] || { echo "cannot build against eyepop $version" >&2; exit 1; }

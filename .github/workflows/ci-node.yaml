@@ -32,7 +32,6 @@ jobs:
       - uses: ./.github/actions/setup-node
         with:
           cache: 'true'
-      # Same as `task node:check` from the repo root.
       - run: task check
       - name: Release dry-run
         run: |

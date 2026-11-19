@@ -1,9 +1,5 @@
 version: '3'
 
-# Python Language SDK. Implements the contract in ../Taskfile.yaml. Tasks only call scripts/.
-# TAG=vX.Y.Z is mapped to a PEP 440 version by ../scripts/version.sh; without TAG a build is 0.0.0.
-# Each script call below passes TAG explicitly, so the task's TAG wins over any TAG already in the environment.
-
 tasks:
   build:
     desc: Build sdist and wheel into dist/ (TAG optional)

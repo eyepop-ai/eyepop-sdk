@@ -1,7 +1,6 @@
 #!/usr/bin/env node
 // usage: workspaces.mjs list          print "dir name version" per workspace, dependencies first
 //        workspaces.mjs ranges <ver>  pin inter-workspace dependency ranges to <ver>
-// shortcut: assumes the `packages/*` glob, extend if root workspaces ever change.
 import { readdirSync, readFileSync, writeFileSync } from 'node:fs'
 
 const depFields = ['dependencies', 'devDependencies', 'peerDependencies', 'optionalDependencies']

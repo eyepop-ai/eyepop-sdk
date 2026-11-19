@@ -32,7 +32,6 @@ jobs:
       - uses: ./.github/actions/setup-python
         with:
           cache: 'true'
-      # Same as `task python:check` from the repo root.
       - run: task check
       - name: Release dry-run
         run: |

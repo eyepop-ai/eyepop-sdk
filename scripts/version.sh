@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-# Map a release tag (vX.Y.Z or vX.Y.Z-{alpha,beta,rc}.N) to one ecosystem's version.
 # usage: version.sh <tag> <npm|cargo|nuget|pypi|go-tag>
 set -euo pipefail
 
@@ -12,17 +11,14 @@ core=${BASH_REMATCH[1]}     # 4.0.0
 stage=${BASH_REMATCH[3]:-}  # alpha, beta, rc, or empty for a stable release
 number=${BASH_REMATCH[4]:-} # 1
 
-# SemVer forbids leading zeros in numbers: 01 is invalid, 0 is fine.
 leading_zero='(^|\.)0[0-9]'
 if [[ $core =~ $leading_zero || $number =~ $leading_zero ]]; then
   echo "invalid release tag (leading zero): $tag" >&2
   exit 1
 fi
 
-# npm, cargo and nuget all take semver as is: 4.0.0-alpha.1
 semver=$core${stage:+-$stage.$number}
 
-# PyPI wants PEP 440: 4.0.0-alpha.1 becomes 4.0.0a1
 case $stage in
   alpha) pep440=${core}a$number ;;
   beta) pep440=${core}b$number ;;
