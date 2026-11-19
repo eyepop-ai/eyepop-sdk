@@ -1,5 +1,6 @@
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
+from typing import NoReturn
 
 
 @dataclass(frozen=True)
@@ -103,7 +104,20 @@ def ref_name(node: dict) -> str:
     return node["$ref"].removesuffix(".json")
 
 
-LIMITS = ("minimum", "exclusiveMinimum", "exclusiveMaximum", "minLength")
+NUMBER_LIMITS = ("minimum", "exclusiveMinimum", "exclusiveMaximum")
+LIMITS = (*NUMBER_LIMITS, "minLength")
+SCALARS = {"string": ("minLength",), "integer": NUMBER_LIMITS, "number": NUMBER_LIMITS, "boolean": ()}
+ANNOTATIONS = ("$schema", "$id", "title", "description", "$comment", "examples", "deprecated", "default", "readOnly", "writeOnly")
+IGNORED = {
+    "additionalProperties": (
+        "true or false",
+        "decoders are tolerant readers: they accept and keep fields the schema does not name",
+    ),
+    "not": (
+        '{"const": <string>} on a string',
+        "a union tries its tagged variants first, so a value with the excluded tag never reaches this variant through the union",
+    ),
+}
 
 
 def selector(body: dict) -> tuple[str, ...]:
@@ -120,8 +134,147 @@ def kind(body: dict) -> str:
     return "scalar"
 
 
+def refs(schemas: Mapping[str, dict], node: object) -> list[str]:
+    if isinstance(node, list):
+        return [name for item in node for name in refs(schemas, item)]
+    if not isinstance(node, dict):
+        return []
+    own = node.get("$ref")
+    found = [own.removesuffix(".json")] if isinstance(own, str) and isinstance(schemas.get(own.removesuffix(".json")), dict) else []
+    return found + [name for key, item in node.items() if key != "$ref" for name in refs(schemas, item)]
+
+
+def bases(schemas: Mapping[str, dict], body: dict) -> list[str]:
+    return refs(schemas, [part for part in body.get("allOf", ()) if isinstance(part, dict) and set(part) == {"$ref"}])
+
+
+def property_names(schemas: Mapping[str, dict], body: dict) -> set[str]:
+    return set(body.get("properties", {})).union(*(property_names(schemas, schemas[base]) for base in bases(schemas, body)))
+
+
+def check(schemas: Mapping[str, dict], name: str) -> None:
+    def fail(path: list[str], message: str) -> NoReturn:
+        raise ValueError(f"{name}.json#{''.join('/' + p for p in path)}: {message}")
+
+    def ignored(node: dict, key: str) -> bool:
+        if key == "additionalProperties":
+            return isinstance(node[key], bool)
+        if key == "not":
+            excluded = node[key]
+            return node.get("type") == "string" and isinstance(excluded, dict) and set(excluded) == {"const"} and isinstance(excluded["const"], str)
+        return False
+
+    def allow(node: dict, path: list[str], keywords: set[str]) -> None:
+        for key in node:
+            if key in keywords or key in ANNOTATIONS or (key in IGNORED and ignored(node, key)):
+                continue
+            if key in IGNORED:
+                fail(path, f"`{key}` is only accepted as {IGNORED[key][0]}")
+            fail(path, f"`{key}` is not supported here")
+
+    def a_schema(node: object, path: list[str]) -> None:
+        if not isinstance(node, dict):
+            fail(path, f"a schema here must be an object, not {node!r}")
+
+    def acyclic(start: str, path: list[str], keyword: str, via: Callable[[str], list[str]], seen: tuple[str, ...] = ()) -> None:
+        if start in seen:
+            fail(path, f"`{keyword}` cycle: {' -> '.join(seen + (start,))}")
+        for following in via(start):
+            acyclic(following, path, keyword, via, seen + (start,))
+
+    def target(node: object, path: list[str]) -> dict:
+        a_schema(node, path)
+        allow(node, path, {"$ref"})
+        ref = node.get("$ref")
+        if not isinstance(ref, str) or not ref.endswith(".json") or not isinstance(schemas.get(ref_name(node)), dict):
+            fail(path, f"`$ref` {ref!r} does not name a schema file")
+        return schemas[ref_name(node)]
+
+    def object_(node: object, path: list[str]) -> None:
+        a_schema(node, path)
+        allow(node, path, {"type", "properties", "required", "allOf", "oneOf"})
+        if node.get("type", "object") != "object":
+            fail(path, "`type` beside `properties` must be 'object'")
+        if not isinstance(node["properties"], dict):
+            fail(path + ["properties"], "`properties` must be an object")
+        for i, part in enumerate(node.get("allOf", ())):
+            if kind(target(part, path + ["allOf", str(i)])) != "object":
+                fail(path + ["allOf", str(i)], "`allOf` must reference an object schema")
+        for base in bases(schemas, node):
+            acyclic(base, path + ["allOf"], "allOf", lambda n: bases(schemas, schemas[n]))
+        for i, entry in enumerate(node.get("oneOf", ())):
+            if not isinstance(entry, dict) or set(entry) != {"required"} or len(entry["required"]) != 1:
+                fail(path + ["oneOf", str(i)], "`oneOf` beside `properties` must list one `required` key per entry")
+        required = set(node.get("required", ())) | {entry["required"][0] for entry in node.get("oneOf", ())}
+        missing = sorted(required - property_names(schemas, node))
+        if missing:
+            fail(path, f"`required` names {', '.join(missing)}, which is not a property")
+        for key, prop in node["properties"].items():
+            value(prop, path + ["properties", key])
+
+    def value(node: object, path: list[str]) -> None:
+        a_schema(node, path)
+        if "$ref" in node:
+            if kind(target(node, path)) == "scalar":
+                acyclic(ref_name(node), path, "$ref", lambda n: [r for r in refs(schemas, schemas[n]) if kind(schemas[r]) == "scalar"])
+        elif "const" in node:
+            allow(node, path, {"const", "type"})
+            if not isinstance(node["const"], str) or node.get("type", "string") != "string":
+                fail(path, "`const` must be a string")
+        elif "enum" in node:
+            allow(node, path, {"enum", "type"})
+            if not node["enum"] or not all(isinstance(v, str) for v in node["enum"]) or node.get("type", "string") != "string":
+                fail(path, "`enum` must list one or more strings")
+        elif node.get("type") == "array":
+            allow(node, path, {"type", "items"})
+            if "items" not in node:
+                fail(path, "an array needs `items`")
+            value(node["items"], path + ["items"])
+        elif node.get("type") == "object" and "properties" in node:
+            object_(node, path)
+        elif node.get("type") == "object":
+            allow(node, path, {"type"})
+        elif isinstance(node.get("type"), str) and node["type"] in SCALARS:
+            allow(node, path, {"type", *SCALARS[node["type"]]})
+        elif "properties" in node and "type" not in node:
+            fail(path, "an object with `properties` needs `\"type\": \"object\"`")
+        else:
+            if "type" not in node:
+                allow(node, path, set())
+            fail(path, f"`type` must be one of object, array, {', '.join(SCALARS)}, not {node.get('type')!r}")
+
+    def union(node: dict, path: list[str]) -> None:
+        allow(node, path, {"oneOf"})
+        for i, item in enumerate(node["oneOf"]):
+            at = path + ["oneOf", str(i)]
+            a_schema(item, at)
+            if "$ref" in item:
+                if kind(target(item, at)) != "object":
+                    fail(at, "a union variant must reference an object schema")
+            elif "properties" in item:
+                object_(item, at)
+                if not item["properties"].get("type", {}).get("const") and not item.get("required"):
+                    fail(at, "an inline union variant needs a `type` const or a `required` key to name it")
+            else:
+                fail(at, "a union variant must be a `$ref` or an object with `properties`")
+
+    body = schemas[name]
+    a_schema(body, [])
+    {"object": object_, "union": union, "scalar": value}[kind(body)](body, [])
+
+
 def parse(schemas: Mapping[str, dict], roots: Sequence[str]) -> Model:
+    for name in schemas:
+        check(schemas, name)
     objects: dict[str, Object] = {}
+    sources: dict[str, str] = {}
+    origin = ""
+
+    def claim(name: str) -> str:
+        if name in sources:
+            raise ValueError(f"{origin}: two types are named {name}; the other comes from {sources[name]}")
+        sources[name] = origin
+        return name
 
     def flatten(body: dict) -> tuple[dict, set, tuple[str, ...]]:
         properties: dict = {}
@@ -137,7 +290,7 @@ def parse(schemas: Mapping[str, dict], roots: Sequence[str]) -> Model:
     def add_object(name: str, body: dict) -> str:
         properties, required, exactly_one = flatten(body)
         fields = tuple(Field(key, type_of(prop, name + pascal(key)), key in required) for key, prop in properties.items())
-        objects[name] = Object(name, fields, exactly_one)
+        objects[claim(name)] = Object(name, fields, exactly_one)
         return name
 
     def type_of(prop: dict, hint: str) -> Type:
@@ -147,7 +300,7 @@ def parse(schemas: Mapping[str, dict], roots: Sequence[str]) -> Model:
         if "const" in prop:
             return Const(prop["const"])
         if "enum" in prop:
-            return Enum(tuple(prop["enum"]), hint)
+            return Enum(tuple(prop["enum"]), claim(hint))
         if prop["type"] == "array":
             return Array(type_of(prop["items"], singular(hint)))
         if prop["type"] == "object":
@@ -159,17 +312,25 @@ def parse(schemas: Mapping[str, dict], roots: Sequence[str]) -> Model:
         return prop["type"]
 
     def variant_names(name: str, body: dict) -> list[str]:
-        return [
-            pascal(ref_name(item)) if "$ref" in item else add_object(pascal(name) + variant_suffix(item), item)
-            for item in body["oneOf"]
-        ]
+        nonlocal origin
+        names = []
+        for i, item in enumerate(body["oneOf"]):
+            origin = f"{name}.json#/oneOf/{i}"
+            names.append(pascal(ref_name(item)) if "$ref" in item else add_object(pascal(name) + variant_suffix(item), item))
+        return names
+
+    for name, body in schemas.items():
+        origin = f"{name}.json#"
+        if kind(body) == "union":
+            claim(pascal(name))
 
     for name, body in schemas.items():
         if kind(body) == "object":
+            origin = f"{name}.json#"
             add_object(pascal(name), body)
 
     unions = tuple(
-        Union(pascal(name), variants_of([objects[n] for n in variant_names(name, body)]), name in roots)
+        Union(pascal(name), variants_of(name, [objects[n] for n in variant_names(name, body)]), name in roots)
         for name, body in schemas.items()
         if kind(body) == "union"
     )
@@ -191,7 +352,7 @@ def tag_of(obj: Object) -> str | None:
     return None
 
 
-def variants_of(objects: list[Object]) -> tuple[Variant, ...]:
+def variants_of(name: str, objects: list[Object]) -> tuple[Variant, ...]:
     required = {o.name: {f.name for f in o.fields if f.required} for o in objects}
     variants = []
     for obj in objects:
@@ -202,6 +363,9 @@ def variants_of(objects: list[Object]) -> tuple[Variant, ...]:
             match = Always()
         else:
             others = set().union(*(required[o.name] for o in objects if o is not obj))
-            match = Key(sorted(required[obj.name] - others)[0])
+            own = sorted(required[obj.name] - others)
+            if not own:
+                raise ValueError(f"{name}.json#/oneOf: variant {obj.name} has no `type` const and no required key the other variants lack")
+            match = Key(own[0])
         variants.append(Variant(obj.name, match))
     return tuple(sorted(variants, key=lambda v: isinstance(v.match, Always)))
