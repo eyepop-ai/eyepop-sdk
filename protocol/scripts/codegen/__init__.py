@@ -3,17 +3,15 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 
 from .model import parse
-from .python import emit as emit_python
-from .csharp import emit as emit_csharp
-from .go import emit as emit_go
-from .rust import emit as emit_rust
+from . import csharp, go, python, rust
 
 ROOTS = ("command", "message")
 
 
 def generate(schemas: Mapping[str, dict], roots: Sequence[str]) -> dict[str, str]:
-    model = parse(schemas, roots)
-    return {"python": emit_python(model), "rust": emit_rust(model), "go": emit_go(model), "csharp": emit_csharp(model)}
+    emitters = {"python": python, "rust": rust, "go": go, "csharp": csharp}
+    model = parse(schemas, roots, {language: emitter.NAMING for language, emitter in emitters.items()})
+    return {language: emitter.emit(model) for language, emitter in emitters.items()}
 
 
 def load_schemas(directory: Path) -> dict[str, dict]:

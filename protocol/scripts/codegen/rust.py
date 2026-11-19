@@ -1,4 +1,4 @@
-from .model import Always, Array, Const, Constrained, Enum, Field, Free, Key, Model, Object, Ref, Tag, Type, Union, Variant, Wire, is_number
+from .model import Always, Array, Const, Constrained, Enum, Field, Free, Key, Model, Naming, Object, Ref, Tag, Type, Union, Variant, Wire, is_number, value_name
 
 HEADER = """// Generated from protocol/schema by protocol/scripts/generate.py. Do not edit.
 #![allow(dead_code, non_snake_case, clippy::all)]
@@ -146,7 +146,13 @@ fn number_to_json(number: f64) -> Value {
 }
 """
 
-KEYWORDS = {"type", "match", "ref", "in", "mod", "use", "fn", "as", "loop", "move", "impl", "trait", "struct", "enum"}
+KEYWORDS = {
+    *("as", "break", "const", "continue", "else", "enum", "extern", "false", "fn", "for", "if", "impl", "in", "let", "loop"),
+    *("match", "mod", "move", "mut", "pub", "ref", "return", "static", "struct", "trait", "true", "type", "unsafe", "use"),
+    *("where", "while", "async", "await", "dyn"),
+    *("abstract", "become", "box", "do", "final", "gen", "macro", "override", "priv", "try", "typeof", "unsized", "virtual", "yield"),
+}
+NOT_RAW = {"crate", "self", "Self", "super"}
 RUST_TYPES = {"string": "String", "integer": "i64", "number": "f64", "boolean": "bool"}
 PARSERS = {"string": "parse_string", "integer": "parse_integer", "number": "parse_number", "boolean": "parse_boolean"}
 LENGTHS = {"code point": "text.chars().count() as f64"}
@@ -167,7 +173,14 @@ def constants(wire: Wire) -> str:
 
 
 def field_name(name: str) -> str:
+    if name in NOT_RAW:
+        return name + "_"
     return f"r#{name}" if name in KEYWORDS else name
+
+
+NAMING = Naming(
+    field=lambda owner, name: field_name(name), reserved=lambda field, fields: {"raw"}, value=lambda value: field_name(value_name(value))
+)
 
 
 def rust_type(type_: Type) -> str:
@@ -231,7 +244,7 @@ def dump(type_: Type, ref: str) -> str:
 
 
 def emit_enum(enum: Enum) -> str:
-    names = enum.value_names
+    names = [field_name(n) for n in enum.value_names]
     variants = "\n".join(f"    {n}," for n in names)
     reads = "\n".join(f'            Some("{v}") => Ok({enum.name}::{n}),' for v, n in zip(enum.values, names))
     writes = "\n".join(f'            {enum.name}::{n} => Value::from("{v}"),' for v, n in zip(enum.values, names))

@@ -1,5 +1,5 @@
 import re
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Collection, Mapping, Sequence
 from dataclasses import dataclass
 from typing import NoReturn
 
@@ -16,7 +16,11 @@ class Enum:
 
     @property
     def value_names(self) -> tuple[str, ...]:
-        return tuple("".join(part[:1].upper() + part[1:] for part in re.split(r"[^0-9A-Za-z]+", v) if part) for v in self.values)
+        return tuple(value_name(v) for v in self.values)
+
+
+def value_name(value: str) -> str:
+    return "".join(part[:1].upper() + part[1:] for part in re.split(r"[^0-9A-Za-z]+", value) if part)
 
 
 @dataclass(frozen=True)
@@ -164,6 +168,49 @@ class Model:
 
     def unions_of(self, obj: Object) -> list[str]:
         return [u.name for u in self.unions if any(v.name == obj.name for v in u.variants)]
+
+
+IDENTIFIER = re.compile(r"[A-Za-z][A-Za-z0-9_]*")
+
+
+@dataclass(frozen=True)
+class Naming:
+    field: Callable[[str, str], str]
+    reserved: Callable[[Field, Sequence[Field]], Collection[str]]
+    value: Callable[[str], str] | None = None
+    values: frozenset[str] = frozenset()
+
+
+def check_fields(owner: str, where: str, fields: Sequence[Field], places: Mapping[str, str], namings: Mapping[str, Naming]) -> None:
+    for f in fields:
+        if not IDENTIFIER.fullmatch(f.name):
+            raise ValueError(f"{places[f.name]}: property {f.name!r} of {owner} is not an identifier ([A-Za-z][A-Za-z0-9_]*)")
+    for language, naming in namings.items():
+        taken: dict[str, str] = {}
+        for f in fields:
+            name = naming.field(owner, f.name)
+            if name in naming.reserved(f, fields):
+                raise ValueError(f"{places[f.name]}: property {f.name!r} of {owner} becomes the {language} name {name}, which the generated code already uses")
+            if name in taken:
+                raise ValueError(f"{where}: properties {taken[name]!r} and {f.name!r} of {owner} both become the {language} name {name}")
+            taken[name] = f.name
+
+
+def check_values(enum: Enum, where: str, namings: Mapping[str, Naming]) -> None:
+    for v in enum.values:
+        if not IDENTIFIER.fullmatch(value_name(v)):
+            raise ValueError(f"{where}: enum value {v!r} of {enum.name} does not start with a letter, so it has no identifier")
+    for language, naming in namings.items():
+        if naming.value is None:
+            continue
+        taken: dict[str, str] = {}
+        for v in enum.values:
+            name = naming.value(v)
+            if name in naming.values:
+                raise ValueError(f"{where}: enum value {v!r} of {enum.name} becomes the {language} name {name}, which the generated code already uses")
+            if name in taken:
+                raise ValueError(f"{where}: enum values {taken[name]!r} and {v!r} of {enum.name} both become the {language} name {name}")
+            taken[name] = v
 
 
 def pascal(name: str) -> str:
@@ -337,7 +384,7 @@ def check(schemas: Mapping[str, dict], name: str) -> None:
     {"object": object_, "union": union, "scalar": value}[kind(body)](body, [])
 
 
-def parse(schemas: Mapping[str, dict], roots: Sequence[str]) -> Model:
+def parse(schemas: Mapping[str, dict], roots: Sequence[str], namings: Mapping[str, Naming] = {}) -> Model:
     for name in schemas:
         check(schemas, name)
     objects: dict[str, Object] = {}
@@ -350,37 +397,45 @@ def parse(schemas: Mapping[str, dict], roots: Sequence[str]) -> Model:
         sources[name] = origin
         return name
 
-    def flatten(body: dict) -> tuple[dict, set, tuple[str, ...]]:
+    def flatten(body: dict, where: str) -> tuple[dict, set, tuple[str, ...], dict]:
         properties: dict = {}
         required: set = set()
+        places: dict = {}
         exactly_one = selector(body)
         for part in body.get("allOf", ()):
-            base_properties, base_required, base_selector = flatten(schemas[ref_name(part)])
+            base_properties, base_required, base_selector, base_places = flatten(schemas[ref_name(part)], f"{ref_name(part)}.json#")
             properties |= base_properties
             required |= base_required
+            places |= base_places
             exactly_one = exactly_one or base_selector
-        return properties | body.get("properties", {}), required | set(body.get("required", ())), exactly_one
+        own = body.get("properties", {})
+        places |= {key: f"{where}/properties/{key}" for key in own}
+        return properties | own, required | set(body.get("required", ())), exactly_one, places
 
-    def add_object(name: str, body: dict) -> str:
-        properties, required, exactly_one = flatten(body)
+    def add_object(name: str, body: dict, where: str) -> str:
+        properties, required, exactly_one, places = flatten(body, where)
         fields = tuple(
-            Field(key, type_of(prop, name + pascal(key)), key in required, prop.get("not", {}).get("const")) for key, prop in properties.items()
+            Field(key, type_of(prop, name + pascal(key), places[key]), key in required, prop.get("not", {}).get("const"))
+            for key, prop in properties.items()
         )
+        check_fields(name, where, [f for f in fields if not isinstance(f.type, Const)], places, namings)
         objects[claim(name)] = Object(name, fields, exactly_one, body.get("additionalProperties") is False)
         return name
 
-    def type_of(prop: dict, hint: str) -> Type:
+    def type_of(prop: dict, hint: str, where: str) -> Type:
         if "$ref" in prop:
             target = schemas[ref_name(prop)]
-            return type_of(target, hint) if kind(target) == "scalar" else Ref(pascal(ref_name(prop)))
+            return type_of(target, hint, f"{ref_name(prop)}.json#") if kind(target) == "scalar" else Ref(pascal(ref_name(prop)))
         if "const" in prop:
             return Const(prop["const"])
         if "enum" in prop:
-            return Enum(tuple(prop["enum"]), claim(hint))
+            enum = Enum(tuple(prop["enum"]), claim(hint))
+            check_values(enum, where, namings)
+            return enum
         if prop["type"] == "array":
-            return Array(type_of(prop["items"], singular(hint)))
+            return Array(type_of(prop["items"], singular(hint), f"{where}/items"))
         if prop["type"] == "object":
-            return Ref(add_object(hint, prop)) if "properties" in prop else Free()
+            return Ref(add_object(hint, prop, where)) if "properties" in prop else Free()
         if any(key in prop for key in LIMITS):
             return Constrained(
                 prop["type"], prop.get("minimum"), prop.get("exclusiveMinimum"), prop.get("exclusiveMaximum"), prop.get("minLength")
@@ -392,7 +447,7 @@ def parse(schemas: Mapping[str, dict], roots: Sequence[str]) -> Model:
         names = []
         for i, item in enumerate(body["oneOf"]):
             origin = f"{name}.json#/oneOf/{i}"
-            names.append(pascal(ref_name(item)) if "$ref" in item else add_object(pascal(name) + variant_suffix(item), item))
+            names.append(pascal(ref_name(item)) if "$ref" in item else add_object(pascal(name) + variant_suffix(item), item, origin))
         return names
 
     for name, body in schemas.items():
@@ -403,7 +458,7 @@ def parse(schemas: Mapping[str, dict], roots: Sequence[str]) -> Model:
     for name, body in schemas.items():
         if kind(body) == "object":
             origin = f"{name}.json#"
-            add_object(pascal(name), body)
+            add_object(pascal(name), body, origin)
 
     def union_of(name: str, body: dict) -> Union:
         variants = variants_of(name, [objects[n] for n in variant_names(name, body)])
