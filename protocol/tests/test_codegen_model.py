@@ -416,7 +416,7 @@ def test_additional_properties_false_and_an_excluded_const_are_kept_in_the_model
     assert generate({"thing": marked}, ()) == generate({"thing": plain}, ())
 
 
-def test_the_model_lists_every_enum_once_sorted_by_name_including_array_items():
+def test_the_model_lists_every_enum_sorted_by_name_including_array_items():
     other = schema("other", {"type": "object", "properties": {"mode": {"enum": ["on", "off"]}}})
     things = thing(level={"enum": ["low"]}, tags={"type": "array", "items": {"enum": ["a"]}}, name={"type": "string"})
 

@@ -160,7 +160,7 @@ class Model:
         for obj in self.objects:
             for f in obj.fields:
                 walk(f.type)
-        return tuple(sorted({e.name: e for e in found}.values(), key=lambda e: e.name))
+        return tuple(sorted(found, key=lambda e: e.name))
 
     def unions_of(self, obj: Object) -> list[str]:
         return [u.name for u in self.unions if any(v.name == obj.name for v in u.variants)]
