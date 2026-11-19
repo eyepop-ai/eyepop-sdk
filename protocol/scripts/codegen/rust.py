@@ -1,6 +1,6 @@
 import re
 
-from .model import Always, Array, Const, Enum, Field, Free, Key, Model, Object, Ref, Tag, Type, Union, Variant
+from .model import Always, Array, Const, Constrained, Enum, Field, Free, Key, Model, Object, Ref, Tag, Type, Union, Variant
 
 HEADER = """// Generated from protocol/schema by protocol/scripts/generate.py. Do not edit.
 #![allow(dead_code, non_snake_case, clippy::all)]
@@ -29,9 +29,12 @@ fn parse_string(value: &Value) -> std::result::Result<String, DecodeError> {
 }
 
 fn parse_integer(value: &Value) -> std::result::Result<i64, DecodeError> {
-    match value.as_i64() {
-        Some(number) => Ok(number),
-        None => fail(format!("expected an integer, got {value}")),
+    if let Some(number) = value.as_i64() {
+        return Ok(number);
+    }
+    match value.as_f64() {
+        Some(number) if number.fract() == 0.0 && number.abs() < 9.2e18 => Ok(number as i64),
+        _ => fail(format!("expected an integer, got {value}")),
     }
 }
 
@@ -46,6 +49,41 @@ fn parse_boolean(value: &Value) -> std::result::Result<bool, DecodeError> {
     match value {
         Value::Bool(flag) => Ok(*flag),
         _ => fail(format!("expected a boolean, got {value}")),
+    }
+}
+
+fn limit<T>(
+    parse: impl Fn(&Value) -> std::result::Result<T, DecodeError>,
+    measure: impl Fn(&T) -> f64,
+    minimum: Option<f64>,
+    exclusive_minimum: Option<f64>,
+    exclusive_maximum: Option<f64>,
+) -> impl Fn(&Value) -> std::result::Result<T, DecodeError> {
+    move |value| {
+        let parsed = parse(value)?;
+        let size = measure(&parsed);
+        if minimum.is_some_and(|bound| size < bound)
+            || exclusive_minimum.is_some_and(|bound| size <= bound)
+            || exclusive_maximum.is_some_and(|bound| size >= bound)
+        {
+            return fail(format!("{value} is out of range"));
+        }
+        Ok(parsed)
+    }
+}
+
+fn exactly_one(obj: &Map<String, Value>, keys: &[&str]) -> std::result::Result<(), DecodeError> {
+    let present = keys.iter().filter(|key| obj.contains_key(**key)).count();
+    if present == 1 {
+        Ok(())
+    } else {
+        fail(format!("expected exactly one of {keys:?}, got {present}"))
+    }
+}
+
+fn put_number(out: &mut Map<String, Value>, key: &str, number: f64) {
+    if out.get(key).and_then(Value::as_f64) != Some(number) {
+        out.insert(key.to_string(), number_to_json(number));
     }
 }
 
@@ -135,6 +173,8 @@ def field_name(name: str) -> str:
 
 def rust_type(type_: Type) -> str:
     match type_:
+        case Constrained(kind):
+            return RUST_TYPES[kind]
         case Enum(_, name):
             return name
         case Free():
@@ -147,8 +187,16 @@ def rust_type(type_: Type) -> str:
             return RUST_TYPES[type_]
 
 
+def bound(value: float | None) -> str:
+    return "None" if value is None else f"Some({float(value)!r})"
+
+
 def parser(type_: Type) -> str:
     match type_:
+        case Constrained(kind, minimum, exclusive_minimum, exclusive_maximum, min_length):
+            measure = "|text: &String| text.chars().count() as f64" if kind == "string" else "|n| *n as f64"
+            low = float(min_length) if min_length is not None else minimum
+            return f"limit({PARSERS[kind]}, {measure}, {bound(low)}, {bound(exclusive_minimum)}, {bound(exclusive_maximum)})"
         case Const(value):
             return f"parse_const({value!r})".replace("'", '"')
         case Enum(_, name):
@@ -165,6 +213,8 @@ def parser(type_: Type) -> str:
 
 def dump(type_: Type, ref: str) -> str:
     match type_:
+        case Constrained(kind):
+            return dump(kind, ref)
         case Enum() | Ref():
             return f"{ref}.to_json()"
         case Free():
@@ -217,6 +267,9 @@ def emit_object(obj: Object) -> str:
         for f in typed
     )
     checks = "".join(f'        required(obj, "{f.name}", {parser(f.type)})?;\n' for f in consts)
+    if obj.exactly_one:
+        keys = ", ".join(f'"{k}"' for k in obj.exactly_one)
+        checks += f"        exactly_one(obj, &[{keys}])?;\n"
     reads = "\n".join(
         f'            {field_name(f.name)}: {"required" if f.required else "optional"}(obj, "{f.name}", {parser(f.type)})?,'
         for f in typed
@@ -224,11 +277,20 @@ def emit_object(obj: Object) -> str:
     writes = []
     for f in typed:
         name = f"self.{field_name(f.name)}"
+        is_number = f.type == "number" or (isinstance(f.type, Constrained) and f.type.kind == "number")
         if f.required:
-            writes.append(f'        out.insert("{f.name}".to_string(), {dump(f.type, f"(&{name})")});')
+            if is_number:
+                writes.append(f'        put_number(&mut out, "{f.name}", {name});')
+            else:
+                writes.append(f'        out.insert("{f.name}".to_string(), {dump(f.type, f"(&{name})")});')
         else:
+            put = (
+                f'put_number(&mut out, "{f.name}", *x);'
+                if is_number
+                else f'out.insert("{f.name}".to_string(), {dump(f.type, "x")});'
+            )
             writes.append(
-                f'        if let Some(x) = &{name} {{\n            out.insert("{f.name}".to_string(), {dump(f.type, "x")});\n        }}'
+                f'        if let Some(x) = &{name} {{\n            {put}\n        }} else {{\n            out.remove("{f.name}");\n        }}'
             )
     writes += [f'        out.insert("{f.name}".to_string(), Value::from("{f.type.value}"));' for f in consts]
     return f"""

@@ -1,12 +1,13 @@
 import re
 
-from .model import Always, Array, Const, Enum, Field, Free, Key, Model, Object, Ref, Tag, Type, Union, Variant, pascal
+from .model import Always, Array, Const, Constrained, Enum, Field, Free, Key, Model, Object, Ref, Tag, Type, Union, Variant, pascal
 
 HEADER = """// Generated from protocol/schema by protocol/scripts/generate.py. Do not edit.
 
 package eyepop
 
 import (
+	"encoding/json"
 	"fmt"
 	"math"
 )
@@ -27,20 +28,50 @@ func parseString(value any) (string, error) {
 	return text, nil
 }
 
-func parseInteger(value any) (int64, error) {
-	number, ok := value.(float64)
-	if !ok || number != math.Trunc(number) {
-		return 0, fmt.Errorf("expected an integer, got %v", value)
+func wholeInt64(number float64) (int64, bool) {
+	if number != math.Trunc(number) || math.Abs(number) >= 9.2e18 {
+		return 0, false
 	}
-	return int64(number), nil
+	return int64(number), true
+}
+
+func parseInteger(value any) (int64, error) {
+	switch number := value.(type) {
+	case int64:
+		return number, nil
+	case int:
+		return int64(number), nil
+	case float64:
+		if whole, ok := wholeInt64(number); ok {
+			return whole, nil
+		}
+	case json.Number:
+		if exact, err := number.Int64(); err == nil {
+			return exact, nil
+		}
+		if approximate, err := number.Float64(); err == nil {
+			if whole, ok := wholeInt64(approximate); ok {
+				return whole, nil
+			}
+		}
+	}
+	return 0, fmt.Errorf("expected an integer, got %v", value)
 }
 
 func parseNumber(value any) (float64, error) {
-	number, ok := value.(float64)
-	if !ok {
-		return 0, fmt.Errorf("expected a number, got %v", value)
+	switch number := value.(type) {
+	case float64:
+		return number, nil
+	case int64:
+		return float64(number), nil
+	case int:
+		return float64(number), nil
+	case json.Number:
+		if parsed, err := number.Float64(); err == nil {
+			return parsed, nil
+		}
 	}
-	return number, nil
+	return 0, fmt.Errorf("expected a number, got %v", value)
 }
 
 func parseBoolean(value any) (bool, error) {
@@ -52,7 +83,74 @@ func parseBoolean(value any) (bool, error) {
 }
 
 func parseFree(value any) (map[string]any, error) {
-	return parseObject(value)
+	obj, err := parseObject(value)
+	if err != nil {
+		return nil, err
+	}
+	return copyMap(obj), nil
+}
+
+type bound struct {
+	set   bool
+	value float64
+}
+
+var noBound = bound{}
+
+func at(value float64) bound {
+	return bound{set: true, value: value}
+}
+
+func limitNumeric[T int64 | float64](parse func(any) (T, error), minimum, exclusiveMinimum, exclusiveMaximum bound) func(any) (T, error) {
+	return func(value any) (T, error) {
+		parsed, err := parse(value)
+		if err != nil {
+			return parsed, err
+		}
+		size := float64(parsed)
+		if (minimum.set && size < minimum.value) ||
+			(exclusiveMinimum.set && size <= exclusiveMinimum.value) ||
+			(exclusiveMaximum.set && size >= exclusiveMaximum.value) {
+			var zero T
+			return zero, fmt.Errorf("%v is out of range", value)
+		}
+		return parsed, nil
+	}
+}
+
+func limitString(parse func(any) (string, error), minLength int) func(any) (string, error) {
+	return func(value any) (string, error) {
+		parsed, err := parse(value)
+		if err != nil {
+			return parsed, err
+		}
+		if len([]rune(parsed)) < minLength {
+			return "", fmt.Errorf("shorter than %d", minLength)
+		}
+		return parsed, nil
+	}
+}
+
+func exactlyOne(obj map[string]any, keys ...string) error {
+	present := 0
+	for _, key := range keys {
+		if _, ok := obj[key]; ok {
+			present++
+		}
+	}
+	if present != 1 {
+		return fmt.Errorf("expected exactly one of %v, got %d", keys, present)
+	}
+	return nil
+}
+
+func putNumber(out map[string]any, key string, number float64) {
+	if existing, ok := out[key]; ok {
+		if current, err := parseNumber(existing); err == nil && current == number {
+			return
+		}
+	}
+	out[key] = number
 }
 
 func parseConst(expected string) func(any) (string, error) {
@@ -117,10 +215,25 @@ func hasKey(obj map[string]any, key string) bool {
 	return ok
 }
 
+func deepCopy(value any) any {
+	switch typed := value.(type) {
+	case map[string]any:
+		return copyMap(typed)
+	case []any:
+		out := make([]any, len(typed))
+		for i, element := range typed {
+			out[i] = deepCopy(element)
+		}
+		return out
+	default:
+		return value
+	}
+}
+
 func copyMap(source map[string]any) map[string]any {
 	out := make(map[string]any, len(source))
 	for key, value := range source {
-		out[key] = value
+		out[key] = deepCopy(value)
 	}
 	return out
 }
@@ -168,6 +281,8 @@ def variant_name(value: str) -> str:
 
 def go_type(type_: Type) -> str:
     match type_:
+        case Constrained(kind):
+            return GO_TYPES[kind]
         case Enum(_, name):
             return name
         case Free():
@@ -180,8 +295,16 @@ def go_type(type_: Type) -> str:
             return GO_TYPES[type_]
 
 
+def bound(value: float | None) -> str:
+    return "noBound" if value is None else f"at({value!r})"
+
+
 def parser(type_: Type) -> str:
     match type_:
+        case Constrained("string", _, _, _, min_length):
+            return f"limitString(parseString, {min_length or 0})"
+        case Constrained(kind, minimum, exclusive_minimum, exclusive_maximum, _):
+            return f"limitNumeric({PARSERS[kind]}, {bound(minimum)}, {bound(exclusive_minimum)}, {bound(exclusive_maximum)})"
         case Const(value):
             return f'parseConst("{value}")'
         case Enum(_, name):
@@ -210,7 +333,9 @@ def dump(type_: Type, expr: str) -> str:
             return f"string({expr})"
         case Ref():
             return f"{expr}.ToJSON()"
-        case Array(item) if isinstance(item, (Ref, Enum, Array)):
+        case Free():
+            return f"deepCopy({expr})"
+        case Array(item):
             return f"mapList({expr}, func(x {go_type(item)}) any {{ return {dump(item, 'x')} }})"
         case _:
             return expr
@@ -261,17 +386,26 @@ def emit_object(obj: Object, unions: list[str]) -> str:
         f'\tif _, err := required(obj, "{f.name}", {parser(f.type)}); err != nil {{\n\t\treturn {obj.name}{{}}, err\n\t}}\n'
         for f in consts
     )
+    if obj.exactly_one:
+        keys = ", ".join(f'"{k}"' for k in obj.exactly_one)
+        checks += f"\tif err := exactlyOne(obj, {keys}); err != nil {{\n\t\treturn {obj.name}{{}}, err\n\t}}\n"
     writes = []
     for f in typed:
         field = f"v.{pascal(f.name)}"
+        is_number = f.type == "number" or (isinstance(f.type, Constrained) and f.type.kind == "number")
         if f.required:
-            writes.append(f'\tout["{f.name}"] = {dump(f.type, field)}')
-        elif is_plain(f.type):
-            writes.append(f'\tif {field} != nil {{\n\t\tout["{f.name}"] = {dump(f.type, "(*" + field + ")")}\n\t}}')
+            writes.append(
+                f'\tputNumber(out, "{f.name}", {field})' if is_number else f'\tout["{f.name}"] = {dump(f.type, field)}'
+            )
         else:
-            writes.append(f'\tif {field} != nil {{\n\t\tout["{f.name}"] = {dump(f.type, field)}\n\t}}')
+            absent = f'\n\t}} else {{\n\t\tdelete(out, "{f.name}")\n\t}}'
+            if is_plain(f.type):
+                put = f'putNumber(out, "{f.name}", *{field})' if is_number else f'out["{f.name}"] = {dump(f.type, "(*" + field + ")")}'
+            else:
+                put = f'out["{f.name}"] = {dump(f.type, field)}'
+            writes.append(f"\tif {field} != nil {{\n\t\t{put}{absent}")
     writes += [f'\tout["{f.name}"] = "{f.type.value}"' for f in consts]
-    inits.append("Raw: obj")
+    inits.append("Raw: copyMap(obj)")
     markers = "\n".join(f"func ({obj.name}) is{u}() {{}}" for u in unions)
     first = "\n".join(reads)
     return f"""
@@ -334,7 +468,7 @@ func Decode{name}(value any) {name} {{
 	parsed, err := {name}FromJSON(value)
 	if err != nil {{
 		raw, _ := value.(map[string]any)
-		return Unknown{name}{{Raw: raw}}
+		return Unknown{name}{{Raw: copyMap(raw)}}
 	}}
 	return parsed
 }}

@@ -48,3 +48,44 @@ fn every_valid_example_decodes_to_a_known_variant_and_encodes_back_unchanged() {
     }
     assert!(seen > 30);
 }
+
+#[test]
+fn decoding_cases_are_known_or_unknown_and_keep_exact_numbers() {
+    let path = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../../protocol/examples/decoding.json"
+    );
+    let cases: Vec<Value> = serde_json::from_str(&fs::read_to_string(path).unwrap()).unwrap();
+    for case in cases {
+        let name = case["name"].as_str().unwrap();
+        let data: Value = serde_json::from_str(case["text"].as_str().unwrap()).unwrap();
+        let (known, encoded) = if case["union"] == "command" {
+            let command = Command::decode(&data);
+            (!matches!(command, Command::Unknown(_)), command.to_json())
+        } else {
+            let message = Message::decode(&data);
+            (!matches!(message, Message::Unknown(_)), message.to_json())
+        };
+        assert_eq!(known, case["known"].as_bool().unwrap(), "{name}");
+        if let Some(keeps) = case.get("keeps") {
+            assert!(
+                encoded.to_string().contains(keeps.as_str().unwrap()),
+                "{name}: {encoded}"
+            );
+        }
+    }
+}
+
+#[test]
+fn a_field_set_to_none_is_removed_from_the_retained_json() {
+    let data: Value = serde_json::from_str(r#"{"type":"setSource","id":"s1","url":"u"}"#).unwrap();
+    let Command::SetSource(mut source) = Command::decode(&data) else {
+        panic!("not a setSource");
+    };
+    source.url = None;
+    source.assetUuid = Some("a".to_string());
+
+    let expected: Value =
+        serde_json::from_str(r#"{"type":"setSource","id":"s1","assetUuid":"a"}"#).unwrap();
+    assert_eq!(Command::SetSource(source).to_json(), expected);
+}

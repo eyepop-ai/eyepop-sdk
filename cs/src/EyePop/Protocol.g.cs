@@ -14,16 +14,70 @@ internal static class Wire
     public static string String(JsonNode? value) =>
         value is JsonValue v && v.TryGetValue<string>(out var text) ? text : throw new FormatException($"expected a string, got {Show(value)}");
 
-    public static long Integer(JsonNode? value) =>
-        value is JsonValue v && v.TryGetValue<long>(out var number) ? number : throw new FormatException($"expected an integer, got {Show(value)}");
+    public static long Integer(JsonNode? value)
+    {
+        if (value is JsonValue v)
+        {
+            if (v.TryGetValue<long>(out var exact)) return exact;
+            if (v.TryGetValue<int>(out var small)) return small;
+            if (v.TryGetValue<double>(out var approximate) && approximate == Math.Truncate(approximate) && Math.Abs(approximate) < 9.2e18)
+                return (long)approximate;
+        }
+        throw new FormatException($"expected an integer, got {Show(value)}");
+    }
+
+    public static bool TryNumber(JsonNode? value, out double number)
+    {
+        number = 0;
+        if (value is not JsonValue v) return false;
+        if (v.TryGetValue<double>(out number)) return true;
+        if (v.TryGetValue<long>(out var exact)) { number = exact; return true; }
+        if (v.TryGetValue<int>(out var small)) { number = small; return true; }
+        return false;
+    }
 
     public static double Number(JsonNode? value) =>
-        value is JsonValue v && v.TryGetValue<double>(out var number) ? number : throw new FormatException($"expected a number, got {Show(value)}");
+        TryNumber(value, out var number) ? number : throw new FormatException($"expected a number, got {Show(value)}");
 
     public static bool Boolean(JsonNode? value) =>
         value is JsonValue v && v.TryGetValue<bool>(out var flag) ? flag : throw new FormatException($"expected a boolean, got {Show(value)}");
 
-    public static JsonObject Free(JsonNode? value) => Object(value);
+    public static JsonObject Free(JsonNode? value) => Snapshot(value);
+
+    public static JsonObject Snapshot(JsonNode? value) => (JsonObject)Object(value).DeepClone();
+
+    public static JsonObject SnapshotOrEmpty(JsonNode? value) =>
+        value is JsonObject obj ? (JsonObject)obj.DeepClone() : new JsonObject();
+
+    public static Func<JsonNode?, T> Limit<T>(
+        Func<JsonNode?, T> parse,
+        double? minimum = null,
+        double? exclusiveMinimum = null,
+        double? exclusiveMaximum = null,
+        int? minLength = null) =>
+        value =>
+        {
+            var parsed = parse(value);
+            var outOfRange = parsed is string text
+                ? minLength is { } length && text.Length < length
+                : Convert.ToDouble(parsed) is var size
+                    && ((minimum is { } low && size < low)
+                        || (exclusiveMinimum is { } above && size <= above)
+                        || (exclusiveMaximum is { } below && size >= below));
+            return outOfRange ? throw new FormatException($"{Show(value)} is out of range") : parsed;
+        };
+
+    public static void ExactlyOne(JsonObject obj, params string[] keys)
+    {
+        var present = keys.Count(obj.ContainsKey);
+        if (present != 1) throw new FormatException($"expected exactly one of {string.Join(", ", keys)}, got {present}");
+    }
+
+    public static void PutNumber(JsonObject result, string key, double number)
+    {
+        if (result.TryGetPropertyValue(key, out var existing) && TryNumber(existing, out var current) && current == number) return;
+        result[key] = number;
+    }
 
     public static Func<JsonNode?, string> Const(string expected) =>
         value => String(value) == expected ? expected : throw new FormatException($"expected \"{expected}\", got {Show(value)}");
@@ -136,7 +190,8 @@ public sealed record Ability(string? AbilityValue = null, string? AbilityUuid = 
 {
     public static Ability FromJson(JsonNode? value)
     {
-        var obj = Wire.Object(value);
+        var obj = Wire.Snapshot(value);
+        Wire.ExactlyOne(obj, "ability", "abilityUuid");
         return new Ability(Wire.Optional(obj, "ability", Wire.String), Wire.Optional(obj, "abilityUuid", Wire.String), Wire.Optional(obj, "params", Wire.Free), obj);
     }
 
@@ -144,8 +199,11 @@ public sealed record Ability(string? AbilityValue = null, string? AbilityUuid = 
     {
         var result = Wire.Copy(Raw);
         if (AbilityValue is not null) result["ability"] = JsonValue.Create(AbilityValue!);
+        else result.Remove("ability");
         if (AbilityUuid is not null) result["abilityUuid"] = JsonValue.Create(AbilityUuid!);
+        else result.Remove("abilityUuid");
         if (Params is not null) result["params"] = Params!.DeepClone();
+        else result.Remove("params");
         return result;
     }
 }
@@ -155,17 +213,17 @@ public sealed record CameraIntrinsics(double Fx, double Fy, double Cx, double Cy
 {
     public static CameraIntrinsics FromJson(JsonNode? value)
     {
-        var obj = Wire.Object(value);
+        var obj = Wire.Snapshot(value);
         return new CameraIntrinsics(Wire.Required(obj, "fx", Wire.Number), Wire.Required(obj, "fy", Wire.Number), Wire.Required(obj, "cx", Wire.Number), Wire.Required(obj, "cy", Wire.Number), obj);
     }
 
     public JsonNode ToJson()
     {
         var result = Wire.Copy(Raw);
-        result["fx"] = JsonValue.Create(Fx);
-        result["fy"] = JsonValue.Create(Fy);
-        result["cx"] = JsonValue.Create(Cx);
-        result["cy"] = JsonValue.Create(Cy);
+        Wire.PutNumber(result, "fx", Fx);
+        Wire.PutNumber(result, "fy", Fy);
+        Wire.PutNumber(result, "cx", Cx);
+        Wire.PutNumber(result, "cy", Cy);
         return result;
     }
 }
@@ -175,18 +233,23 @@ public sealed record CameraDistortion(double? K1 = null, double? K2 = null, doub
 {
     public static CameraDistortion FromJson(JsonNode? value)
     {
-        var obj = Wire.Object(value);
+        var obj = Wire.Snapshot(value);
         return new CameraDistortion(Wire.OptionalValue(obj, "k1", Wire.Number), Wire.OptionalValue(obj, "k2", Wire.Number), Wire.OptionalValue(obj, "p1", Wire.Number), Wire.OptionalValue(obj, "p2", Wire.Number), Wire.OptionalValue(obj, "k3", Wire.Number), obj);
     }
 
     public JsonNode ToJson()
     {
         var result = Wire.Copy(Raw);
-        if (K1 is not null) result["k1"] = JsonValue.Create(K1!.Value);
-        if (K2 is not null) result["k2"] = JsonValue.Create(K2!.Value);
-        if (P1 is not null) result["p1"] = JsonValue.Create(P1!.Value);
-        if (P2 is not null) result["p2"] = JsonValue.Create(P2!.Value);
-        if (K3 is not null) result["k3"] = JsonValue.Create(K3!.Value);
+        if (K1 is not null) Wire.PutNumber(result, "k1", K1!.Value);
+        else result.Remove("k1");
+        if (K2 is not null) Wire.PutNumber(result, "k2", K2!.Value);
+        else result.Remove("k2");
+        if (P1 is not null) Wire.PutNumber(result, "p1", P1!.Value);
+        else result.Remove("p1");
+        if (P2 is not null) Wire.PutNumber(result, "p2", P2!.Value);
+        else result.Remove("p2");
+        if (K3 is not null) Wire.PutNumber(result, "k3", K3!.Value);
+        else result.Remove("k3");
         return result;
     }
 }
@@ -196,17 +259,17 @@ public sealed record CameraExtrinsicsRotation(double W, double X, double Y, doub
 {
     public static CameraExtrinsicsRotation FromJson(JsonNode? value)
     {
-        var obj = Wire.Object(value);
+        var obj = Wire.Snapshot(value);
         return new CameraExtrinsicsRotation(Wire.Required(obj, "w", Wire.Number), Wire.Required(obj, "x", Wire.Number), Wire.Required(obj, "y", Wire.Number), Wire.Required(obj, "z", Wire.Number), obj);
     }
 
     public JsonNode ToJson()
     {
         var result = Wire.Copy(Raw);
-        result["w"] = JsonValue.Create(W);
-        result["x"] = JsonValue.Create(X);
-        result["y"] = JsonValue.Create(Y);
-        result["z"] = JsonValue.Create(Z);
+        Wire.PutNumber(result, "w", W);
+        Wire.PutNumber(result, "x", X);
+        Wire.PutNumber(result, "y", Y);
+        Wire.PutNumber(result, "z", Z);
         return result;
     }
 }
@@ -216,16 +279,16 @@ public sealed record CameraExtrinsicsTranslation(double X, double Y, double Z, J
 {
     public static CameraExtrinsicsTranslation FromJson(JsonNode? value)
     {
-        var obj = Wire.Object(value);
+        var obj = Wire.Snapshot(value);
         return new CameraExtrinsicsTranslation(Wire.Required(obj, "x", Wire.Number), Wire.Required(obj, "y", Wire.Number), Wire.Required(obj, "z", Wire.Number), obj);
     }
 
     public JsonNode ToJson()
     {
         var result = Wire.Copy(Raw);
-        result["x"] = JsonValue.Create(X);
-        result["y"] = JsonValue.Create(Y);
-        result["z"] = JsonValue.Create(Z);
+        Wire.PutNumber(result, "x", X);
+        Wire.PutNumber(result, "y", Y);
+        Wire.PutNumber(result, "z", Z);
         return result;
     }
 }
@@ -235,7 +298,7 @@ public sealed record CameraExtrinsics(CameraExtrinsicsRotation? Rotation = null,
 {
     public static CameraExtrinsics FromJson(JsonNode? value)
     {
-        var obj = Wire.Object(value);
+        var obj = Wire.Snapshot(value);
         return new CameraExtrinsics(Wire.Optional(obj, "rotation", CameraExtrinsicsRotation.FromJson), Wire.Optional(obj, "translation", CameraExtrinsicsTranslation.FromJson), obj);
     }
 
@@ -243,7 +306,9 @@ public sealed record CameraExtrinsics(CameraExtrinsicsRotation? Rotation = null,
     {
         var result = Wire.Copy(Raw);
         if (Rotation is not null) result["rotation"] = Rotation!.ToJson();
+        else result.Remove("rotation");
         if (Translation is not null) result["translation"] = Translation!.ToJson();
+        else result.Remove("translation");
         return result;
     }
 }
@@ -253,17 +318,22 @@ public sealed record Camera(CameraIntrinsics? Intrinsics = null, double? HfovDeg
 {
     public static Camera FromJson(JsonNode? value)
     {
-        var obj = Wire.Object(value);
-        return new Camera(Wire.Optional(obj, "intrinsics", CameraIntrinsics.FromJson), Wire.OptionalValue(obj, "hfovDegrees", Wire.Number), Wire.Optional(obj, "distortion", CameraDistortion.FromJson), Wire.Optional(obj, "extrinsics", CameraExtrinsics.FromJson), obj);
+        var obj = Wire.Snapshot(value);
+        Wire.ExactlyOne(obj, "intrinsics", "hfovDegrees");
+        return new Camera(Wire.Optional(obj, "intrinsics", CameraIntrinsics.FromJson), Wire.OptionalValue(obj, "hfovDegrees", Wire.Limit(Wire.Number, exclusiveMinimum: 0.0, exclusiveMaximum: 180.0)), Wire.Optional(obj, "distortion", CameraDistortion.FromJson), Wire.Optional(obj, "extrinsics", CameraExtrinsics.FromJson), obj);
     }
 
     public JsonNode ToJson()
     {
         var result = Wire.Copy(Raw);
         if (Intrinsics is not null) result["intrinsics"] = Intrinsics!.ToJson();
-        if (HfovDegrees is not null) result["hfovDegrees"] = JsonValue.Create(HfovDegrees!.Value);
+        else result.Remove("intrinsics");
+        if (HfovDegrees is not null) Wire.PutNumber(result, "hfovDegrees", HfovDegrees!.Value);
+        else result.Remove("hfovDegrees");
         if (Distortion is not null) result["distortion"] = Distortion!.ToJson();
+        else result.Remove("distortion");
         if (Extrinsics is not null) result["extrinsics"] = Extrinsics!.ToJson();
+        else result.Remove("extrinsics");
         return result;
     }
 }
@@ -273,7 +343,7 @@ public sealed record ComponentParams(long ComponentId, JsonObject Values, JsonOb
 {
     public static ComponentParams FromJson(JsonNode? value)
     {
-        var obj = Wire.Object(value);
+        var obj = Wire.Snapshot(value);
         return new ComponentParams(Wire.Required(obj, "componentId", Wire.Integer), Wire.Required(obj, "values", Wire.Free), obj);
     }
 
@@ -291,9 +361,9 @@ public sealed record Credit(string Id, long Bytes, long? Member = null, JsonObje
 {
     public static new Credit FromJson(JsonNode? value)
     {
-        var obj = Wire.Object(value);
+        var obj = Wire.Snapshot(value);
         Wire.Required(obj, "type", Wire.Const("credit"));
-        return new Credit(Wire.Required(obj, "id", Wire.String), Wire.Required(obj, "bytes", Wire.Integer), Wire.OptionalValue(obj, "member", Wire.Integer), obj);
+        return new Credit(Wire.Required(obj, "id", Wire.Limit(Wire.String, minLength: 1)), Wire.Required(obj, "bytes", Wire.Limit(Wire.Integer, minimum: 0.0)), Wire.OptionalValue(obj, "member", Wire.Limit(Wire.Integer, minimum: 0.0)), obj);
     }
 
     public override JsonNode ToJson()
@@ -302,6 +372,7 @@ public sealed record Credit(string Id, long Bytes, long? Member = null, JsonObje
         result["id"] = JsonValue.Create(Id);
         result["bytes"] = JsonValue.Create(Bytes);
         if (Member is not null) result["member"] = JsonValue.Create(Member!.Value);
+        else result.Remove("member");
         result["type"] = "credit";
         return result;
     }
@@ -312,7 +383,7 @@ public sealed record Done(JsonObject? Raw = null) : Message
 {
     public static new Done FromJson(JsonNode? value)
     {
-        var obj = Wire.Object(value);
+        var obj = Wire.Snapshot(value);
         Wire.Required(obj, "type", Wire.Const("done"));
         return new Done(obj);
     }
@@ -330,9 +401,9 @@ public sealed record Dropped(string Id, long Count, JsonObject? Raw = null) : Me
 {
     public static new Dropped FromJson(JsonNode? value)
     {
-        var obj = Wire.Object(value);
+        var obj = Wire.Snapshot(value);
         Wire.Required(obj, "type", Wire.Const("dropped"));
-        return new Dropped(Wire.Required(obj, "id", Wire.String), Wire.Required(obj, "count", Wire.Integer), obj);
+        return new Dropped(Wire.Required(obj, "id", Wire.Limit(Wire.String, minLength: 1)), Wire.Required(obj, "count", Wire.Limit(Wire.Integer, minimum: 0.0)), obj);
     }
 
     public override JsonNode ToJson()
@@ -350,9 +421,9 @@ public sealed record End(string Id, EndReason Reason, string? Message = null, lo
 {
     public static new End FromJson(JsonNode? value)
     {
-        var obj = Wire.Object(value);
+        var obj = Wire.Snapshot(value);
         Wire.Required(obj, "type", Wire.Const("end"));
-        return new End(Wire.Required(obj, "id", Wire.String), Wire.Required(obj, "reason", EndReasonWire.FromJson), Wire.Optional(obj, "message", Wire.String), Wire.OptionalValue(obj, "milliComputeUnits", Wire.Integer), obj);
+        return new End(Wire.Required(obj, "id", Wire.Limit(Wire.String, minLength: 1)), Wire.Required(obj, "reason", EndReasonWire.FromJson), Wire.Optional(obj, "message", Wire.String), Wire.OptionalValue(obj, "milliComputeUnits", Wire.Limit(Wire.Integer, minimum: 0.0)), obj);
     }
 
     public override JsonNode ToJson()
@@ -361,7 +432,9 @@ public sealed record End(string Id, EndReason Reason, string? Message = null, lo
         result["id"] = JsonValue.Create(Id);
         result["reason"] = JsonValue.Create(Reason.ToWire());
         if (Message is not null) result["message"] = JsonValue.Create(Message!);
+        else result.Remove("message");
         if (MilliComputeUnits is not null) result["milliComputeUnits"] = JsonValue.Create(MilliComputeUnits!.Value);
+        else result.Remove("milliComputeUnits");
         result["type"] = "end";
         return result;
     }
@@ -372,15 +445,16 @@ public sealed record Error(string ErrorValue, string Message, string? Id = null,
 {
     public static new Error FromJson(JsonNode? value)
     {
-        var obj = Wire.Object(value);
+        var obj = Wire.Snapshot(value);
         Wire.Required(obj, "type", Wire.Const("error"));
-        return new Error(Wire.Required(obj, "error", Wire.String), Wire.Required(obj, "message", Wire.String), Wire.Optional(obj, "id", Wire.String), obj);
+        return new Error(Wire.Required(obj, "error", Wire.Limit(Wire.String, minLength: 1)), Wire.Required(obj, "message", Wire.String), Wire.Optional(obj, "id", Wire.Limit(Wire.String, minLength: 1)), obj);
     }
 
     public override JsonNode ToJson()
     {
         var result = Wire.Copy(Raw);
         if (Id is not null) result["id"] = JsonValue.Create(Id!);
+        else result.Remove("id");
         result["error"] = JsonValue.Create(ErrorValue);
         result["message"] = JsonValue.Create(Message);
         result["type"] = "error";
@@ -393,9 +467,9 @@ public sealed record GetGraph(string Id, GetGraphFormat Format, bool? Verbose = 
 {
     public static new GetGraph FromJson(JsonNode? value)
     {
-        var obj = Wire.Object(value);
+        var obj = Wire.Snapshot(value);
         Wire.Required(obj, "type", Wire.Const("getGraph"));
-        return new GetGraph(Wire.Required(obj, "id", Wire.String), Wire.Required(obj, "format", GetGraphFormatWire.FromJson), Wire.OptionalValue(obj, "verbose", Wire.Boolean), obj);
+        return new GetGraph(Wire.Required(obj, "id", Wire.Limit(Wire.String, minLength: 1)), Wire.Required(obj, "format", GetGraphFormatWire.FromJson), Wire.OptionalValue(obj, "verbose", Wire.Boolean), obj);
     }
 
     public override JsonNode ToJson()
@@ -404,6 +478,7 @@ public sealed record GetGraph(string Id, GetGraphFormat Format, bool? Verbose = 
         result["id"] = JsonValue.Create(Id);
         result["format"] = JsonValue.Create(Format.ToWire());
         if (Verbose is not null) result["verbose"] = JsonValue.Create(Verbose!.Value);
+        else result.Remove("verbose");
         result["type"] = "getGraph";
         return result;
     }
@@ -414,8 +489,9 @@ public sealed record InferenceComponent(string? Ability = null, string? AbilityU
 {
     public static new InferenceComponent FromJson(JsonNode? value)
     {
-        var obj = Wire.Object(value);
+        var obj = Wire.Snapshot(value);
         Wire.Required(obj, "type", Wire.Const("inference"));
+        Wire.ExactlyOne(obj, "ability", "abilityUuid");
         return new InferenceComponent(Wire.Optional(obj, "ability", Wire.String), Wire.Optional(obj, "abilityUuid", Wire.String), Wire.Optional(obj, "params", Wire.Free), Wire.OptionalValue(obj, "id", Wire.Integer), obj);
     }
 
@@ -423,9 +499,13 @@ public sealed record InferenceComponent(string? Ability = null, string? AbilityU
     {
         var result = Wire.Copy(Raw);
         if (Ability is not null) result["ability"] = JsonValue.Create(Ability!);
+        else result.Remove("ability");
         if (AbilityUuid is not null) result["abilityUuid"] = JsonValue.Create(AbilityUuid!);
+        else result.Remove("abilityUuid");
         if (Params is not null) result["params"] = Params!.DeepClone();
+        else result.Remove("params");
         if (Id is not null) result["id"] = JsonValue.Create(Id!.Value);
+        else result.Remove("id");
         result["type"] = "inference";
         return result;
     }
@@ -436,9 +516,9 @@ public sealed record Ping(string Id, JsonObject? Raw = null) : Command
 {
     public static new Ping FromJson(JsonNode? value)
     {
-        var obj = Wire.Object(value);
+        var obj = Wire.Snapshot(value);
         Wire.Required(obj, "type", Wire.Const("ping"));
-        return new Ping(Wire.Required(obj, "id", Wire.String), obj);
+        return new Ping(Wire.Required(obj, "id", Wire.Limit(Wire.String, minLength: 1)), obj);
     }
 
     public override JsonNode ToJson()
@@ -455,9 +535,9 @@ public sealed record Pong(string Id, JsonObject? Raw = null) : Message
 {
     public static new Pong FromJson(JsonNode? value)
     {
-        var obj = Wire.Object(value);
+        var obj = Wire.Snapshot(value);
         Wire.Required(obj, "type", Wire.Const("pong"));
-        return new Pong(Wire.Required(obj, "id", Wire.String), obj);
+        return new Pong(Wire.Required(obj, "id", Wire.Limit(Wire.String, minLength: 1)), obj);
     }
 
     public override JsonNode ToJson()
@@ -474,7 +554,7 @@ public sealed record Pop(IReadOnlyList<PopComponent> Components, string? PostTra
 {
     public static Pop FromJson(JsonNode? value)
     {
-        var obj = Wire.Object(value);
+        var obj = Wire.Snapshot(value);
         return new Pop(Wire.Required(obj, "components", Wire.List(PopComponent.FromJson)), Wire.Optional(obj, "postTransform", Wire.String), Wire.Optional(obj, "defaults", SourceDefaults.FromJson), Wire.Optional(obj, "depthMap", PopDepthMap.FromJson), obj);
     }
 
@@ -483,8 +563,11 @@ public sealed record Pop(IReadOnlyList<PopComponent> Components, string? PostTra
         var result = Wire.Copy(Raw);
         result["components"] = new JsonArray(Components.Select(x => (JsonNode?)x.ToJson()).ToArray());
         if (PostTransform is not null) result["postTransform"] = JsonValue.Create(PostTransform!);
+        else result.Remove("postTransform");
         if (Defaults is not null) result["defaults"] = Defaults!.ToJson();
+        else result.Remove("defaults");
         if (DepthMap is not null) result["depthMap"] = DepthMap!.ToJson();
+        else result.Remove("depthMap");
         return result;
     }
 }
@@ -494,7 +577,8 @@ public sealed record PopDepthMap(string? Ability = null, string? AbilityUuid = n
 {
     public static PopDepthMap FromJson(JsonNode? value)
     {
-        var obj = Wire.Object(value);
+        var obj = Wire.Snapshot(value);
+        Wire.ExactlyOne(obj, "ability", "abilityUuid");
         return new PopDepthMap(Wire.Optional(obj, "ability", Wire.String), Wire.Optional(obj, "abilityUuid", Wire.String), Wire.OptionalValue(obj, "toWorld", Wire.Boolean), obj);
     }
 
@@ -502,8 +586,11 @@ public sealed record PopDepthMap(string? Ability = null, string? AbilityUuid = n
     {
         var result = Wire.Copy(Raw);
         if (Ability is not null) result["ability"] = JsonValue.Create(Ability!);
+        else result.Remove("ability");
         if (AbilityUuid is not null) result["abilityUuid"] = JsonValue.Create(AbilityUuid!);
+        else result.Remove("abilityUuid");
         if (ToWorld is not null) result["toWorld"] = JsonValue.Create(ToWorld!.Value);
+        else result.Remove("toWorld");
         return result;
     }
 }
@@ -513,9 +600,9 @@ public sealed record Prediction(string Id, JsonObject PredictionValue, JsonObjec
 {
     public static new Prediction FromJson(JsonNode? value)
     {
-        var obj = Wire.Object(value);
+        var obj = Wire.Snapshot(value);
         Wire.Required(obj, "type", Wire.Const("prediction"));
-        return new Prediction(Wire.Required(obj, "id", Wire.String), Wire.Required(obj, "prediction", Wire.Free), obj);
+        return new Prediction(Wire.Required(obj, "id", Wire.Limit(Wire.String, minLength: 1)), Wire.Required(obj, "prediction", Wire.Free), obj);
     }
 
     public override JsonNode ToJson()
@@ -533,9 +620,9 @@ public sealed record Quit(string Id, JsonObject? Raw = null) : Command
 {
     public static new Quit FromJson(JsonNode? value)
     {
-        var obj = Wire.Object(value);
+        var obj = Wire.Snapshot(value);
         Wire.Required(obj, "type", Wire.Const("quit"));
-        return new Quit(Wire.Required(obj, "id", Wire.String), obj);
+        return new Quit(Wire.Required(obj, "id", Wire.Limit(Wire.String, minLength: 1)), obj);
     }
 
     public override JsonNode ToJson()
@@ -552,7 +639,7 @@ public sealed record RawComponent(string Type, JsonObject? Raw = null) : PopComp
 {
     public static new RawComponent FromJson(JsonNode? value)
     {
-        var obj = Wire.Object(value);
+        var obj = Wire.Snapshot(value);
         return new RawComponent(Wire.Required(obj, "type", Wire.String), obj);
     }
 
@@ -569,9 +656,9 @@ public sealed record Result(string Id, JsonObject? Raw = null) : Message
 {
     public static new Result FromJson(JsonNode? value)
     {
-        var obj = Wire.Object(value);
+        var obj = Wire.Snapshot(value);
         Wire.Required(obj, "type", Wire.Const("result"));
-        return new Result(Wire.Required(obj, "id", Wire.String), obj);
+        return new Result(Wire.Required(obj, "id", Wire.Limit(Wire.String, minLength: 1)), obj);
     }
 
     public override JsonNode ToJson()
@@ -588,9 +675,9 @@ public sealed record Send(string Id, long Credit, long? Member = null, JsonObjec
 {
     public static new Send FromJson(JsonNode? value)
     {
-        var obj = Wire.Object(value);
+        var obj = Wire.Snapshot(value);
         Wire.Required(obj, "type", Wire.Const("send"));
-        return new Send(Wire.Required(obj, "id", Wire.String), Wire.Required(obj, "credit", Wire.Integer), Wire.OptionalValue(obj, "member", Wire.Integer), obj);
+        return new Send(Wire.Required(obj, "id", Wire.Limit(Wire.String, minLength: 1)), Wire.Required(obj, "credit", Wire.Limit(Wire.Integer, minimum: 0.0)), Wire.OptionalValue(obj, "member", Wire.Limit(Wire.Integer, minimum: 0.0)), obj);
     }
 
     public override JsonNode ToJson()
@@ -599,6 +686,7 @@ public sealed record Send(string Id, long Credit, long? Member = null, JsonObjec
         result["id"] = JsonValue.Create(Id);
         result["credit"] = JsonValue.Create(Credit);
         if (Member is not null) result["member"] = JsonValue.Create(Member!.Value);
+        else result.Remove("member");
         result["type"] = "send";
         return result;
     }
@@ -609,9 +697,9 @@ public sealed record SetPop(string Id, Pop Pop, JsonObject? Raw = null) : Comman
 {
     public static new SetPop FromJson(JsonNode? value)
     {
-        var obj = Wire.Object(value);
+        var obj = Wire.Snapshot(value);
         Wire.Required(obj, "type", Wire.Const("setPop"));
-        return new SetPop(Wire.Required(obj, "id", Wire.String), Wire.Required(obj, "pop", Pop.FromJson), obj);
+        return new SetPop(Wire.Required(obj, "id", Wire.Limit(Wire.String, minLength: 1)), Wire.Required(obj, "pop", Pop.FromJson), obj);
     }
 
     public override JsonNode ToJson()
@@ -629,7 +717,7 @@ public sealed record SetSourceUpload(string ContentType, JsonObject? Raw = null)
 {
     public static SetSourceUpload FromJson(JsonNode? value)
     {
-        var obj = Wire.Object(value);
+        var obj = Wire.Snapshot(value);
         return new SetSourceUpload(Wire.Required(obj, "contentType", Wire.String), obj);
     }
 
@@ -646,9 +734,10 @@ public sealed record SetSource(string Id, string? Url = null, string? AssetUuid 
 {
     public static new SetSource FromJson(JsonNode? value)
     {
-        var obj = Wire.Object(value);
+        var obj = Wire.Snapshot(value);
         Wire.Required(obj, "type", Wire.Const("setSource"));
-        return new SetSource(Wire.Required(obj, "id", Wire.String), Wire.Optional(obj, "url", Wire.String), Wire.Optional(obj, "assetUuid", Wire.String), Wire.Optional(obj, "upload", SetSourceUpload.FromJson), Wire.Optional(obj, "group", Wire.List(GroupMember.FromJson)), Wire.Optional(obj, "params", Wire.List(ComponentParams.FromJson)), Wire.Optional(obj, "fps", Wire.String), Wire.Optional(obj, "roi", Roi.FromJson), Wire.Optional(obj, "camera", Camera.FromJson), Wire.OptionalValue(obj, "live", Wire.Boolean), Wire.OptionalValue(obj, "mode", SetSourceModeWire.FromJson), obj);
+        Wire.ExactlyOne(obj, "url", "assetUuid", "upload", "group");
+        return new SetSource(Wire.Required(obj, "id", Wire.Limit(Wire.String, minLength: 1)), Wire.Optional(obj, "url", Wire.String), Wire.Optional(obj, "assetUuid", Wire.String), Wire.Optional(obj, "upload", SetSourceUpload.FromJson), Wire.Optional(obj, "group", Wire.List(GroupMember.FromJson)), Wire.Optional(obj, "params", Wire.List(ComponentParams.FromJson)), Wire.Optional(obj, "fps", Wire.String), Wire.Optional(obj, "roi", Roi.FromJson), Wire.Optional(obj, "camera", Camera.FromJson), Wire.OptionalValue(obj, "live", Wire.Boolean), Wire.OptionalValue(obj, "mode", SetSourceModeWire.FromJson), obj);
     }
 
     public override JsonNode ToJson()
@@ -656,15 +745,25 @@ public sealed record SetSource(string Id, string? Url = null, string? AssetUuid 
         var result = Wire.Copy(Raw);
         result["id"] = JsonValue.Create(Id);
         if (Url is not null) result["url"] = JsonValue.Create(Url!);
+        else result.Remove("url");
         if (AssetUuid is not null) result["assetUuid"] = JsonValue.Create(AssetUuid!);
+        else result.Remove("assetUuid");
         if (Upload is not null) result["upload"] = Upload!.ToJson();
+        else result.Remove("upload");
         if (Group is not null) result["group"] = new JsonArray(Group!.Select(x => (JsonNode?)x.ToJson()).ToArray());
+        else result.Remove("group");
         if (Params is not null) result["params"] = new JsonArray(Params!.Select(x => (JsonNode?)x.ToJson()).ToArray());
+        else result.Remove("params");
         if (Fps is not null) result["fps"] = JsonValue.Create(Fps!);
+        else result.Remove("fps");
         if (Roi is not null) result["roi"] = Roi!.ToJson();
+        else result.Remove("roi");
         if (Camera is not null) result["camera"] = Camera!.ToJson();
+        else result.Remove("camera");
         if (Live is not null) result["live"] = JsonValue.Create(Live!.Value);
+        else result.Remove("live");
         if (Mode is not null) result["mode"] = JsonValue.Create(Mode!.Value.ToWire());
+        else result.Remove("mode");
         result["type"] = "setSource";
         return result;
     }
@@ -675,7 +774,7 @@ public sealed record SourceDefaults(Camera? Camera = null, string? Fps = null, R
 {
     public static SourceDefaults FromJson(JsonNode? value)
     {
-        var obj = Wire.Object(value);
+        var obj = Wire.Snapshot(value);
         return new SourceDefaults(Wire.Optional(obj, "camera", Camera.FromJson), Wire.Optional(obj, "fps", Wire.String), Wire.Optional(obj, "roi", Roi.FromJson), Wire.OptionalValue(obj, "motionDetect", Wire.Boolean), Wire.OptionalValue(obj, "motionSensitivity", Wire.Number), Wire.OptionalValue(obj, "motionThreshold", Wire.Number), Wire.OptionalValue(obj, "motionGap", Wire.Integer), Wire.OptionalValue(obj, "motionGridX", Wire.Integer), Wire.OptionalValue(obj, "motionGridY", Wire.Integer), obj);
     }
 
@@ -683,14 +782,23 @@ public sealed record SourceDefaults(Camera? Camera = null, string? Fps = null, R
     {
         var result = Wire.Copy(Raw);
         if (Camera is not null) result["camera"] = Camera!.ToJson();
+        else result.Remove("camera");
         if (Fps is not null) result["fps"] = JsonValue.Create(Fps!);
+        else result.Remove("fps");
         if (Roi is not null) result["roi"] = Roi!.ToJson();
+        else result.Remove("roi");
         if (MotionDetect is not null) result["motionDetect"] = JsonValue.Create(MotionDetect!.Value);
-        if (MotionSensitivity is not null) result["motionSensitivity"] = JsonValue.Create(MotionSensitivity!.Value);
-        if (MotionThreshold is not null) result["motionThreshold"] = JsonValue.Create(MotionThreshold!.Value);
+        else result.Remove("motionDetect");
+        if (MotionSensitivity is not null) Wire.PutNumber(result, "motionSensitivity", MotionSensitivity!.Value);
+        else result.Remove("motionSensitivity");
+        if (MotionThreshold is not null) Wire.PutNumber(result, "motionThreshold", MotionThreshold!.Value);
+        else result.Remove("motionThreshold");
         if (MotionGap is not null) result["motionGap"] = JsonValue.Create(MotionGap!.Value);
+        else result.Remove("motionGap");
         if (MotionGridX is not null) result["motionGridX"] = JsonValue.Create(MotionGridX!.Value);
+        else result.Remove("motionGridX");
         if (MotionGridY is not null) result["motionGridY"] = JsonValue.Create(MotionGridY!.Value);
+        else result.Remove("motionGridY");
         return result;
     }
 }
@@ -700,9 +808,9 @@ public sealed record Start(string Id, JsonObject? Raw = null) : Message
 {
     public static new Start FromJson(JsonNode? value)
     {
-        var obj = Wire.Object(value);
+        var obj = Wire.Snapshot(value);
         Wire.Required(obj, "type", Wire.Const("start"));
-        return new Start(Wire.Required(obj, "id", Wire.String), obj);
+        return new Start(Wire.Required(obj, "id", Wire.Limit(Wire.String, minLength: 1)), obj);
     }
 
     public override JsonNode ToJson()
@@ -719,9 +827,9 @@ public sealed record StopSource(string Id, JsonObject? Raw = null) : Command
 {
     public static new StopSource FromJson(JsonNode? value)
     {
-        var obj = Wire.Object(value);
+        var obj = Wire.Snapshot(value);
         Wire.Required(obj, "type", Wire.Const("stopSource"));
-        return new StopSource(Wire.Required(obj, "id", Wire.String), obj);
+        return new StopSource(Wire.Required(obj, "id", Wire.Limit(Wire.String, minLength: 1)), obj);
     }
 
     public override JsonNode ToJson()
@@ -738,9 +846,9 @@ public sealed record Uploaded(string Id, long? Member = null, JsonObject? Raw = 
 {
     public static new Uploaded FromJson(JsonNode? value)
     {
-        var obj = Wire.Object(value);
+        var obj = Wire.Snapshot(value);
         Wire.Required(obj, "type", Wire.Const("uploaded"));
-        return new Uploaded(Wire.Required(obj, "id", Wire.String), Wire.OptionalValue(obj, "member", Wire.Integer), obj);
+        return new Uploaded(Wire.Required(obj, "id", Wire.Limit(Wire.String, minLength: 1)), Wire.OptionalValue(obj, "member", Wire.Limit(Wire.Integer, minimum: 0.0)), obj);
     }
 
     public override JsonNode ToJson()
@@ -748,6 +856,7 @@ public sealed record Uploaded(string Id, long? Member = null, JsonObject? Raw = 
         var result = Wire.Copy(Raw);
         result["id"] = JsonValue.Create(Id);
         if (Member is not null) result["member"] = JsonValue.Create(Member!.Value);
+        else result.Remove("member");
         result["type"] = "uploaded";
         return result;
     }
@@ -758,9 +867,9 @@ public sealed record Usage(string Id, long MilliComputeUnits, JsonObject? Raw = 
 {
     public static new Usage FromJson(JsonNode? value)
     {
-        var obj = Wire.Object(value);
+        var obj = Wire.Snapshot(value);
         Wire.Required(obj, "type", Wire.Const("usage"));
-        return new Usage(Wire.Required(obj, "id", Wire.String), Wire.Required(obj, "milliComputeUnits", Wire.Integer), obj);
+        return new Usage(Wire.Required(obj, "id", Wire.Limit(Wire.String, minLength: 1)), Wire.Required(obj, "milliComputeUnits", Wire.Limit(Wire.Integer, minimum: 0.0)), obj);
     }
 
     public override JsonNode ToJson()
@@ -778,7 +887,7 @@ public sealed record GroupMemberUrl(string Url, JsonObject? Raw = null) : GroupM
 {
     public static new GroupMemberUrl FromJson(JsonNode? value)
     {
-        var obj = Wire.Object(value);
+        var obj = Wire.Snapshot(value);
         return new GroupMemberUrl(Wire.Required(obj, "url", Wire.String), obj);
     }
 
@@ -795,8 +904,8 @@ public sealed record GroupMemberUploadUpload(string ContentType, long? Bytes = n
 {
     public static GroupMemberUploadUpload FromJson(JsonNode? value)
     {
-        var obj = Wire.Object(value);
-        return new GroupMemberUploadUpload(Wire.Required(obj, "contentType", Wire.String), Wire.OptionalValue(obj, "bytes", Wire.Integer), obj);
+        var obj = Wire.Snapshot(value);
+        return new GroupMemberUploadUpload(Wire.Required(obj, "contentType", Wire.String), Wire.OptionalValue(obj, "bytes", Wire.Limit(Wire.Integer, minimum: 0.0)), obj);
     }
 
     public JsonNode ToJson()
@@ -804,6 +913,7 @@ public sealed record GroupMemberUploadUpload(string ContentType, long? Bytes = n
         var result = Wire.Copy(Raw);
         result["contentType"] = JsonValue.Create(ContentType);
         if (Bytes is not null) result["bytes"] = JsonValue.Create(Bytes!.Value);
+        else result.Remove("bytes");
         return result;
     }
 }
@@ -813,7 +923,7 @@ public sealed record GroupMemberUpload(GroupMemberUploadUpload Upload, JsonObjec
 {
     public static new GroupMemberUpload FromJson(JsonNode? value)
     {
-        var obj = Wire.Object(value);
+        var obj = Wire.Snapshot(value);
         return new GroupMemberUpload(Wire.Required(obj, "upload", GroupMemberUploadUpload.FromJson), obj);
     }
 
@@ -830,7 +940,7 @@ public sealed record RoiRectangle(double X, double Y, double Width, double Heigh
 {
     public static new RoiRectangle FromJson(JsonNode? value)
     {
-        var obj = Wire.Object(value);
+        var obj = Wire.Snapshot(value);
         Wire.Required(obj, "type", Wire.Const("rectangle"));
         return new RoiRectangle(Wire.Required(obj, "x", Wire.Number), Wire.Required(obj, "y", Wire.Number), Wire.Required(obj, "width", Wire.Number), Wire.Required(obj, "height", Wire.Number), obj);
     }
@@ -838,10 +948,10 @@ public sealed record RoiRectangle(double X, double Y, double Width, double Heigh
     public override JsonNode ToJson()
     {
         var result = Wire.Copy(Raw);
-        result["x"] = JsonValue.Create(X);
-        result["y"] = JsonValue.Create(Y);
-        result["width"] = JsonValue.Create(Width);
-        result["height"] = JsonValue.Create(Height);
+        Wire.PutNumber(result, "x", X);
+        Wire.PutNumber(result, "y", Y);
+        Wire.PutNumber(result, "width", Width);
+        Wire.PutNumber(result, "height", Height);
         result["type"] = "rectangle";
         return result;
     }
@@ -852,15 +962,15 @@ public sealed record RoiContourPoint(double X, double Y, JsonObject? Raw = null)
 {
     public static RoiContourPoint FromJson(JsonNode? value)
     {
-        var obj = Wire.Object(value);
+        var obj = Wire.Snapshot(value);
         return new RoiContourPoint(Wire.Required(obj, "x", Wire.Number), Wire.Required(obj, "y", Wire.Number), obj);
     }
 
     public JsonNode ToJson()
     {
         var result = Wire.Copy(Raw);
-        result["x"] = JsonValue.Create(X);
-        result["y"] = JsonValue.Create(Y);
+        Wire.PutNumber(result, "x", X);
+        Wire.PutNumber(result, "y", Y);
         return result;
     }
 }
@@ -870,7 +980,7 @@ public sealed record RoiContour(IReadOnlyList<RoiContourPoint> Points, JsonObjec
 {
     public static new RoiContour FromJson(JsonNode? value)
     {
-        var obj = Wire.Object(value);
+        var obj = Wire.Snapshot(value);
         Wire.Required(obj, "type", Wire.Const("contour"));
         return new RoiContour(Wire.Required(obj, "points", Wire.List(RoiContourPoint.FromJson)), obj);
     }
@@ -910,7 +1020,7 @@ public abstract record Command
         }
         catch (FormatException)
         {
-            return new UnknownCommand(value as JsonObject ?? new JsonObject());
+            return new UnknownCommand(Wire.SnapshotOrEmpty(value));
         }
     }
 }
@@ -964,7 +1074,7 @@ public abstract record Message
         }
         catch (FormatException)
         {
-            return new UnknownMessage(value as JsonObject ?? new JsonObject());
+            return new UnknownMessage(Wire.SnapshotOrEmpty(value));
         }
     }
 }

@@ -1,6 +1,7 @@
 # Generated from protocol/schema by protocol/scripts/generate.py. Do not edit.
 from __future__ import annotations
 
+import copy
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any, Literal, cast
@@ -31,6 +32,8 @@ def _string(value: Any) -> str:
 
 
 def _integer(value: Any) -> int:
+    if isinstance(value, float) and value.is_integer():
+        return int(value)
     if isinstance(value, bool) or not isinstance(value, int):
         raise ValueError(f"expected an integer, got {type(value).__name__}")
     return value
@@ -49,7 +52,35 @@ def _boolean(value: Any) -> bool:
 
 
 def _free(value: Any) -> dict[str, Any]:
-    return _object(value)
+    return copy.deepcopy(_object(value))
+
+
+def _limit(
+    parse: Callable[[Any], Any],
+    minimum: float | None = None,
+    exclusive_minimum: float | None = None,
+    exclusive_maximum: float | None = None,
+    min_length: int | None = None,
+) -> Callable[[Any], Any]:
+    def checked(value: Any) -> Any:
+        parsed = parse(value)
+        if minimum is not None and parsed < minimum:
+            raise ValueError(f"{parsed} is below {minimum}")
+        if exclusive_minimum is not None and parsed <= exclusive_minimum:
+            raise ValueError(f"{parsed} is not above {exclusive_minimum}")
+        if exclusive_maximum is not None and parsed >= exclusive_maximum:
+            raise ValueError(f"{parsed} is not below {exclusive_maximum}")
+        if min_length is not None and len(parsed) < min_length:
+            raise ValueError(f"shorter than {min_length}")
+        return parsed
+
+    return checked
+
+
+def _exactly_one(obj: dict[str, Any], keys: Sequence[str]) -> None:
+    present = [key for key in keys if key in obj]
+    if len(present) != 1:
+        raise ValueError(f"expected exactly one of {list(keys)}, got {present}")
 
 
 def _const(expected: str) -> Callable[[Any], str]:
@@ -102,6 +133,8 @@ def _dispatch(value: Any, variants: _Variants) -> Any:
 def _dump(value: Any) -> Any:
     if hasattr(value, "to_json"):
         return value.to_json()
+    if isinstance(value, dict):
+        return copy.deepcopy(cast(dict[str, Any], value))
     if isinstance(value, list):
         return [_dump(element) for element in cast(list[Any], value)]
     return value
@@ -118,16 +151,23 @@ class Ability:
     @staticmethod
     def from_json(value: Any) -> Ability:
         obj = _object(value)
-        return Ability(ability=_optional(obj, 'ability', _string), abilityUuid=_optional(obj, 'abilityUuid', _string), params=_optional(obj, 'params', _free), raw=obj)
+        _exactly_one(obj, ('ability', 'abilityUuid'))
+        return Ability(ability=_optional(obj, 'ability', _string), abilityUuid=_optional(obj, 'abilityUuid', _string), params=_optional(obj, 'params', _free), raw=copy.deepcopy(obj))
 
     def to_json(self) -> dict[str, Any]:
-        out = dict(self.raw)
+        out = copy.deepcopy(dict(self.raw))
         if self.ability is not None:
             out['ability'] = _dump(self.ability)
+        else:
+            out.pop('ability', None)
         if self.abilityUuid is not None:
             out['abilityUuid'] = _dump(self.abilityUuid)
+        else:
+            out.pop('abilityUuid', None)
         if self.params is not None:
             out['params'] = _dump(self.params)
+        else:
+            out.pop('params', None)
         return out
 
 
@@ -143,10 +183,10 @@ class CameraIntrinsics:
     @staticmethod
     def from_json(value: Any) -> CameraIntrinsics:
         obj = _object(value)
-        return CameraIntrinsics(fx=_required(obj, 'fx', _number), fy=_required(obj, 'fy', _number), cx=_required(obj, 'cx', _number), cy=_required(obj, 'cy', _number), raw=obj)
+        return CameraIntrinsics(fx=_required(obj, 'fx', _number), fy=_required(obj, 'fy', _number), cx=_required(obj, 'cx', _number), cy=_required(obj, 'cy', _number), raw=copy.deepcopy(obj))
 
     def to_json(self) -> dict[str, Any]:
-        out = dict(self.raw)
+        out = copy.deepcopy(dict(self.raw))
         out['fx'] = _dump(self.fx)
         out['fy'] = _dump(self.fy)
         out['cx'] = _dump(self.cx)
@@ -167,20 +207,30 @@ class CameraDistortion:
     @staticmethod
     def from_json(value: Any) -> CameraDistortion:
         obj = _object(value)
-        return CameraDistortion(k1=_optional(obj, 'k1', _number), k2=_optional(obj, 'k2', _number), p1=_optional(obj, 'p1', _number), p2=_optional(obj, 'p2', _number), k3=_optional(obj, 'k3', _number), raw=obj)
+        return CameraDistortion(k1=_optional(obj, 'k1', _number), k2=_optional(obj, 'k2', _number), p1=_optional(obj, 'p1', _number), p2=_optional(obj, 'p2', _number), k3=_optional(obj, 'k3', _number), raw=copy.deepcopy(obj))
 
     def to_json(self) -> dict[str, Any]:
-        out = dict(self.raw)
+        out = copy.deepcopy(dict(self.raw))
         if self.k1 is not None:
             out['k1'] = _dump(self.k1)
+        else:
+            out.pop('k1', None)
         if self.k2 is not None:
             out['k2'] = _dump(self.k2)
+        else:
+            out.pop('k2', None)
         if self.p1 is not None:
             out['p1'] = _dump(self.p1)
+        else:
+            out.pop('p1', None)
         if self.p2 is not None:
             out['p2'] = _dump(self.p2)
+        else:
+            out.pop('p2', None)
         if self.k3 is not None:
             out['k3'] = _dump(self.k3)
+        else:
+            out.pop('k3', None)
         return out
 
 
@@ -196,10 +246,10 @@ class CameraExtrinsicsRotation:
     @staticmethod
     def from_json(value: Any) -> CameraExtrinsicsRotation:
         obj = _object(value)
-        return CameraExtrinsicsRotation(w=_required(obj, 'w', _number), x=_required(obj, 'x', _number), y=_required(obj, 'y', _number), z=_required(obj, 'z', _number), raw=obj)
+        return CameraExtrinsicsRotation(w=_required(obj, 'w', _number), x=_required(obj, 'x', _number), y=_required(obj, 'y', _number), z=_required(obj, 'z', _number), raw=copy.deepcopy(obj))
 
     def to_json(self) -> dict[str, Any]:
-        out = dict(self.raw)
+        out = copy.deepcopy(dict(self.raw))
         out['w'] = _dump(self.w)
         out['x'] = _dump(self.x)
         out['y'] = _dump(self.y)
@@ -218,10 +268,10 @@ class CameraExtrinsicsTranslation:
     @staticmethod
     def from_json(value: Any) -> CameraExtrinsicsTranslation:
         obj = _object(value)
-        return CameraExtrinsicsTranslation(x=_required(obj, 'x', _number), y=_required(obj, 'y', _number), z=_required(obj, 'z', _number), raw=obj)
+        return CameraExtrinsicsTranslation(x=_required(obj, 'x', _number), y=_required(obj, 'y', _number), z=_required(obj, 'z', _number), raw=copy.deepcopy(obj))
 
     def to_json(self) -> dict[str, Any]:
-        out = dict(self.raw)
+        out = copy.deepcopy(dict(self.raw))
         out['x'] = _dump(self.x)
         out['y'] = _dump(self.y)
         out['z'] = _dump(self.z)
@@ -238,14 +288,18 @@ class CameraExtrinsics:
     @staticmethod
     def from_json(value: Any) -> CameraExtrinsics:
         obj = _object(value)
-        return CameraExtrinsics(rotation=_optional(obj, 'rotation', CameraExtrinsicsRotation.from_json), translation=_optional(obj, 'translation', CameraExtrinsicsTranslation.from_json), raw=obj)
+        return CameraExtrinsics(rotation=_optional(obj, 'rotation', CameraExtrinsicsRotation.from_json), translation=_optional(obj, 'translation', CameraExtrinsicsTranslation.from_json), raw=copy.deepcopy(obj))
 
     def to_json(self) -> dict[str, Any]:
-        out = dict(self.raw)
+        out = copy.deepcopy(dict(self.raw))
         if self.rotation is not None:
             out['rotation'] = _dump(self.rotation)
+        else:
+            out.pop('rotation', None)
         if self.translation is not None:
             out['translation'] = _dump(self.translation)
+        else:
+            out.pop('translation', None)
         return out
 
 
@@ -261,18 +315,27 @@ class Camera:
     @staticmethod
     def from_json(value: Any) -> Camera:
         obj = _object(value)
-        return Camera(intrinsics=_optional(obj, 'intrinsics', CameraIntrinsics.from_json), hfovDegrees=_optional(obj, 'hfovDegrees', _number), distortion=_optional(obj, 'distortion', CameraDistortion.from_json), extrinsics=_optional(obj, 'extrinsics', CameraExtrinsics.from_json), raw=obj)
+        _exactly_one(obj, ('intrinsics', 'hfovDegrees'))
+        return Camera(intrinsics=_optional(obj, 'intrinsics', CameraIntrinsics.from_json), hfovDegrees=_optional(obj, 'hfovDegrees', _limit(_number, exclusive_minimum=0, exclusive_maximum=180)), distortion=_optional(obj, 'distortion', CameraDistortion.from_json), extrinsics=_optional(obj, 'extrinsics', CameraExtrinsics.from_json), raw=copy.deepcopy(obj))
 
     def to_json(self) -> dict[str, Any]:
-        out = dict(self.raw)
+        out = copy.deepcopy(dict(self.raw))
         if self.intrinsics is not None:
             out['intrinsics'] = _dump(self.intrinsics)
+        else:
+            out.pop('intrinsics', None)
         if self.hfovDegrees is not None:
             out['hfovDegrees'] = _dump(self.hfovDegrees)
+        else:
+            out.pop('hfovDegrees', None)
         if self.distortion is not None:
             out['distortion'] = _dump(self.distortion)
+        else:
+            out.pop('distortion', None)
         if self.extrinsics is not None:
             out['extrinsics'] = _dump(self.extrinsics)
+        else:
+            out.pop('extrinsics', None)
         return out
 
 
@@ -286,10 +349,10 @@ class ComponentParams:
     @staticmethod
     def from_json(value: Any) -> ComponentParams:
         obj = _object(value)
-        return ComponentParams(componentId=_required(obj, 'componentId', _integer), values=_required(obj, 'values', _free), raw=obj)
+        return ComponentParams(componentId=_required(obj, 'componentId', _integer), values=_required(obj, 'values', _free), raw=copy.deepcopy(obj))
 
     def to_json(self) -> dict[str, Any]:
-        out = dict(self.raw)
+        out = copy.deepcopy(dict(self.raw))
         out['componentId'] = _dump(self.componentId)
         out['values'] = _dump(self.values)
         return out
@@ -307,14 +370,16 @@ class Credit:
     def from_json(value: Any) -> Credit:
         obj = _object(value)
         _required(obj, 'type', _const('credit'))
-        return Credit(id=_required(obj, 'id', _string), bytes=_required(obj, 'bytes', _integer), member=_optional(obj, 'member', _integer), raw=obj)
+        return Credit(id=_required(obj, 'id', _limit(_string, min_length=1)), bytes=_required(obj, 'bytes', _limit(_integer, minimum=0)), member=_optional(obj, 'member', _limit(_integer, minimum=0)), raw=copy.deepcopy(obj))
 
     def to_json(self) -> dict[str, Any]:
-        out = dict(self.raw)
+        out = copy.deepcopy(dict(self.raw))
         out['id'] = _dump(self.id)
         out['bytes'] = _dump(self.bytes)
         if self.member is not None:
             out['member'] = _dump(self.member)
+        else:
+            out.pop('member', None)
         out['type'] = 'credit'
         return out
 
@@ -329,10 +394,10 @@ class Done:
     def from_json(value: Any) -> Done:
         obj = _object(value)
         _required(obj, 'type', _const('done'))
-        return Done(raw=obj)
+        return Done(raw=copy.deepcopy(obj))
 
     def to_json(self) -> dict[str, Any]:
-        out = dict(self.raw)
+        out = copy.deepcopy(dict(self.raw))
         out['type'] = 'done'
         return out
 
@@ -348,10 +413,10 @@ class Dropped:
     def from_json(value: Any) -> Dropped:
         obj = _object(value)
         _required(obj, 'type', _const('dropped'))
-        return Dropped(id=_required(obj, 'id', _string), count=_required(obj, 'count', _integer), raw=obj)
+        return Dropped(id=_required(obj, 'id', _limit(_string, min_length=1)), count=_required(obj, 'count', _limit(_integer, minimum=0)), raw=copy.deepcopy(obj))
 
     def to_json(self) -> dict[str, Any]:
-        out = dict(self.raw)
+        out = copy.deepcopy(dict(self.raw))
         out['id'] = _dump(self.id)
         out['count'] = _dump(self.count)
         out['type'] = 'dropped'
@@ -371,16 +436,20 @@ class End:
     def from_json(value: Any) -> End:
         obj = _object(value)
         _required(obj, 'type', _const('end'))
-        return End(id=_required(obj, 'id', _string), reason=_required(obj, 'reason', _enum(('eos', 'error', 'preempted', 'stopped'))), message=_optional(obj, 'message', _string), milliComputeUnits=_optional(obj, 'milliComputeUnits', _integer), raw=obj)
+        return End(id=_required(obj, 'id', _limit(_string, min_length=1)), reason=_required(obj, 'reason', _enum(('eos', 'error', 'preempted', 'stopped'))), message=_optional(obj, 'message', _string), milliComputeUnits=_optional(obj, 'milliComputeUnits', _limit(_integer, minimum=0)), raw=copy.deepcopy(obj))
 
     def to_json(self) -> dict[str, Any]:
-        out = dict(self.raw)
+        out = copy.deepcopy(dict(self.raw))
         out['id'] = _dump(self.id)
         out['reason'] = _dump(self.reason)
         if self.message is not None:
             out['message'] = _dump(self.message)
+        else:
+            out.pop('message', None)
         if self.milliComputeUnits is not None:
             out['milliComputeUnits'] = _dump(self.milliComputeUnits)
+        else:
+            out.pop('milliComputeUnits', None)
         out['type'] = 'end'
         return out
 
@@ -397,14 +466,16 @@ class Error:
     def from_json(value: Any) -> Error:
         obj = _object(value)
         _required(obj, 'type', _const('error'))
-        return Error(error=_required(obj, 'error', _string), message=_required(obj, 'message', _string), id=_optional(obj, 'id', _string), raw=obj)
+        return Error(error=_required(obj, 'error', _limit(_string, min_length=1)), message=_required(obj, 'message', _string), id=_optional(obj, 'id', _limit(_string, min_length=1)), raw=copy.deepcopy(obj))
 
     def to_json(self) -> dict[str, Any]:
-        out = dict(self.raw)
+        out = copy.deepcopy(dict(self.raw))
         out['error'] = _dump(self.error)
         out['message'] = _dump(self.message)
         if self.id is not None:
             out['id'] = _dump(self.id)
+        else:
+            out.pop('id', None)
         out['type'] = 'error'
         return out
 
@@ -421,14 +492,16 @@ class GetGraph:
     def from_json(value: Any) -> GetGraph:
         obj = _object(value)
         _required(obj, 'type', _const('getGraph'))
-        return GetGraph(id=_required(obj, 'id', _string), format=_required(obj, 'format', _enum(('dot', 'png', 'pdf'))), verbose=_optional(obj, 'verbose', _boolean), raw=obj)
+        return GetGraph(id=_required(obj, 'id', _limit(_string, min_length=1)), format=_required(obj, 'format', _enum(('dot', 'png', 'pdf'))), verbose=_optional(obj, 'verbose', _boolean), raw=copy.deepcopy(obj))
 
     def to_json(self) -> dict[str, Any]:
-        out = dict(self.raw)
+        out = copy.deepcopy(dict(self.raw))
         out['id'] = _dump(self.id)
         out['format'] = _dump(self.format)
         if self.verbose is not None:
             out['verbose'] = _dump(self.verbose)
+        else:
+            out.pop('verbose', None)
         out['type'] = 'getGraph'
         return out
 
@@ -446,18 +519,27 @@ class InferenceComponent:
     def from_json(value: Any) -> InferenceComponent:
         obj = _object(value)
         _required(obj, 'type', _const('inference'))
-        return InferenceComponent(ability=_optional(obj, 'ability', _string), abilityUuid=_optional(obj, 'abilityUuid', _string), params=_optional(obj, 'params', _free), id=_optional(obj, 'id', _integer), raw=obj)
+        _exactly_one(obj, ('ability', 'abilityUuid'))
+        return InferenceComponent(ability=_optional(obj, 'ability', _string), abilityUuid=_optional(obj, 'abilityUuid', _string), params=_optional(obj, 'params', _free), id=_optional(obj, 'id', _integer), raw=copy.deepcopy(obj))
 
     def to_json(self) -> dict[str, Any]:
-        out = dict(self.raw)
+        out = copy.deepcopy(dict(self.raw))
         if self.ability is not None:
             out['ability'] = _dump(self.ability)
+        else:
+            out.pop('ability', None)
         if self.abilityUuid is not None:
             out['abilityUuid'] = _dump(self.abilityUuid)
+        else:
+            out.pop('abilityUuid', None)
         if self.params is not None:
             out['params'] = _dump(self.params)
+        else:
+            out.pop('params', None)
         if self.id is not None:
             out['id'] = _dump(self.id)
+        else:
+            out.pop('id', None)
         out['type'] = 'inference'
         return out
 
@@ -472,10 +554,10 @@ class Ping:
     def from_json(value: Any) -> Ping:
         obj = _object(value)
         _required(obj, 'type', _const('ping'))
-        return Ping(id=_required(obj, 'id', _string), raw=obj)
+        return Ping(id=_required(obj, 'id', _limit(_string, min_length=1)), raw=copy.deepcopy(obj))
 
     def to_json(self) -> dict[str, Any]:
-        out = dict(self.raw)
+        out = copy.deepcopy(dict(self.raw))
         out['id'] = _dump(self.id)
         out['type'] = 'ping'
         return out
@@ -491,10 +573,10 @@ class Pong:
     def from_json(value: Any) -> Pong:
         obj = _object(value)
         _required(obj, 'type', _const('pong'))
-        return Pong(id=_required(obj, 'id', _string), raw=obj)
+        return Pong(id=_required(obj, 'id', _limit(_string, min_length=1)), raw=copy.deepcopy(obj))
 
     def to_json(self) -> dict[str, Any]:
-        out = dict(self.raw)
+        out = copy.deepcopy(dict(self.raw))
         out['id'] = _dump(self.id)
         out['type'] = 'pong'
         return out
@@ -512,17 +594,23 @@ class Pop:
     @staticmethod
     def from_json(value: Any) -> Pop:
         obj = _object(value)
-        return Pop(components=_required(obj, 'components', _array(decode_popcomponent)), postTransform=_optional(obj, 'postTransform', _string), defaults=_optional(obj, 'defaults', SourceDefaults.from_json), depthMap=_optional(obj, 'depthMap', PopDepthMap.from_json), raw=obj)
+        return Pop(components=_required(obj, 'components', _array(decode_popcomponent)), postTransform=_optional(obj, 'postTransform', _string), defaults=_optional(obj, 'defaults', SourceDefaults.from_json), depthMap=_optional(obj, 'depthMap', PopDepthMap.from_json), raw=copy.deepcopy(obj))
 
     def to_json(self) -> dict[str, Any]:
-        out = dict(self.raw)
+        out = copy.deepcopy(dict(self.raw))
         out['components'] = _dump(self.components)
         if self.postTransform is not None:
             out['postTransform'] = _dump(self.postTransform)
+        else:
+            out.pop('postTransform', None)
         if self.defaults is not None:
             out['defaults'] = _dump(self.defaults)
+        else:
+            out.pop('defaults', None)
         if self.depthMap is not None:
             out['depthMap'] = _dump(self.depthMap)
+        else:
+            out.pop('depthMap', None)
         return out
 
 
@@ -537,16 +625,23 @@ class PopDepthMap:
     @staticmethod
     def from_json(value: Any) -> PopDepthMap:
         obj = _object(value)
-        return PopDepthMap(ability=_optional(obj, 'ability', _string), abilityUuid=_optional(obj, 'abilityUuid', _string), toWorld=_optional(obj, 'toWorld', _boolean), raw=obj)
+        _exactly_one(obj, ('ability', 'abilityUuid'))
+        return PopDepthMap(ability=_optional(obj, 'ability', _string), abilityUuid=_optional(obj, 'abilityUuid', _string), toWorld=_optional(obj, 'toWorld', _boolean), raw=copy.deepcopy(obj))
 
     def to_json(self) -> dict[str, Any]:
-        out = dict(self.raw)
+        out = copy.deepcopy(dict(self.raw))
         if self.ability is not None:
             out['ability'] = _dump(self.ability)
+        else:
+            out.pop('ability', None)
         if self.abilityUuid is not None:
             out['abilityUuid'] = _dump(self.abilityUuid)
+        else:
+            out.pop('abilityUuid', None)
         if self.toWorld is not None:
             out['toWorld'] = _dump(self.toWorld)
+        else:
+            out.pop('toWorld', None)
         return out
 
 
@@ -561,10 +656,10 @@ class Prediction:
     def from_json(value: Any) -> Prediction:
         obj = _object(value)
         _required(obj, 'type', _const('prediction'))
-        return Prediction(id=_required(obj, 'id', _string), prediction=_required(obj, 'prediction', _free), raw=obj)
+        return Prediction(id=_required(obj, 'id', _limit(_string, min_length=1)), prediction=_required(obj, 'prediction', _free), raw=copy.deepcopy(obj))
 
     def to_json(self) -> dict[str, Any]:
-        out = dict(self.raw)
+        out = copy.deepcopy(dict(self.raw))
         out['id'] = _dump(self.id)
         out['prediction'] = _dump(self.prediction)
         out['type'] = 'prediction'
@@ -581,10 +676,10 @@ class Quit:
     def from_json(value: Any) -> Quit:
         obj = _object(value)
         _required(obj, 'type', _const('quit'))
-        return Quit(id=_required(obj, 'id', _string), raw=obj)
+        return Quit(id=_required(obj, 'id', _limit(_string, min_length=1)), raw=copy.deepcopy(obj))
 
     def to_json(self) -> dict[str, Any]:
-        out = dict(self.raw)
+        out = copy.deepcopy(dict(self.raw))
         out['id'] = _dump(self.id)
         out['type'] = 'quit'
         return out
@@ -599,10 +694,10 @@ class RawComponent:
     @staticmethod
     def from_json(value: Any) -> RawComponent:
         obj = _object(value)
-        return RawComponent(type=_required(obj, 'type', _string), raw=obj)
+        return RawComponent(type=_required(obj, 'type', _string), raw=copy.deepcopy(obj))
 
     def to_json(self) -> dict[str, Any]:
-        out = dict(self.raw)
+        out = copy.deepcopy(dict(self.raw))
         out['type'] = _dump(self.type)
         return out
 
@@ -617,10 +712,10 @@ class Result:
     def from_json(value: Any) -> Result:
         obj = _object(value)
         _required(obj, 'type', _const('result'))
-        return Result(id=_required(obj, 'id', _string), raw=obj)
+        return Result(id=_required(obj, 'id', _limit(_string, min_length=1)), raw=copy.deepcopy(obj))
 
     def to_json(self) -> dict[str, Any]:
-        out = dict(self.raw)
+        out = copy.deepcopy(dict(self.raw))
         out['id'] = _dump(self.id)
         out['type'] = 'result'
         return out
@@ -638,14 +733,16 @@ class Send:
     def from_json(value: Any) -> Send:
         obj = _object(value)
         _required(obj, 'type', _const('send'))
-        return Send(id=_required(obj, 'id', _string), credit=_required(obj, 'credit', _integer), member=_optional(obj, 'member', _integer), raw=obj)
+        return Send(id=_required(obj, 'id', _limit(_string, min_length=1)), credit=_required(obj, 'credit', _limit(_integer, minimum=0)), member=_optional(obj, 'member', _limit(_integer, minimum=0)), raw=copy.deepcopy(obj))
 
     def to_json(self) -> dict[str, Any]:
-        out = dict(self.raw)
+        out = copy.deepcopy(dict(self.raw))
         out['id'] = _dump(self.id)
         out['credit'] = _dump(self.credit)
         if self.member is not None:
             out['member'] = _dump(self.member)
+        else:
+            out.pop('member', None)
         out['type'] = 'send'
         return out
 
@@ -661,10 +758,10 @@ class SetPop:
     def from_json(value: Any) -> SetPop:
         obj = _object(value)
         _required(obj, 'type', _const('setPop'))
-        return SetPop(id=_required(obj, 'id', _string), pop=_required(obj, 'pop', Pop.from_json), raw=obj)
+        return SetPop(id=_required(obj, 'id', _limit(_string, min_length=1)), pop=_required(obj, 'pop', Pop.from_json), raw=copy.deepcopy(obj))
 
     def to_json(self) -> dict[str, Any]:
-        out = dict(self.raw)
+        out = copy.deepcopy(dict(self.raw))
         out['id'] = _dump(self.id)
         out['pop'] = _dump(self.pop)
         out['type'] = 'setPop'
@@ -680,10 +777,10 @@ class SetSourceUpload:
     @staticmethod
     def from_json(value: Any) -> SetSourceUpload:
         obj = _object(value)
-        return SetSourceUpload(contentType=_required(obj, 'contentType', _string), raw=obj)
+        return SetSourceUpload(contentType=_required(obj, 'contentType', _string), raw=copy.deepcopy(obj))
 
     def to_json(self) -> dict[str, Any]:
-        out = dict(self.raw)
+        out = copy.deepcopy(dict(self.raw))
         out['contentType'] = _dump(self.contentType)
         return out
 
@@ -708,31 +805,52 @@ class SetSource:
     def from_json(value: Any) -> SetSource:
         obj = _object(value)
         _required(obj, 'type', _const('setSource'))
-        return SetSource(id=_required(obj, 'id', _string), url=_optional(obj, 'url', _string), assetUuid=_optional(obj, 'assetUuid', _string), upload=_optional(obj, 'upload', SetSourceUpload.from_json), group=_optional(obj, 'group', _array(decode_groupmember)), params=_optional(obj, 'params', _array(ComponentParams.from_json)), fps=_optional(obj, 'fps', _string), roi=_optional(obj, 'roi', decode_roi), camera=_optional(obj, 'camera', Camera.from_json), live=_optional(obj, 'live', _boolean), mode=_optional(obj, 'mode', _enum(('queue', 'preempt'))), raw=obj)
+        _exactly_one(obj, ('url', 'assetUuid', 'upload', 'group'))
+        return SetSource(id=_required(obj, 'id', _limit(_string, min_length=1)), url=_optional(obj, 'url', _string), assetUuid=_optional(obj, 'assetUuid', _string), upload=_optional(obj, 'upload', SetSourceUpload.from_json), group=_optional(obj, 'group', _array(decode_groupmember)), params=_optional(obj, 'params', _array(ComponentParams.from_json)), fps=_optional(obj, 'fps', _string), roi=_optional(obj, 'roi', decode_roi), camera=_optional(obj, 'camera', Camera.from_json), live=_optional(obj, 'live', _boolean), mode=_optional(obj, 'mode', _enum(('queue', 'preempt'))), raw=copy.deepcopy(obj))
 
     def to_json(self) -> dict[str, Any]:
-        out = dict(self.raw)
+        out = copy.deepcopy(dict(self.raw))
         out['id'] = _dump(self.id)
         if self.url is not None:
             out['url'] = _dump(self.url)
+        else:
+            out.pop('url', None)
         if self.assetUuid is not None:
             out['assetUuid'] = _dump(self.assetUuid)
+        else:
+            out.pop('assetUuid', None)
         if self.upload is not None:
             out['upload'] = _dump(self.upload)
+        else:
+            out.pop('upload', None)
         if self.group is not None:
             out['group'] = _dump(self.group)
+        else:
+            out.pop('group', None)
         if self.params is not None:
             out['params'] = _dump(self.params)
+        else:
+            out.pop('params', None)
         if self.fps is not None:
             out['fps'] = _dump(self.fps)
+        else:
+            out.pop('fps', None)
         if self.roi is not None:
             out['roi'] = _dump(self.roi)
+        else:
+            out.pop('roi', None)
         if self.camera is not None:
             out['camera'] = _dump(self.camera)
+        else:
+            out.pop('camera', None)
         if self.live is not None:
             out['live'] = _dump(self.live)
+        else:
+            out.pop('live', None)
         if self.mode is not None:
             out['mode'] = _dump(self.mode)
+        else:
+            out.pop('mode', None)
         out['type'] = 'setSource'
         return out
 
@@ -754,28 +872,46 @@ class SourceDefaults:
     @staticmethod
     def from_json(value: Any) -> SourceDefaults:
         obj = _object(value)
-        return SourceDefaults(camera=_optional(obj, 'camera', Camera.from_json), fps=_optional(obj, 'fps', _string), roi=_optional(obj, 'roi', decode_roi), motionDetect=_optional(obj, 'motionDetect', _boolean), motionSensitivity=_optional(obj, 'motionSensitivity', _number), motionThreshold=_optional(obj, 'motionThreshold', _number), motionGap=_optional(obj, 'motionGap', _integer), motionGridX=_optional(obj, 'motionGridX', _integer), motionGridY=_optional(obj, 'motionGridY', _integer), raw=obj)
+        return SourceDefaults(camera=_optional(obj, 'camera', Camera.from_json), fps=_optional(obj, 'fps', _string), roi=_optional(obj, 'roi', decode_roi), motionDetect=_optional(obj, 'motionDetect', _boolean), motionSensitivity=_optional(obj, 'motionSensitivity', _number), motionThreshold=_optional(obj, 'motionThreshold', _number), motionGap=_optional(obj, 'motionGap', _integer), motionGridX=_optional(obj, 'motionGridX', _integer), motionGridY=_optional(obj, 'motionGridY', _integer), raw=copy.deepcopy(obj))
 
     def to_json(self) -> dict[str, Any]:
-        out = dict(self.raw)
+        out = copy.deepcopy(dict(self.raw))
         if self.camera is not None:
             out['camera'] = _dump(self.camera)
+        else:
+            out.pop('camera', None)
         if self.fps is not None:
             out['fps'] = _dump(self.fps)
+        else:
+            out.pop('fps', None)
         if self.roi is not None:
             out['roi'] = _dump(self.roi)
+        else:
+            out.pop('roi', None)
         if self.motionDetect is not None:
             out['motionDetect'] = _dump(self.motionDetect)
+        else:
+            out.pop('motionDetect', None)
         if self.motionSensitivity is not None:
             out['motionSensitivity'] = _dump(self.motionSensitivity)
+        else:
+            out.pop('motionSensitivity', None)
         if self.motionThreshold is not None:
             out['motionThreshold'] = _dump(self.motionThreshold)
+        else:
+            out.pop('motionThreshold', None)
         if self.motionGap is not None:
             out['motionGap'] = _dump(self.motionGap)
+        else:
+            out.pop('motionGap', None)
         if self.motionGridX is not None:
             out['motionGridX'] = _dump(self.motionGridX)
+        else:
+            out.pop('motionGridX', None)
         if self.motionGridY is not None:
             out['motionGridY'] = _dump(self.motionGridY)
+        else:
+            out.pop('motionGridY', None)
         return out
 
 
@@ -789,10 +925,10 @@ class Start:
     def from_json(value: Any) -> Start:
         obj = _object(value)
         _required(obj, 'type', _const('start'))
-        return Start(id=_required(obj, 'id', _string), raw=obj)
+        return Start(id=_required(obj, 'id', _limit(_string, min_length=1)), raw=copy.deepcopy(obj))
 
     def to_json(self) -> dict[str, Any]:
-        out = dict(self.raw)
+        out = copy.deepcopy(dict(self.raw))
         out['id'] = _dump(self.id)
         out['type'] = 'start'
         return out
@@ -808,10 +944,10 @@ class StopSource:
     def from_json(value: Any) -> StopSource:
         obj = _object(value)
         _required(obj, 'type', _const('stopSource'))
-        return StopSource(id=_required(obj, 'id', _string), raw=obj)
+        return StopSource(id=_required(obj, 'id', _limit(_string, min_length=1)), raw=copy.deepcopy(obj))
 
     def to_json(self) -> dict[str, Any]:
-        out = dict(self.raw)
+        out = copy.deepcopy(dict(self.raw))
         out['id'] = _dump(self.id)
         out['type'] = 'stopSource'
         return out
@@ -828,13 +964,15 @@ class Uploaded:
     def from_json(value: Any) -> Uploaded:
         obj = _object(value)
         _required(obj, 'type', _const('uploaded'))
-        return Uploaded(id=_required(obj, 'id', _string), member=_optional(obj, 'member', _integer), raw=obj)
+        return Uploaded(id=_required(obj, 'id', _limit(_string, min_length=1)), member=_optional(obj, 'member', _limit(_integer, minimum=0)), raw=copy.deepcopy(obj))
 
     def to_json(self) -> dict[str, Any]:
-        out = dict(self.raw)
+        out = copy.deepcopy(dict(self.raw))
         out['id'] = _dump(self.id)
         if self.member is not None:
             out['member'] = _dump(self.member)
+        else:
+            out.pop('member', None)
         out['type'] = 'uploaded'
         return out
 
@@ -850,10 +988,10 @@ class Usage:
     def from_json(value: Any) -> Usage:
         obj = _object(value)
         _required(obj, 'type', _const('usage'))
-        return Usage(id=_required(obj, 'id', _string), milliComputeUnits=_required(obj, 'milliComputeUnits', _integer), raw=obj)
+        return Usage(id=_required(obj, 'id', _limit(_string, min_length=1)), milliComputeUnits=_required(obj, 'milliComputeUnits', _limit(_integer, minimum=0)), raw=copy.deepcopy(obj))
 
     def to_json(self) -> dict[str, Any]:
-        out = dict(self.raw)
+        out = copy.deepcopy(dict(self.raw))
         out['id'] = _dump(self.id)
         out['milliComputeUnits'] = _dump(self.milliComputeUnits)
         out['type'] = 'usage'
@@ -869,10 +1007,10 @@ class GroupMemberUrl:
     @staticmethod
     def from_json(value: Any) -> GroupMemberUrl:
         obj = _object(value)
-        return GroupMemberUrl(url=_required(obj, 'url', _string), raw=obj)
+        return GroupMemberUrl(url=_required(obj, 'url', _string), raw=copy.deepcopy(obj))
 
     def to_json(self) -> dict[str, Any]:
-        out = dict(self.raw)
+        out = copy.deepcopy(dict(self.raw))
         out['url'] = _dump(self.url)
         return out
 
@@ -887,13 +1025,15 @@ class GroupMemberUploadUpload:
     @staticmethod
     def from_json(value: Any) -> GroupMemberUploadUpload:
         obj = _object(value)
-        return GroupMemberUploadUpload(contentType=_required(obj, 'contentType', _string), bytes=_optional(obj, 'bytes', _integer), raw=obj)
+        return GroupMemberUploadUpload(contentType=_required(obj, 'contentType', _string), bytes=_optional(obj, 'bytes', _limit(_integer, minimum=0)), raw=copy.deepcopy(obj))
 
     def to_json(self) -> dict[str, Any]:
-        out = dict(self.raw)
+        out = copy.deepcopy(dict(self.raw))
         out['contentType'] = _dump(self.contentType)
         if self.bytes is not None:
             out['bytes'] = _dump(self.bytes)
+        else:
+            out.pop('bytes', None)
         return out
 
 
@@ -906,10 +1046,10 @@ class GroupMemberUpload:
     @staticmethod
     def from_json(value: Any) -> GroupMemberUpload:
         obj = _object(value)
-        return GroupMemberUpload(upload=_required(obj, 'upload', GroupMemberUploadUpload.from_json), raw=obj)
+        return GroupMemberUpload(upload=_required(obj, 'upload', GroupMemberUploadUpload.from_json), raw=copy.deepcopy(obj))
 
     def to_json(self) -> dict[str, Any]:
-        out = dict(self.raw)
+        out = copy.deepcopy(dict(self.raw))
         out['upload'] = _dump(self.upload)
         return out
 
@@ -927,10 +1067,10 @@ class RoiRectangle:
     def from_json(value: Any) -> RoiRectangle:
         obj = _object(value)
         _required(obj, 'type', _const('rectangle'))
-        return RoiRectangle(x=_required(obj, 'x', _number), y=_required(obj, 'y', _number), width=_required(obj, 'width', _number), height=_required(obj, 'height', _number), raw=obj)
+        return RoiRectangle(x=_required(obj, 'x', _number), y=_required(obj, 'y', _number), width=_required(obj, 'width', _number), height=_required(obj, 'height', _number), raw=copy.deepcopy(obj))
 
     def to_json(self) -> dict[str, Any]:
-        out = dict(self.raw)
+        out = copy.deepcopy(dict(self.raw))
         out['x'] = _dump(self.x)
         out['y'] = _dump(self.y)
         out['width'] = _dump(self.width)
@@ -949,10 +1089,10 @@ class RoiContourPoint:
     @staticmethod
     def from_json(value: Any) -> RoiContourPoint:
         obj = _object(value)
-        return RoiContourPoint(x=_required(obj, 'x', _number), y=_required(obj, 'y', _number), raw=obj)
+        return RoiContourPoint(x=_required(obj, 'x', _number), y=_required(obj, 'y', _number), raw=copy.deepcopy(obj))
 
     def to_json(self) -> dict[str, Any]:
-        out = dict(self.raw)
+        out = copy.deepcopy(dict(self.raw))
         out['x'] = _dump(self.x)
         out['y'] = _dump(self.y)
         return out
@@ -968,10 +1108,10 @@ class RoiContour:
     def from_json(value: Any) -> RoiContour:
         obj = _object(value)
         _required(obj, 'type', _const('contour'))
-        return RoiContour(points=_required(obj, 'points', _array(RoiContourPoint.from_json)), raw=obj)
+        return RoiContour(points=_required(obj, 'points', _array(RoiContourPoint.from_json)), raw=copy.deepcopy(obj))
 
     def to_json(self) -> dict[str, Any]:
-        out = dict(self.raw)
+        out = copy.deepcopy(dict(self.raw))
         out['points'] = _dump(self.points)
         out['type'] = 'contour'
         return out
@@ -983,7 +1123,7 @@ class UnknownCommand:
     raw: Mapping[str, Any]
 
     def to_json(self) -> dict[str, Any]:
-        return dict(self.raw)
+        return copy.deepcopy(dict(self.raw))
 
 
 _COMMAND_VARIANTS: _Variants = [
@@ -1003,7 +1143,7 @@ def decode_command(value: Any) -> Command:
     try:
         return _dispatch(value, _COMMAND_VARIANTS)
     except ValueError:
-        return UnknownCommand(cast(dict[str, Any], value) if isinstance(value, dict) else {})
+        return UnknownCommand(copy.deepcopy(cast(dict[str, Any], value)) if isinstance(value, dict) else {})
 
 
 
@@ -1025,7 +1165,7 @@ class UnknownMessage:
     raw: Mapping[str, Any]
 
     def to_json(self) -> dict[str, Any]:
-        return dict(self.raw)
+        return copy.deepcopy(dict(self.raw))
 
 
 _MESSAGE_VARIANTS: _Variants = [
@@ -1049,7 +1189,7 @@ def decode_message(value: Any) -> Message:
     try:
         return _dispatch(value, _MESSAGE_VARIANTS)
     except ValueError:
-        return UnknownMessage(cast(dict[str, Any], value) if isinstance(value, dict) else {})
+        return UnknownMessage(copy.deepcopy(cast(dict[str, Any], value)) if isinstance(value, dict) else {})
 
 
 

@@ -3,6 +3,7 @@
 package eyepop
 
 import (
+	"encoding/json"
 	"fmt"
 	"math"
 )
@@ -23,20 +24,50 @@ func parseString(value any) (string, error) {
 	return text, nil
 }
 
-func parseInteger(value any) (int64, error) {
-	number, ok := value.(float64)
-	if !ok || number != math.Trunc(number) {
-		return 0, fmt.Errorf("expected an integer, got %v", value)
+func wholeInt64(number float64) (int64, bool) {
+	if number != math.Trunc(number) || math.Abs(number) >= 9.2e18 {
+		return 0, false
 	}
-	return int64(number), nil
+	return int64(number), true
+}
+
+func parseInteger(value any) (int64, error) {
+	switch number := value.(type) {
+	case int64:
+		return number, nil
+	case int:
+		return int64(number), nil
+	case float64:
+		if whole, ok := wholeInt64(number); ok {
+			return whole, nil
+		}
+	case json.Number:
+		if exact, err := number.Int64(); err == nil {
+			return exact, nil
+		}
+		if approximate, err := number.Float64(); err == nil {
+			if whole, ok := wholeInt64(approximate); ok {
+				return whole, nil
+			}
+		}
+	}
+	return 0, fmt.Errorf("expected an integer, got %v", value)
 }
 
 func parseNumber(value any) (float64, error) {
-	number, ok := value.(float64)
-	if !ok {
-		return 0, fmt.Errorf("expected a number, got %v", value)
+	switch number := value.(type) {
+	case float64:
+		return number, nil
+	case int64:
+		return float64(number), nil
+	case int:
+		return float64(number), nil
+	case json.Number:
+		if parsed, err := number.Float64(); err == nil {
+			return parsed, nil
+		}
 	}
-	return number, nil
+	return 0, fmt.Errorf("expected a number, got %v", value)
 }
 
 func parseBoolean(value any) (bool, error) {
@@ -48,7 +79,74 @@ func parseBoolean(value any) (bool, error) {
 }
 
 func parseFree(value any) (map[string]any, error) {
-	return parseObject(value)
+	obj, err := parseObject(value)
+	if err != nil {
+		return nil, err
+	}
+	return copyMap(obj), nil
+}
+
+type bound struct {
+	set   bool
+	value float64
+}
+
+var noBound = bound{}
+
+func at(value float64) bound {
+	return bound{set: true, value: value}
+}
+
+func limitNumeric[T int64 | float64](parse func(any) (T, error), minimum, exclusiveMinimum, exclusiveMaximum bound) func(any) (T, error) {
+	return func(value any) (T, error) {
+		parsed, err := parse(value)
+		if err != nil {
+			return parsed, err
+		}
+		size := float64(parsed)
+		if (minimum.set && size < minimum.value) ||
+			(exclusiveMinimum.set && size <= exclusiveMinimum.value) ||
+			(exclusiveMaximum.set && size >= exclusiveMaximum.value) {
+			var zero T
+			return zero, fmt.Errorf("%v is out of range", value)
+		}
+		return parsed, nil
+	}
+}
+
+func limitString(parse func(any) (string, error), minLength int) func(any) (string, error) {
+	return func(value any) (string, error) {
+		parsed, err := parse(value)
+		if err != nil {
+			return parsed, err
+		}
+		if len([]rune(parsed)) < minLength {
+			return "", fmt.Errorf("shorter than %d", minLength)
+		}
+		return parsed, nil
+	}
+}
+
+func exactlyOne(obj map[string]any, keys ...string) error {
+	present := 0
+	for _, key := range keys {
+		if _, ok := obj[key]; ok {
+			present++
+		}
+	}
+	if present != 1 {
+		return fmt.Errorf("expected exactly one of %v, got %d", keys, present)
+	}
+	return nil
+}
+
+func putNumber(out map[string]any, key string, number float64) {
+	if existing, ok := out[key]; ok {
+		if current, err := parseNumber(existing); err == nil && current == number {
+			return
+		}
+	}
+	out[key] = number
 }
 
 func parseConst(expected string) func(any) (string, error) {
@@ -113,10 +211,25 @@ func hasKey(obj map[string]any, key string) bool {
 	return ok
 }
 
+func deepCopy(value any) any {
+	switch typed := value.(type) {
+	case map[string]any:
+		return copyMap(typed)
+	case []any:
+		out := make([]any, len(typed))
+		for i, element := range typed {
+			out[i] = deepCopy(element)
+		}
+		return out
+	default:
+		return value
+	}
+}
+
 func copyMap(source map[string]any) map[string]any {
 	out := make(map[string]any, len(source))
 	for key, value := range source {
-		out[key] = value
+		out[key] = deepCopy(value)
 	}
 	return out
 }
@@ -189,6 +302,9 @@ func AbilityFromJSON(value any) (Ability, error) {
 	if err != nil {
 		return Ability{}, err
 	}
+	if err := exactlyOne(obj, "ability", "abilityUuid"); err != nil {
+		return Ability{}, err
+	}
 	v0, err := optional(obj, "ability", parseString)
 	if err != nil {
 		return Ability{}, err
@@ -201,19 +317,25 @@ func AbilityFromJSON(value any) (Ability, error) {
 	if err != nil {
 		return Ability{}, err
 	}
-	return Ability{Ability: v0, AbilityUuid: v1, Params: v2, Raw: obj}, nil
+	return Ability{Ability: v0, AbilityUuid: v1, Params: v2, Raw: copyMap(obj)}, nil
 }
 
 func (v Ability) ToJSON() any {
 	out := copyMap(v.Raw)
 	if v.Ability != nil {
 		out["ability"] = (*v.Ability)
+	} else {
+		delete(out, "ability")
 	}
 	if v.AbilityUuid != nil {
 		out["abilityUuid"] = (*v.AbilityUuid)
+	} else {
+		delete(out, "abilityUuid")
 	}
 	if v.Params != nil {
-		out["params"] = v.Params
+		out["params"] = deepCopy(v.Params)
+	} else {
+		delete(out, "params")
 	}
 	return out
 }
@@ -247,15 +369,15 @@ func CameraIntrinsicsFromJSON(value any) (CameraIntrinsics, error) {
 	if err != nil {
 		return CameraIntrinsics{}, err
 	}
-	return CameraIntrinsics{Fx: v0, Fy: v1, Cx: v2, Cy: v3, Raw: obj}, nil
+	return CameraIntrinsics{Fx: v0, Fy: v1, Cx: v2, Cy: v3, Raw: copyMap(obj)}, nil
 }
 
 func (v CameraIntrinsics) ToJSON() any {
 	out := copyMap(v.Raw)
-	out["fx"] = v.Fx
-	out["fy"] = v.Fy
-	out["cx"] = v.Cx
-	out["cy"] = v.Cy
+	putNumber(out, "fx", v.Fx)
+	putNumber(out, "fy", v.Fy)
+	putNumber(out, "cx", v.Cx)
+	putNumber(out, "cy", v.Cy)
 	return out
 }
 
@@ -293,25 +415,35 @@ func CameraDistortionFromJSON(value any) (CameraDistortion, error) {
 	if err != nil {
 		return CameraDistortion{}, err
 	}
-	return CameraDistortion{K1: v0, K2: v1, P1: v2, P2: v3, K3: v4, Raw: obj}, nil
+	return CameraDistortion{K1: v0, K2: v1, P1: v2, P2: v3, K3: v4, Raw: copyMap(obj)}, nil
 }
 
 func (v CameraDistortion) ToJSON() any {
 	out := copyMap(v.Raw)
 	if v.K1 != nil {
-		out["k1"] = (*v.K1)
+		putNumber(out, "k1", *v.K1)
+	} else {
+		delete(out, "k1")
 	}
 	if v.K2 != nil {
-		out["k2"] = (*v.K2)
+		putNumber(out, "k2", *v.K2)
+	} else {
+		delete(out, "k2")
 	}
 	if v.P1 != nil {
-		out["p1"] = (*v.P1)
+		putNumber(out, "p1", *v.P1)
+	} else {
+		delete(out, "p1")
 	}
 	if v.P2 != nil {
-		out["p2"] = (*v.P2)
+		putNumber(out, "p2", *v.P2)
+	} else {
+		delete(out, "p2")
 	}
 	if v.K3 != nil {
-		out["k3"] = (*v.K3)
+		putNumber(out, "k3", *v.K3)
+	} else {
+		delete(out, "k3")
 	}
 	return out
 }
@@ -345,15 +477,15 @@ func CameraExtrinsicsRotationFromJSON(value any) (CameraExtrinsicsRotation, erro
 	if err != nil {
 		return CameraExtrinsicsRotation{}, err
 	}
-	return CameraExtrinsicsRotation{W: v0, X: v1, Y: v2, Z: v3, Raw: obj}, nil
+	return CameraExtrinsicsRotation{W: v0, X: v1, Y: v2, Z: v3, Raw: copyMap(obj)}, nil
 }
 
 func (v CameraExtrinsicsRotation) ToJSON() any {
 	out := copyMap(v.Raw)
-	out["w"] = v.W
-	out["x"] = v.X
-	out["y"] = v.Y
-	out["z"] = v.Z
+	putNumber(out, "w", v.W)
+	putNumber(out, "x", v.X)
+	putNumber(out, "y", v.Y)
+	putNumber(out, "z", v.Z)
 	return out
 }
 
@@ -381,14 +513,14 @@ func CameraExtrinsicsTranslationFromJSON(value any) (CameraExtrinsicsTranslation
 	if err != nil {
 		return CameraExtrinsicsTranslation{}, err
 	}
-	return CameraExtrinsicsTranslation{X: v0, Y: v1, Z: v2, Raw: obj}, nil
+	return CameraExtrinsicsTranslation{X: v0, Y: v1, Z: v2, Raw: copyMap(obj)}, nil
 }
 
 func (v CameraExtrinsicsTranslation) ToJSON() any {
 	out := copyMap(v.Raw)
-	out["x"] = v.X
-	out["y"] = v.Y
-	out["z"] = v.Z
+	putNumber(out, "x", v.X)
+	putNumber(out, "y", v.Y)
+	putNumber(out, "z", v.Z)
 	return out
 }
 
@@ -411,16 +543,20 @@ func CameraExtrinsicsFromJSON(value any) (CameraExtrinsics, error) {
 	if err != nil {
 		return CameraExtrinsics{}, err
 	}
-	return CameraExtrinsics{Rotation: v0, Translation: v1, Raw: obj}, nil
+	return CameraExtrinsics{Rotation: v0, Translation: v1, Raw: copyMap(obj)}, nil
 }
 
 func (v CameraExtrinsics) ToJSON() any {
 	out := copyMap(v.Raw)
 	if v.Rotation != nil {
 		out["rotation"] = (*v.Rotation).ToJSON()
+	} else {
+		delete(out, "rotation")
 	}
 	if v.Translation != nil {
 		out["translation"] = (*v.Translation).ToJSON()
+	} else {
+		delete(out, "translation")
 	}
 	return out
 }
@@ -438,11 +574,14 @@ func CameraFromJSON(value any) (Camera, error) {
 	if err != nil {
 		return Camera{}, err
 	}
+	if err := exactlyOne(obj, "intrinsics", "hfovDegrees"); err != nil {
+		return Camera{}, err
+	}
 	v0, err := optional(obj, "intrinsics", CameraIntrinsicsFromJSON)
 	if err != nil {
 		return Camera{}, err
 	}
-	v1, err := optional(obj, "hfovDegrees", parseNumber)
+	v1, err := optional(obj, "hfovDegrees", limitNumeric(parseNumber, noBound, at(0), at(180)))
 	if err != nil {
 		return Camera{}, err
 	}
@@ -454,22 +593,30 @@ func CameraFromJSON(value any) (Camera, error) {
 	if err != nil {
 		return Camera{}, err
 	}
-	return Camera{Intrinsics: v0, HfovDegrees: v1, Distortion: v2, Extrinsics: v3, Raw: obj}, nil
+	return Camera{Intrinsics: v0, HfovDegrees: v1, Distortion: v2, Extrinsics: v3, Raw: copyMap(obj)}, nil
 }
 
 func (v Camera) ToJSON() any {
 	out := copyMap(v.Raw)
 	if v.Intrinsics != nil {
 		out["intrinsics"] = (*v.Intrinsics).ToJSON()
+	} else {
+		delete(out, "intrinsics")
 	}
 	if v.HfovDegrees != nil {
-		out["hfovDegrees"] = (*v.HfovDegrees)
+		putNumber(out, "hfovDegrees", *v.HfovDegrees)
+	} else {
+		delete(out, "hfovDegrees")
 	}
 	if v.Distortion != nil {
 		out["distortion"] = (*v.Distortion).ToJSON()
+	} else {
+		delete(out, "distortion")
 	}
 	if v.Extrinsics != nil {
 		out["extrinsics"] = (*v.Extrinsics).ToJSON()
+	} else {
+		delete(out, "extrinsics")
 	}
 	return out
 }
@@ -493,13 +640,13 @@ func ComponentParamsFromJSON(value any) (ComponentParams, error) {
 	if err != nil {
 		return ComponentParams{}, err
 	}
-	return ComponentParams{ComponentId: v0, Values: v1, Raw: obj}, nil
+	return ComponentParams{ComponentId: v0, Values: v1, Raw: copyMap(obj)}, nil
 }
 
 func (v ComponentParams) ToJSON() any {
 	out := copyMap(v.Raw)
 	out["componentId"] = v.ComponentId
-	out["values"] = v.Values
+	out["values"] = deepCopy(v.Values)
 	return out
 }
 
@@ -518,19 +665,19 @@ func CreditFromJSON(value any) (Credit, error) {
 	if _, err := required(obj, "type", parseConst("credit")); err != nil {
 		return Credit{}, err
 	}
-	v0, err := required(obj, "id", parseString)
+	v0, err := required(obj, "id", limitString(parseString, 1))
 	if err != nil {
 		return Credit{}, err
 	}
-	v1, err := required(obj, "bytes", parseInteger)
+	v1, err := required(obj, "bytes", limitNumeric(parseInteger, at(0), noBound, noBound))
 	if err != nil {
 		return Credit{}, err
 	}
-	v2, err := optional(obj, "member", parseInteger)
+	v2, err := optional(obj, "member", limitNumeric(parseInteger, at(0), noBound, noBound))
 	if err != nil {
 		return Credit{}, err
 	}
-	return Credit{Id: v0, Bytes: v1, Member: v2, Raw: obj}, nil
+	return Credit{Id: v0, Bytes: v1, Member: v2, Raw: copyMap(obj)}, nil
 }
 
 func (v Credit) ToJSON() any {
@@ -539,6 +686,8 @@ func (v Credit) ToJSON() any {
 	out["bytes"] = v.Bytes
 	if v.Member != nil {
 		out["member"] = (*v.Member)
+	} else {
+		delete(out, "member")
 	}
 	out["type"] = "credit"
 	return out
@@ -559,7 +708,7 @@ func DoneFromJSON(value any) (Done, error) {
 		return Done{}, err
 	}
 
-	return Done{Raw: obj}, nil
+	return Done{Raw: copyMap(obj)}, nil
 }
 
 func (v Done) ToJSON() any {
@@ -584,15 +733,15 @@ func DroppedFromJSON(value any) (Dropped, error) {
 	if _, err := required(obj, "type", parseConst("dropped")); err != nil {
 		return Dropped{}, err
 	}
-	v0, err := required(obj, "id", parseString)
+	v0, err := required(obj, "id", limitString(parseString, 1))
 	if err != nil {
 		return Dropped{}, err
 	}
-	v1, err := required(obj, "count", parseInteger)
+	v1, err := required(obj, "count", limitNumeric(parseInteger, at(0), noBound, noBound))
 	if err != nil {
 		return Dropped{}, err
 	}
-	return Dropped{Id: v0, Count: v1, Raw: obj}, nil
+	return Dropped{Id: v0, Count: v1, Raw: copyMap(obj)}, nil
 }
 
 func (v Dropped) ToJSON() any {
@@ -621,7 +770,7 @@ func EndFromJSON(value any) (End, error) {
 	if _, err := required(obj, "type", parseConst("end")); err != nil {
 		return End{}, err
 	}
-	v0, err := required(obj, "id", parseString)
+	v0, err := required(obj, "id", limitString(parseString, 1))
 	if err != nil {
 		return End{}, err
 	}
@@ -633,11 +782,11 @@ func EndFromJSON(value any) (End, error) {
 	if err != nil {
 		return End{}, err
 	}
-	v3, err := optional(obj, "milliComputeUnits", parseInteger)
+	v3, err := optional(obj, "milliComputeUnits", limitNumeric(parseInteger, at(0), noBound, noBound))
 	if err != nil {
 		return End{}, err
 	}
-	return End{Id: v0, Reason: v1, Message: v2, MilliComputeUnits: v3, Raw: obj}, nil
+	return End{Id: v0, Reason: v1, Message: v2, MilliComputeUnits: v3, Raw: copyMap(obj)}, nil
 }
 
 func (v End) ToJSON() any {
@@ -646,9 +795,13 @@ func (v End) ToJSON() any {
 	out["reason"] = string(v.Reason)
 	if v.Message != nil {
 		out["message"] = (*v.Message)
+	} else {
+		delete(out, "message")
 	}
 	if v.MilliComputeUnits != nil {
 		out["milliComputeUnits"] = (*v.MilliComputeUnits)
+	} else {
+		delete(out, "milliComputeUnits")
 	}
 	out["type"] = "end"
 	return out
@@ -671,11 +824,11 @@ func ErrorFromJSON(value any) (Error, error) {
 	if _, err := required(obj, "type", parseConst("error")); err != nil {
 		return Error{}, err
 	}
-	v0, err := optional(obj, "id", parseString)
+	v0, err := optional(obj, "id", limitString(parseString, 1))
 	if err != nil {
 		return Error{}, err
 	}
-	v1, err := required(obj, "error", parseString)
+	v1, err := required(obj, "error", limitString(parseString, 1))
 	if err != nil {
 		return Error{}, err
 	}
@@ -683,13 +836,15 @@ func ErrorFromJSON(value any) (Error, error) {
 	if err != nil {
 		return Error{}, err
 	}
-	return Error{Id: v0, Error: v1, Message: v2, Raw: obj}, nil
+	return Error{Id: v0, Error: v1, Message: v2, Raw: copyMap(obj)}, nil
 }
 
 func (v Error) ToJSON() any {
 	out := copyMap(v.Raw)
 	if v.Id != nil {
 		out["id"] = (*v.Id)
+	} else {
+		delete(out, "id")
 	}
 	out["error"] = v.Error
 	out["message"] = v.Message
@@ -714,7 +869,7 @@ func GetGraphFromJSON(value any) (GetGraph, error) {
 	if _, err := required(obj, "type", parseConst("getGraph")); err != nil {
 		return GetGraph{}, err
 	}
-	v0, err := required(obj, "id", parseString)
+	v0, err := required(obj, "id", limitString(parseString, 1))
 	if err != nil {
 		return GetGraph{}, err
 	}
@@ -726,7 +881,7 @@ func GetGraphFromJSON(value any) (GetGraph, error) {
 	if err != nil {
 		return GetGraph{}, err
 	}
-	return GetGraph{Id: v0, Format: v1, Verbose: v2, Raw: obj}, nil
+	return GetGraph{Id: v0, Format: v1, Verbose: v2, Raw: copyMap(obj)}, nil
 }
 
 func (v GetGraph) ToJSON() any {
@@ -735,6 +890,8 @@ func (v GetGraph) ToJSON() any {
 	out["format"] = string(v.Format)
 	if v.Verbose != nil {
 		out["verbose"] = (*v.Verbose)
+	} else {
+		delete(out, "verbose")
 	}
 	out["type"] = "getGraph"
 	return out
@@ -758,6 +915,9 @@ func InferenceComponentFromJSON(value any) (InferenceComponent, error) {
 	if _, err := required(obj, "type", parseConst("inference")); err != nil {
 		return InferenceComponent{}, err
 	}
+	if err := exactlyOne(obj, "ability", "abilityUuid"); err != nil {
+		return InferenceComponent{}, err
+	}
 	v0, err := optional(obj, "ability", parseString)
 	if err != nil {
 		return InferenceComponent{}, err
@@ -774,22 +934,30 @@ func InferenceComponentFromJSON(value any) (InferenceComponent, error) {
 	if err != nil {
 		return InferenceComponent{}, err
 	}
-	return InferenceComponent{Ability: v0, AbilityUuid: v1, Params: v2, Id: v3, Raw: obj}, nil
+	return InferenceComponent{Ability: v0, AbilityUuid: v1, Params: v2, Id: v3, Raw: copyMap(obj)}, nil
 }
 
 func (v InferenceComponent) ToJSON() any {
 	out := copyMap(v.Raw)
 	if v.Ability != nil {
 		out["ability"] = (*v.Ability)
+	} else {
+		delete(out, "ability")
 	}
 	if v.AbilityUuid != nil {
 		out["abilityUuid"] = (*v.AbilityUuid)
+	} else {
+		delete(out, "abilityUuid")
 	}
 	if v.Params != nil {
-		out["params"] = v.Params
+		out["params"] = deepCopy(v.Params)
+	} else {
+		delete(out, "params")
 	}
 	if v.Id != nil {
 		out["id"] = (*v.Id)
+	} else {
+		delete(out, "id")
 	}
 	out["type"] = "inference"
 	return out
@@ -810,11 +978,11 @@ func PingFromJSON(value any) (Ping, error) {
 	if _, err := required(obj, "type", parseConst("ping")); err != nil {
 		return Ping{}, err
 	}
-	v0, err := required(obj, "id", parseString)
+	v0, err := required(obj, "id", limitString(parseString, 1))
 	if err != nil {
 		return Ping{}, err
 	}
-	return Ping{Id: v0, Raw: obj}, nil
+	return Ping{Id: v0, Raw: copyMap(obj)}, nil
 }
 
 func (v Ping) ToJSON() any {
@@ -839,11 +1007,11 @@ func PongFromJSON(value any) (Pong, error) {
 	if _, err := required(obj, "type", parseConst("pong")); err != nil {
 		return Pong{}, err
 	}
-	v0, err := required(obj, "id", parseString)
+	v0, err := required(obj, "id", limitString(parseString, 1))
 	if err != nil {
 		return Pong{}, err
 	}
-	return Pong{Id: v0, Raw: obj}, nil
+	return Pong{Id: v0, Raw: copyMap(obj)}, nil
 }
 
 func (v Pong) ToJSON() any {
@@ -884,7 +1052,7 @@ func PopFromJSON(value any) (Pop, error) {
 	if err != nil {
 		return Pop{}, err
 	}
-	return Pop{Components: v0, PostTransform: v1, Defaults: v2, DepthMap: v3, Raw: obj}, nil
+	return Pop{Components: v0, PostTransform: v1, Defaults: v2, DepthMap: v3, Raw: copyMap(obj)}, nil
 }
 
 func (v Pop) ToJSON() any {
@@ -892,12 +1060,18 @@ func (v Pop) ToJSON() any {
 	out["components"] = mapList(v.Components, func(x PopComponent) any { return x.ToJSON() })
 	if v.PostTransform != nil {
 		out["postTransform"] = (*v.PostTransform)
+	} else {
+		delete(out, "postTransform")
 	}
 	if v.Defaults != nil {
 		out["defaults"] = (*v.Defaults).ToJSON()
+	} else {
+		delete(out, "defaults")
 	}
 	if v.DepthMap != nil {
 		out["depthMap"] = (*v.DepthMap).ToJSON()
+	} else {
+		delete(out, "depthMap")
 	}
 	return out
 }
@@ -914,6 +1088,9 @@ func PopDepthMapFromJSON(value any) (PopDepthMap, error) {
 	if err != nil {
 		return PopDepthMap{}, err
 	}
+	if err := exactlyOne(obj, "ability", "abilityUuid"); err != nil {
+		return PopDepthMap{}, err
+	}
 	v0, err := optional(obj, "ability", parseString)
 	if err != nil {
 		return PopDepthMap{}, err
@@ -926,19 +1103,25 @@ func PopDepthMapFromJSON(value any) (PopDepthMap, error) {
 	if err != nil {
 		return PopDepthMap{}, err
 	}
-	return PopDepthMap{Ability: v0, AbilityUuid: v1, ToWorld: v2, Raw: obj}, nil
+	return PopDepthMap{Ability: v0, AbilityUuid: v1, ToWorld: v2, Raw: copyMap(obj)}, nil
 }
 
 func (v PopDepthMap) ToJSON() any {
 	out := copyMap(v.Raw)
 	if v.Ability != nil {
 		out["ability"] = (*v.Ability)
+	} else {
+		delete(out, "ability")
 	}
 	if v.AbilityUuid != nil {
 		out["abilityUuid"] = (*v.AbilityUuid)
+	} else {
+		delete(out, "abilityUuid")
 	}
 	if v.ToWorld != nil {
 		out["toWorld"] = (*v.ToWorld)
+	} else {
+		delete(out, "toWorld")
 	}
 	return out
 }
@@ -957,7 +1140,7 @@ func PredictionFromJSON(value any) (Prediction, error) {
 	if _, err := required(obj, "type", parseConst("prediction")); err != nil {
 		return Prediction{}, err
 	}
-	v0, err := required(obj, "id", parseString)
+	v0, err := required(obj, "id", limitString(parseString, 1))
 	if err != nil {
 		return Prediction{}, err
 	}
@@ -965,13 +1148,13 @@ func PredictionFromJSON(value any) (Prediction, error) {
 	if err != nil {
 		return Prediction{}, err
 	}
-	return Prediction{Id: v0, Prediction: v1, Raw: obj}, nil
+	return Prediction{Id: v0, Prediction: v1, Raw: copyMap(obj)}, nil
 }
 
 func (v Prediction) ToJSON() any {
 	out := copyMap(v.Raw)
 	out["id"] = v.Id
-	out["prediction"] = v.Prediction
+	out["prediction"] = deepCopy(v.Prediction)
 	out["type"] = "prediction"
 	return out
 }
@@ -991,11 +1174,11 @@ func QuitFromJSON(value any) (Quit, error) {
 	if _, err := required(obj, "type", parseConst("quit")); err != nil {
 		return Quit{}, err
 	}
-	v0, err := required(obj, "id", parseString)
+	v0, err := required(obj, "id", limitString(parseString, 1))
 	if err != nil {
 		return Quit{}, err
 	}
-	return Quit{Id: v0, Raw: obj}, nil
+	return Quit{Id: v0, Raw: copyMap(obj)}, nil
 }
 
 func (v Quit) ToJSON() any {
@@ -1021,7 +1204,7 @@ func RawComponentFromJSON(value any) (RawComponent, error) {
 	if err != nil {
 		return RawComponent{}, err
 	}
-	return RawComponent{Type: v0, Raw: obj}, nil
+	return RawComponent{Type: v0, Raw: copyMap(obj)}, nil
 }
 
 func (v RawComponent) ToJSON() any {
@@ -1045,11 +1228,11 @@ func ResultFromJSON(value any) (Result, error) {
 	if _, err := required(obj, "type", parseConst("result")); err != nil {
 		return Result{}, err
 	}
-	v0, err := required(obj, "id", parseString)
+	v0, err := required(obj, "id", limitString(parseString, 1))
 	if err != nil {
 		return Result{}, err
 	}
-	return Result{Id: v0, Raw: obj}, nil
+	return Result{Id: v0, Raw: copyMap(obj)}, nil
 }
 
 func (v Result) ToJSON() any {
@@ -1076,19 +1259,19 @@ func SendFromJSON(value any) (Send, error) {
 	if _, err := required(obj, "type", parseConst("send")); err != nil {
 		return Send{}, err
 	}
-	v0, err := required(obj, "id", parseString)
+	v0, err := required(obj, "id", limitString(parseString, 1))
 	if err != nil {
 		return Send{}, err
 	}
-	v1, err := required(obj, "credit", parseInteger)
+	v1, err := required(obj, "credit", limitNumeric(parseInteger, at(0), noBound, noBound))
 	if err != nil {
 		return Send{}, err
 	}
-	v2, err := optional(obj, "member", parseInteger)
+	v2, err := optional(obj, "member", limitNumeric(parseInteger, at(0), noBound, noBound))
 	if err != nil {
 		return Send{}, err
 	}
-	return Send{Id: v0, Credit: v1, Member: v2, Raw: obj}, nil
+	return Send{Id: v0, Credit: v1, Member: v2, Raw: copyMap(obj)}, nil
 }
 
 func (v Send) ToJSON() any {
@@ -1097,6 +1280,8 @@ func (v Send) ToJSON() any {
 	out["credit"] = v.Credit
 	if v.Member != nil {
 		out["member"] = (*v.Member)
+	} else {
+		delete(out, "member")
 	}
 	out["type"] = "send"
 	return out
@@ -1118,7 +1303,7 @@ func SetPopFromJSON(value any) (SetPop, error) {
 	if _, err := required(obj, "type", parseConst("setPop")); err != nil {
 		return SetPop{}, err
 	}
-	v0, err := required(obj, "id", parseString)
+	v0, err := required(obj, "id", limitString(parseString, 1))
 	if err != nil {
 		return SetPop{}, err
 	}
@@ -1126,7 +1311,7 @@ func SetPopFromJSON(value any) (SetPop, error) {
 	if err != nil {
 		return SetPop{}, err
 	}
-	return SetPop{Id: v0, Pop: v1, Raw: obj}, nil
+	return SetPop{Id: v0, Pop: v1, Raw: copyMap(obj)}, nil
 }
 
 func (v SetPop) ToJSON() any {
@@ -1153,7 +1338,7 @@ func SetSourceUploadFromJSON(value any) (SetSourceUpload, error) {
 	if err != nil {
 		return SetSourceUpload{}, err
 	}
-	return SetSourceUpload{ContentType: v0, Raw: obj}, nil
+	return SetSourceUpload{ContentType: v0, Raw: copyMap(obj)}, nil
 }
 
 func (v SetSourceUpload) ToJSON() any {
@@ -1185,7 +1370,10 @@ func SetSourceFromJSON(value any) (SetSource, error) {
 	if _, err := required(obj, "type", parseConst("setSource")); err != nil {
 		return SetSource{}, err
 	}
-	v0, err := required(obj, "id", parseString)
+	if err := exactlyOne(obj, "url", "assetUuid", "upload", "group"); err != nil {
+		return SetSource{}, err
+	}
+	v0, err := required(obj, "id", limitString(parseString, 1))
 	if err != nil {
 		return SetSource{}, err
 	}
@@ -1229,7 +1417,7 @@ func SetSourceFromJSON(value any) (SetSource, error) {
 	if err != nil {
 		return SetSource{}, err
 	}
-	return SetSource{Id: v0, Url: v1, AssetUuid: v2, Upload: v3, Group: v4, Params: v5, Fps: v6, Roi: v7, Camera: v8, Live: v9, Mode: v10, Raw: obj}, nil
+	return SetSource{Id: v0, Url: v1, AssetUuid: v2, Upload: v3, Group: v4, Params: v5, Fps: v6, Roi: v7, Camera: v8, Live: v9, Mode: v10, Raw: copyMap(obj)}, nil
 }
 
 func (v SetSource) ToJSON() any {
@@ -1237,33 +1425,53 @@ func (v SetSource) ToJSON() any {
 	out["id"] = v.Id
 	if v.Url != nil {
 		out["url"] = (*v.Url)
+	} else {
+		delete(out, "url")
 	}
 	if v.AssetUuid != nil {
 		out["assetUuid"] = (*v.AssetUuid)
+	} else {
+		delete(out, "assetUuid")
 	}
 	if v.Upload != nil {
 		out["upload"] = (*v.Upload).ToJSON()
+	} else {
+		delete(out, "upload")
 	}
 	if v.Group != nil {
 		out["group"] = mapList(v.Group, func(x GroupMember) any { return x.ToJSON() })
+	} else {
+		delete(out, "group")
 	}
 	if v.Params != nil {
 		out["params"] = mapList(v.Params, func(x ComponentParams) any { return x.ToJSON() })
+	} else {
+		delete(out, "params")
 	}
 	if v.Fps != nil {
 		out["fps"] = (*v.Fps)
+	} else {
+		delete(out, "fps")
 	}
 	if v.Roi != nil {
 		out["roi"] = (*v.Roi).ToJSON()
+	} else {
+		delete(out, "roi")
 	}
 	if v.Camera != nil {
 		out["camera"] = (*v.Camera).ToJSON()
+	} else {
+		delete(out, "camera")
 	}
 	if v.Live != nil {
 		out["live"] = (*v.Live)
+	} else {
+		delete(out, "live")
 	}
 	if v.Mode != nil {
 		out["mode"] = string((*v.Mode))
+	} else {
+		delete(out, "mode")
 	}
 	out["type"] = "setSource"
 	return out
@@ -1325,37 +1533,55 @@ func SourceDefaultsFromJSON(value any) (SourceDefaults, error) {
 	if err != nil {
 		return SourceDefaults{}, err
 	}
-	return SourceDefaults{Camera: v0, Fps: v1, Roi: v2, MotionDetect: v3, MotionSensitivity: v4, MotionThreshold: v5, MotionGap: v6, MotionGridX: v7, MotionGridY: v8, Raw: obj}, nil
+	return SourceDefaults{Camera: v0, Fps: v1, Roi: v2, MotionDetect: v3, MotionSensitivity: v4, MotionThreshold: v5, MotionGap: v6, MotionGridX: v7, MotionGridY: v8, Raw: copyMap(obj)}, nil
 }
 
 func (v SourceDefaults) ToJSON() any {
 	out := copyMap(v.Raw)
 	if v.Camera != nil {
 		out["camera"] = (*v.Camera).ToJSON()
+	} else {
+		delete(out, "camera")
 	}
 	if v.Fps != nil {
 		out["fps"] = (*v.Fps)
+	} else {
+		delete(out, "fps")
 	}
 	if v.Roi != nil {
 		out["roi"] = (*v.Roi).ToJSON()
+	} else {
+		delete(out, "roi")
 	}
 	if v.MotionDetect != nil {
 		out["motionDetect"] = (*v.MotionDetect)
+	} else {
+		delete(out, "motionDetect")
 	}
 	if v.MotionSensitivity != nil {
-		out["motionSensitivity"] = (*v.MotionSensitivity)
+		putNumber(out, "motionSensitivity", *v.MotionSensitivity)
+	} else {
+		delete(out, "motionSensitivity")
 	}
 	if v.MotionThreshold != nil {
-		out["motionThreshold"] = (*v.MotionThreshold)
+		putNumber(out, "motionThreshold", *v.MotionThreshold)
+	} else {
+		delete(out, "motionThreshold")
 	}
 	if v.MotionGap != nil {
 		out["motionGap"] = (*v.MotionGap)
+	} else {
+		delete(out, "motionGap")
 	}
 	if v.MotionGridX != nil {
 		out["motionGridX"] = (*v.MotionGridX)
+	} else {
+		delete(out, "motionGridX")
 	}
 	if v.MotionGridY != nil {
 		out["motionGridY"] = (*v.MotionGridY)
+	} else {
+		delete(out, "motionGridY")
 	}
 	return out
 }
@@ -1373,11 +1599,11 @@ func StartFromJSON(value any) (Start, error) {
 	if _, err := required(obj, "type", parseConst("start")); err != nil {
 		return Start{}, err
 	}
-	v0, err := required(obj, "id", parseString)
+	v0, err := required(obj, "id", limitString(parseString, 1))
 	if err != nil {
 		return Start{}, err
 	}
-	return Start{Id: v0, Raw: obj}, nil
+	return Start{Id: v0, Raw: copyMap(obj)}, nil
 }
 
 func (v Start) ToJSON() any {
@@ -1402,11 +1628,11 @@ func StopSourceFromJSON(value any) (StopSource, error) {
 	if _, err := required(obj, "type", parseConst("stopSource")); err != nil {
 		return StopSource{}, err
 	}
-	v0, err := required(obj, "id", parseString)
+	v0, err := required(obj, "id", limitString(parseString, 1))
 	if err != nil {
 		return StopSource{}, err
 	}
-	return StopSource{Id: v0, Raw: obj}, nil
+	return StopSource{Id: v0, Raw: copyMap(obj)}, nil
 }
 
 func (v StopSource) ToJSON() any {
@@ -1432,15 +1658,15 @@ func UploadedFromJSON(value any) (Uploaded, error) {
 	if _, err := required(obj, "type", parseConst("uploaded")); err != nil {
 		return Uploaded{}, err
 	}
-	v0, err := required(obj, "id", parseString)
+	v0, err := required(obj, "id", limitString(parseString, 1))
 	if err != nil {
 		return Uploaded{}, err
 	}
-	v1, err := optional(obj, "member", parseInteger)
+	v1, err := optional(obj, "member", limitNumeric(parseInteger, at(0), noBound, noBound))
 	if err != nil {
 		return Uploaded{}, err
 	}
-	return Uploaded{Id: v0, Member: v1, Raw: obj}, nil
+	return Uploaded{Id: v0, Member: v1, Raw: copyMap(obj)}, nil
 }
 
 func (v Uploaded) ToJSON() any {
@@ -1448,6 +1674,8 @@ func (v Uploaded) ToJSON() any {
 	out["id"] = v.Id
 	if v.Member != nil {
 		out["member"] = (*v.Member)
+	} else {
+		delete(out, "member")
 	}
 	out["type"] = "uploaded"
 	return out
@@ -1469,15 +1697,15 @@ func UsageFromJSON(value any) (Usage, error) {
 	if _, err := required(obj, "type", parseConst("usage")); err != nil {
 		return Usage{}, err
 	}
-	v0, err := required(obj, "id", parseString)
+	v0, err := required(obj, "id", limitString(parseString, 1))
 	if err != nil {
 		return Usage{}, err
 	}
-	v1, err := required(obj, "milliComputeUnits", parseInteger)
+	v1, err := required(obj, "milliComputeUnits", limitNumeric(parseInteger, at(0), noBound, noBound))
 	if err != nil {
 		return Usage{}, err
 	}
-	return Usage{Id: v0, MilliComputeUnits: v1, Raw: obj}, nil
+	return Usage{Id: v0, MilliComputeUnits: v1, Raw: copyMap(obj)}, nil
 }
 
 func (v Usage) ToJSON() any {
@@ -1504,7 +1732,7 @@ func GroupMemberUrlFromJSON(value any) (GroupMemberUrl, error) {
 	if err != nil {
 		return GroupMemberUrl{}, err
 	}
-	return GroupMemberUrl{Url: v0, Raw: obj}, nil
+	return GroupMemberUrl{Url: v0, Raw: copyMap(obj)}, nil
 }
 
 func (v GroupMemberUrl) ToJSON() any {
@@ -1530,11 +1758,11 @@ func GroupMemberUploadUploadFromJSON(value any) (GroupMemberUploadUpload, error)
 	if err != nil {
 		return GroupMemberUploadUpload{}, err
 	}
-	v1, err := optional(obj, "bytes", parseInteger)
+	v1, err := optional(obj, "bytes", limitNumeric(parseInteger, at(0), noBound, noBound))
 	if err != nil {
 		return GroupMemberUploadUpload{}, err
 	}
-	return GroupMemberUploadUpload{ContentType: v0, Bytes: v1, Raw: obj}, nil
+	return GroupMemberUploadUpload{ContentType: v0, Bytes: v1, Raw: copyMap(obj)}, nil
 }
 
 func (v GroupMemberUploadUpload) ToJSON() any {
@@ -1542,6 +1770,8 @@ func (v GroupMemberUploadUpload) ToJSON() any {
 	out["contentType"] = v.ContentType
 	if v.Bytes != nil {
 		out["bytes"] = (*v.Bytes)
+	} else {
+		delete(out, "bytes")
 	}
 	return out
 }
@@ -1560,7 +1790,7 @@ func GroupMemberUploadFromJSON(value any) (GroupMemberUpload, error) {
 	if err != nil {
 		return GroupMemberUpload{}, err
 	}
-	return GroupMemberUpload{Upload: v0, Raw: obj}, nil
+	return GroupMemberUpload{Upload: v0, Raw: copyMap(obj)}, nil
 }
 
 func (v GroupMemberUpload) ToJSON() any {
@@ -1603,15 +1833,15 @@ func RoiRectangleFromJSON(value any) (RoiRectangle, error) {
 	if err != nil {
 		return RoiRectangle{}, err
 	}
-	return RoiRectangle{X: v0, Y: v1, Width: v2, Height: v3, Raw: obj}, nil
+	return RoiRectangle{X: v0, Y: v1, Width: v2, Height: v3, Raw: copyMap(obj)}, nil
 }
 
 func (v RoiRectangle) ToJSON() any {
 	out := copyMap(v.Raw)
-	out["x"] = v.X
-	out["y"] = v.Y
-	out["width"] = v.Width
-	out["height"] = v.Height
+	putNumber(out, "x", v.X)
+	putNumber(out, "y", v.Y)
+	putNumber(out, "width", v.Width)
+	putNumber(out, "height", v.Height)
 	out["type"] = "rectangle"
 	return out
 }
@@ -1637,13 +1867,13 @@ func RoiContourPointFromJSON(value any) (RoiContourPoint, error) {
 	if err != nil {
 		return RoiContourPoint{}, err
 	}
-	return RoiContourPoint{X: v0, Y: v1, Raw: obj}, nil
+	return RoiContourPoint{X: v0, Y: v1, Raw: copyMap(obj)}, nil
 }
 
 func (v RoiContourPoint) ToJSON() any {
 	out := copyMap(v.Raw)
-	out["x"] = v.X
-	out["y"] = v.Y
+	putNumber(out, "x", v.X)
+	putNumber(out, "y", v.Y)
 	return out
 }
 
@@ -1664,7 +1894,7 @@ func RoiContourFromJSON(value any) (RoiContour, error) {
 	if err != nil {
 		return RoiContour{}, err
 	}
-	return RoiContour{Points: v0, Raw: obj}, nil
+	return RoiContour{Points: v0, Raw: copyMap(obj)}, nil
 }
 
 func (v RoiContour) ToJSON() any {
@@ -1752,7 +1982,7 @@ func DecodeCommand(value any) Command {
 	parsed, err := CommandFromJSON(value)
 	if err != nil {
 		raw, _ := value.(map[string]any)
-		return UnknownCommand{Raw: raw}
+		return UnknownCommand{Raw: copyMap(raw)}
 	}
 	return parsed
 }
@@ -1888,7 +2118,7 @@ func DecodeMessage(value any) Message {
 	parsed, err := MessageFromJSON(value)
 	if err != nil {
 		raw, _ := value.(map[string]any)
-		return UnknownMessage{Raw: raw}
+		return UnknownMessage{Raw: copyMap(raw)}
 	}
 	return parsed
 }

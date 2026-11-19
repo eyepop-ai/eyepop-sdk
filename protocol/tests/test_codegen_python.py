@@ -1,3 +1,5 @@
+import dataclasses
+
 import pytest
 
 from conftest import load_python, ping, schema
@@ -92,3 +94,34 @@ def test_a_known_type_that_does_not_parse_decodes_to_the_unknown_variant():
     protocol = python(messages(), roots=("message",))
 
     assert isinstance(protocol.decode_message({"type": "ping"}), protocol.UnknownMessage)
+
+
+def test_decoded_json_is_a_snapshot_of_the_input():
+    protocol = python({"note": note()})
+    data = {"id": "n1", "future": {"a": 1}}
+
+    value = protocol.Note.from_json(data)
+    data["future"]["a"] = 2
+
+    assert value.to_json()["future"] == {"a": 1}
+
+
+def test_encoded_json_does_not_alias_the_value():
+    protocol = python({"note": note()})
+    value = protocol.Note.from_json({"id": "n1", "future": {"a": 1}})
+
+    value.to_json()["future"]["a"] = 3
+
+    assert value.to_json()["future"] == {"a": 1}
+
+
+def test_a_field_set_to_none_is_removed_from_the_retained_json():
+    protocol = python({"note": note()})
+    value = protocol.Note.from_json({"id": "n1", "text": "x"})
+
+    assert dataclasses.replace(value, text=None).to_json() == {"id": "n1"}
+
+
+def test_a_requested_root_that_is_not_a_union_is_rejected():
+    with pytest.raises(ValueError, match="message"):
+        generate({"ping": ping()}, ("message",))

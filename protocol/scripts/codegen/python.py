@@ -1,8 +1,9 @@
-from .model import Always, Array, Const, Enum, Field, Free, Key, Model, Object, Ref, Tag, Type, Union, Variant
+from .model import Always, Array, Const, Constrained, Enum, Field, Free, Key, Model, Object, Ref, Tag, Type, Union, Variant
 
 HEADER = '''# Generated from protocol/schema by protocol/scripts/generate.py. Do not edit.
 from __future__ import annotations
 
+import copy
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any, Literal, cast
@@ -33,6 +34,8 @@ def _string(value: Any) -> str:
 
 
 def _integer(value: Any) -> int:
+    if isinstance(value, float) and value.is_integer():
+        return int(value)
     if isinstance(value, bool) or not isinstance(value, int):
         raise ValueError(f"expected an integer, got {type(value).__name__}")
     return value
@@ -51,7 +54,35 @@ def _boolean(value: Any) -> bool:
 
 
 def _free(value: Any) -> dict[str, Any]:
-    return _object(value)
+    return copy.deepcopy(_object(value))
+
+
+def _limit(
+    parse: Callable[[Any], Any],
+    minimum: float | None = None,
+    exclusive_minimum: float | None = None,
+    exclusive_maximum: float | None = None,
+    min_length: int | None = None,
+) -> Callable[[Any], Any]:
+    def checked(value: Any) -> Any:
+        parsed = parse(value)
+        if minimum is not None and parsed < minimum:
+            raise ValueError(f"{parsed} is below {minimum}")
+        if exclusive_minimum is not None and parsed <= exclusive_minimum:
+            raise ValueError(f"{parsed} is not above {exclusive_minimum}")
+        if exclusive_maximum is not None and parsed >= exclusive_maximum:
+            raise ValueError(f"{parsed} is not below {exclusive_maximum}")
+        if min_length is not None and len(parsed) < min_length:
+            raise ValueError(f"shorter than {min_length}")
+        return parsed
+
+    return checked
+
+
+def _exactly_one(obj: dict[str, Any], keys: Sequence[str]) -> None:
+    present = [key for key in keys if key in obj]
+    if len(present) != 1:
+        raise ValueError(f"expected exactly one of {list(keys)}, got {present}")
 
 
 def _const(expected: str) -> Callable[[Any], str]:
@@ -104,6 +135,8 @@ def _dispatch(value: Any, variants: _Variants) -> Any:
 def _dump(value: Any) -> Any:
     if hasattr(value, "to_json"):
         return value.to_json()
+    if isinstance(value, dict):
+        return copy.deepcopy(cast(dict[str, Any], value))
     if isinstance(value, list):
         return [_dump(element) for element in cast(list[Any], value)]
     return value
@@ -121,6 +154,8 @@ def emit(model: Model) -> str:
 
 def annotation(type_: Type) -> str:
     match type_:
+        case Constrained(kind):
+            return PY_TYPES[kind]
         case Const(value):
             return f"Literal[{value!r}]"
         case Enum(values, _):
@@ -137,6 +172,15 @@ def annotation(type_: Type) -> str:
 
 def parser(type_: Type, unions: frozenset[str]) -> str:
     match type_:
+        case Constrained(kind, minimum, exclusive_minimum, exclusive_maximum, min_length):
+            limits = {
+                "minimum": minimum,
+                "exclusive_minimum": exclusive_minimum,
+                "exclusive_maximum": exclusive_maximum,
+                "min_length": min_length,
+            }
+            args = "".join(f", {name}={value!r}" for name, value in limits.items() if value is not None)
+            return f"_limit(_{kind}{args})"
         case Const(value):
             return f"_const({value!r})"
         case Enum(values, _):
@@ -158,7 +202,10 @@ def declaration(f: Field) -> str:
 def write(f: Field) -> str:
     if f.required:
         return f"        out[{f.name!r}] = _dump(self.{f.name})"
-    return f"        if self.{f.name} is not None:\n            out[{f.name!r}] = _dump(self.{f.name})"
+    return (
+        f"        if self.{f.name} is not None:\n            out[{f.name!r}] = _dump(self.{f.name})\n"
+        f"        else:\n            out.pop({f.name!r}, None)"
+    )
 
 
 def emit_object(obj: Object, unions: frozenset[str] = frozenset()) -> str:
@@ -166,12 +213,14 @@ def emit_object(obj: Object, unions: frozenset[str] = frozenset()) -> str:
     typed = sorted((f for f in obj.fields if not isinstance(f.type, Const)), key=lambda f: not f.required)
     fields = "\n".join(declaration(f) for f in typed)
     checks = "".join(f"        _required(obj, {f.name!r}, {parser(f.type, unions)})\n" for f in consts)
+    if obj.exactly_one:
+        checks += f"        _exactly_one(obj, {obj.exactly_one!r})\n"
     reads = ", ".join(
         [
             f"{f.name}={'_required' if f.required else '_optional'}(obj, {f.name!r}, {parser(f.type, unions)})"
             for f in typed
         ]
-        + ["raw=obj"]
+        + ["raw=copy.deepcopy(obj)"]
     )
     writes = "\n".join([write(f) for f in typed] + [f"        out[{f.name!r}] = {f.type.value!r}" for f in consts])
     return f"""
@@ -186,7 +235,7 @@ class {obj.name}:
 {checks}        return {obj.name}({reads})
 
     def to_json(self) -> dict[str, Any]:
-        out = dict(self.raw)
+        out = copy.deepcopy(dict(self.raw))
 {writes}
         return out
 """
@@ -225,7 +274,7 @@ class {unknown}:
     raw: Mapping[str, Any]
 
     def to_json(self) -> dict[str, Any]:
-        return dict(self.raw)
+        return copy.deepcopy(dict(self.raw))
 
 
 {table}: _Variants = [
@@ -239,5 +288,5 @@ def decode_{union.name.lower()}(value: Any) -> {union.name}:
     try:
         return _dispatch(value, {table})
     except ValueError:
-        return {unknown}(cast(dict[str, Any], value) if isinstance(value, dict) else {{}})
+        return {unknown}(copy.deepcopy(cast(dict[str, Any], value)) if isinstance(value, dict) else {{}})
 """

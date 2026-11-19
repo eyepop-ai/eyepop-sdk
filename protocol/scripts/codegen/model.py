@@ -28,7 +28,16 @@ class Ref:
     name: str
 
 
-Type = str | Const | Enum | Free | Array | Ref
+@dataclass(frozen=True)
+class Constrained:
+    kind: str
+    minimum: float | None = None
+    exclusive_minimum: float | None = None
+    exclusive_maximum: float | None = None
+    min_length: int | None = None
+
+
+Type = str | Constrained | Const | Enum | Free | Array | Ref
 
 
 @dataclass(frozen=True)
@@ -42,6 +51,7 @@ class Field:
 class Object:
     name: str
     fields: tuple[Field, ...]
+    exactly_one: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -93,6 +103,15 @@ def ref_name(node: dict) -> str:
     return node["$ref"].removesuffix(".json")
 
 
+LIMITS = ("minimum", "exclusiveMinimum", "exclusiveMaximum", "minLength")
+
+
+def selector(body: dict) -> tuple[str, ...]:
+    entries = body.get("oneOf", ())
+    keys = [e["required"][0] for e in entries if set(e) == {"required"} and len(e["required"]) == 1]
+    return tuple(keys) if entries and len(keys) == len(entries) else ()
+
+
 def kind(body: dict) -> str:
     if "properties" in body:
         return "object"
@@ -104,19 +123,21 @@ def kind(body: dict) -> str:
 def parse(schemas: Mapping[str, dict], roots: Sequence[str]) -> Model:
     objects: dict[str, Object] = {}
 
-    def flatten(body: dict) -> tuple[dict, set]:
+    def flatten(body: dict) -> tuple[dict, set, tuple[str, ...]]:
         properties: dict = {}
         required: set = set()
+        exactly_one = selector(body)
         for part in body.get("allOf", ()):
-            base_properties, base_required = flatten(schemas[ref_name(part)])
+            base_properties, base_required, base_selector = flatten(schemas[ref_name(part)])
             properties |= base_properties
             required |= base_required
-        return properties | body.get("properties", {}), required | set(body.get("required", ()))
+            exactly_one = exactly_one or base_selector
+        return properties | body.get("properties", {}), required | set(body.get("required", ())), exactly_one
 
     def add_object(name: str, body: dict) -> str:
-        properties, required = flatten(body)
+        properties, required, exactly_one = flatten(body)
         fields = tuple(Field(key, type_of(prop, name + pascal(key)), key in required) for key, prop in properties.items())
-        objects[name] = Object(name, fields)
+        objects[name] = Object(name, fields, exactly_one)
         return name
 
     def type_of(prop: dict, hint: str) -> Type:
@@ -131,6 +152,10 @@ def parse(schemas: Mapping[str, dict], roots: Sequence[str]) -> Model:
             return Array(type_of(prop["items"], singular(hint)))
         if prop["type"] == "object":
             return Ref(add_object(hint, prop)) if "properties" in prop else Free()
+        if any(key in prop for key in LIMITS):
+            return Constrained(
+                prop["type"], prop.get("minimum"), prop.get("exclusiveMinimum"), prop.get("exclusiveMaximum"), prop.get("minLength")
+            )
         return prop["type"]
 
     def variant_names(name: str, body: dict) -> list[str]:
@@ -148,6 +173,9 @@ def parse(schemas: Mapping[str, dict], roots: Sequence[str]) -> Model:
         for name, body in schemas.items()
         if kind(body) == "union"
     )
+    missing = [root for root in roots if pascal(root) not in {u.name for u in unions}]
+    if missing:
+        raise ValueError(f"requested roots that are not unions: {', '.join(missing)}")
     return Model(tuple(objects.values()), unions)
 
 

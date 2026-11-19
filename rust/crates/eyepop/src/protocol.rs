@@ -25,9 +25,12 @@ fn parse_string(value: &Value) -> std::result::Result<String, DecodeError> {
 }
 
 fn parse_integer(value: &Value) -> std::result::Result<i64, DecodeError> {
-    match value.as_i64() {
-        Some(number) => Ok(number),
-        None => fail(format!("expected an integer, got {value}")),
+    if let Some(number) = value.as_i64() {
+        return Ok(number);
+    }
+    match value.as_f64() {
+        Some(number) if number.fract() == 0.0 && number.abs() < 9.2e18 => Ok(number as i64),
+        _ => fail(format!("expected an integer, got {value}")),
     }
 }
 
@@ -42,6 +45,41 @@ fn parse_boolean(value: &Value) -> std::result::Result<bool, DecodeError> {
     match value {
         Value::Bool(flag) => Ok(*flag),
         _ => fail(format!("expected a boolean, got {value}")),
+    }
+}
+
+fn limit<T>(
+    parse: impl Fn(&Value) -> std::result::Result<T, DecodeError>,
+    measure: impl Fn(&T) -> f64,
+    minimum: Option<f64>,
+    exclusive_minimum: Option<f64>,
+    exclusive_maximum: Option<f64>,
+) -> impl Fn(&Value) -> std::result::Result<T, DecodeError> {
+    move |value| {
+        let parsed = parse(value)?;
+        let size = measure(&parsed);
+        if minimum.is_some_and(|bound| size < bound)
+            || exclusive_minimum.is_some_and(|bound| size <= bound)
+            || exclusive_maximum.is_some_and(|bound| size >= bound)
+        {
+            return fail(format!("{value} is out of range"));
+        }
+        Ok(parsed)
+    }
+}
+
+fn exactly_one(obj: &Map<String, Value>, keys: &[&str]) -> std::result::Result<(), DecodeError> {
+    let present = keys.iter().filter(|key| obj.contains_key(**key)).count();
+    if present == 1 {
+        Ok(())
+    } else {
+        fail(format!("expected exactly one of {keys:?}, got {present}"))
+    }
+}
+
+fn put_number(out: &mut Map<String, Value>, key: &str, number: f64) {
+    if out.get(key).and_then(Value::as_f64) != Some(number) {
+        out.insert(key.to_string(), number_to_json(number));
     }
 }
 
@@ -185,6 +223,7 @@ pub struct Ability {
 impl Ability {
     pub fn from_json(value: &Value) -> std::result::Result<Ability, DecodeError> {
         let obj = parse_object(value)?;
+        exactly_one(obj, &["ability", "abilityUuid"])?;
         Ok(Ability {
             ability: optional(obj, "ability", parse_string)?,
             abilityUuid: optional(obj, "abilityUuid", parse_string)?,
@@ -197,12 +236,18 @@ impl Ability {
         let mut out = self.raw.clone();
         if let Some(x) = &self.ability {
             out.insert("ability".to_string(), Value::String(x.clone()));
+        } else {
+            out.remove("ability");
         }
         if let Some(x) = &self.abilityUuid {
             out.insert("abilityUuid".to_string(), Value::String(x.clone()));
+        } else {
+            out.remove("abilityUuid");
         }
         if let Some(x) = &self.params {
             out.insert("params".to_string(), Value::Object(x.clone()));
+        } else {
+            out.remove("params");
         }
         Value::Object(out)
     }
@@ -232,10 +277,10 @@ impl CameraIntrinsics {
 
     pub fn to_json(&self) -> Value {
         let mut out = self.raw.clone();
-        out.insert("fx".to_string(), number_to_json(*(&self.fx)));
-        out.insert("fy".to_string(), number_to_json(*(&self.fy)));
-        out.insert("cx".to_string(), number_to_json(*(&self.cx)));
-        out.insert("cy".to_string(), number_to_json(*(&self.cy)));
+        put_number(&mut out, "fx", self.fx);
+        put_number(&mut out, "fy", self.fy);
+        put_number(&mut out, "cx", self.cx);
+        put_number(&mut out, "cy", self.cy);
         Value::Object(out)
     }
 }
@@ -267,19 +312,29 @@ impl CameraDistortion {
     pub fn to_json(&self) -> Value {
         let mut out = self.raw.clone();
         if let Some(x) = &self.k1 {
-            out.insert("k1".to_string(), number_to_json(*x));
+            put_number(&mut out, "k1", *x);
+        } else {
+            out.remove("k1");
         }
         if let Some(x) = &self.k2 {
-            out.insert("k2".to_string(), number_to_json(*x));
+            put_number(&mut out, "k2", *x);
+        } else {
+            out.remove("k2");
         }
         if let Some(x) = &self.p1 {
-            out.insert("p1".to_string(), number_to_json(*x));
+            put_number(&mut out, "p1", *x);
+        } else {
+            out.remove("p1");
         }
         if let Some(x) = &self.p2 {
-            out.insert("p2".to_string(), number_to_json(*x));
+            put_number(&mut out, "p2", *x);
+        } else {
+            out.remove("p2");
         }
         if let Some(x) = &self.k3 {
-            out.insert("k3".to_string(), number_to_json(*x));
+            put_number(&mut out, "k3", *x);
+        } else {
+            out.remove("k3");
         }
         Value::Object(out)
     }
@@ -309,10 +364,10 @@ impl CameraExtrinsicsRotation {
 
     pub fn to_json(&self) -> Value {
         let mut out = self.raw.clone();
-        out.insert("w".to_string(), number_to_json(*(&self.w)));
-        out.insert("x".to_string(), number_to_json(*(&self.x)));
-        out.insert("y".to_string(), number_to_json(*(&self.y)));
-        out.insert("z".to_string(), number_to_json(*(&self.z)));
+        put_number(&mut out, "w", self.w);
+        put_number(&mut out, "x", self.x);
+        put_number(&mut out, "y", self.y);
+        put_number(&mut out, "z", self.z);
         Value::Object(out)
     }
 }
@@ -339,9 +394,9 @@ impl CameraExtrinsicsTranslation {
 
     pub fn to_json(&self) -> Value {
         let mut out = self.raw.clone();
-        out.insert("x".to_string(), number_to_json(*(&self.x)));
-        out.insert("y".to_string(), number_to_json(*(&self.y)));
-        out.insert("z".to_string(), number_to_json(*(&self.z)));
+        put_number(&mut out, "x", self.x);
+        put_number(&mut out, "y", self.y);
+        put_number(&mut out, "z", self.z);
         Value::Object(out)
     }
 }
@@ -368,9 +423,13 @@ impl CameraExtrinsics {
         let mut out = self.raw.clone();
         if let Some(x) = &self.rotation {
             out.insert("rotation".to_string(), x.to_json());
+        } else {
+            out.remove("rotation");
         }
         if let Some(x) = &self.translation {
             out.insert("translation".to_string(), x.to_json());
+        } else {
+            out.remove("translation");
         }
         Value::Object(out)
     }
@@ -389,9 +448,10 @@ pub struct Camera {
 impl Camera {
     pub fn from_json(value: &Value) -> std::result::Result<Camera, DecodeError> {
         let obj = parse_object(value)?;
+        exactly_one(obj, &["intrinsics", "hfovDegrees"])?;
         Ok(Camera {
             intrinsics: optional(obj, "intrinsics", CameraIntrinsics::from_json)?,
-            hfovDegrees: optional(obj, "hfovDegrees", parse_number)?,
+            hfovDegrees: optional(obj, "hfovDegrees", limit(parse_number, |n| *n as f64, None, Some(0.0), Some(180.0)))?,
             distortion: optional(obj, "distortion", CameraDistortion::from_json)?,
             extrinsics: optional(obj, "extrinsics", CameraExtrinsics::from_json)?,
             raw: obj.clone(),
@@ -402,15 +462,23 @@ impl Camera {
         let mut out = self.raw.clone();
         if let Some(x) = &self.intrinsics {
             out.insert("intrinsics".to_string(), x.to_json());
+        } else {
+            out.remove("intrinsics");
         }
         if let Some(x) = &self.hfovDegrees {
-            out.insert("hfovDegrees".to_string(), number_to_json(*x));
+            put_number(&mut out, "hfovDegrees", *x);
+        } else {
+            out.remove("hfovDegrees");
         }
         if let Some(x) = &self.distortion {
             out.insert("distortion".to_string(), x.to_json());
+        } else {
+            out.remove("distortion");
         }
         if let Some(x) = &self.extrinsics {
             out.insert("extrinsics".to_string(), x.to_json());
+        } else {
+            out.remove("extrinsics");
         }
         Value::Object(out)
     }
@@ -456,9 +524,9 @@ impl Credit {
         let obj = parse_object(value)?;
         required(obj, "type", parse_const("credit"))?;
         Ok(Credit {
-            id: required(obj, "id", parse_string)?,
-            bytes: required(obj, "bytes", parse_integer)?,
-            member: optional(obj, "member", parse_integer)?,
+            id: required(obj, "id", limit(parse_string, |text: &String| text.chars().count() as f64, Some(1.0), None, None))?,
+            bytes: required(obj, "bytes", limit(parse_integer, |n| *n as f64, Some(0.0), None, None))?,
+            member: optional(obj, "member", limit(parse_integer, |n| *n as f64, Some(0.0), None, None))?,
             raw: obj.clone(),
         })
     }
@@ -469,6 +537,8 @@ impl Credit {
         out.insert("bytes".to_string(), Value::from(*(&self.bytes)));
         if let Some(x) = &self.member {
             out.insert("member".to_string(), Value::from(*x));
+        } else {
+            out.remove("member");
         }
         out.insert("type".to_string(), Value::from("credit"));
         Value::Object(out)
@@ -512,8 +582,8 @@ impl Dropped {
         let obj = parse_object(value)?;
         required(obj, "type", parse_const("dropped"))?;
         Ok(Dropped {
-            id: required(obj, "id", parse_string)?,
-            count: required(obj, "count", parse_integer)?,
+            id: required(obj, "id", limit(parse_string, |text: &String| text.chars().count() as f64, Some(1.0), None, None))?,
+            count: required(obj, "count", limit(parse_integer, |n| *n as f64, Some(0.0), None, None))?,
             raw: obj.clone(),
         })
     }
@@ -542,10 +612,10 @@ impl End {
         let obj = parse_object(value)?;
         required(obj, "type", parse_const("end"))?;
         Ok(End {
-            id: required(obj, "id", parse_string)?,
+            id: required(obj, "id", limit(parse_string, |text: &String| text.chars().count() as f64, Some(1.0), None, None))?,
             reason: required(obj, "reason", EndReason::from_json)?,
             message: optional(obj, "message", parse_string)?,
-            milliComputeUnits: optional(obj, "milliComputeUnits", parse_integer)?,
+            milliComputeUnits: optional(obj, "milliComputeUnits", limit(parse_integer, |n| *n as f64, Some(0.0), None, None))?,
             raw: obj.clone(),
         })
     }
@@ -556,9 +626,13 @@ impl End {
         out.insert("reason".to_string(), (&self.reason).to_json());
         if let Some(x) = &self.message {
             out.insert("message".to_string(), Value::String(x.clone()));
+        } else {
+            out.remove("message");
         }
         if let Some(x) = &self.milliComputeUnits {
             out.insert("milliComputeUnits".to_string(), Value::from(*x));
+        } else {
+            out.remove("milliComputeUnits");
         }
         out.insert("type".to_string(), Value::from("end"));
         Value::Object(out)
@@ -579,8 +653,8 @@ impl Error {
         let obj = parse_object(value)?;
         required(obj, "type", parse_const("error"))?;
         Ok(Error {
-            id: optional(obj, "id", parse_string)?,
-            error: required(obj, "error", parse_string)?,
+            id: optional(obj, "id", limit(parse_string, |text: &String| text.chars().count() as f64, Some(1.0), None, None))?,
+            error: required(obj, "error", limit(parse_string, |text: &String| text.chars().count() as f64, Some(1.0), None, None))?,
             message: required(obj, "message", parse_string)?,
             raw: obj.clone(),
         })
@@ -590,6 +664,8 @@ impl Error {
         let mut out = self.raw.clone();
         if let Some(x) = &self.id {
             out.insert("id".to_string(), Value::String(x.clone()));
+        } else {
+            out.remove("id");
         }
         out.insert("error".to_string(), Value::String((&self.error).clone()));
         out.insert("message".to_string(), Value::String((&self.message).clone()));
@@ -612,7 +688,7 @@ impl GetGraph {
         let obj = parse_object(value)?;
         required(obj, "type", parse_const("getGraph"))?;
         Ok(GetGraph {
-            id: required(obj, "id", parse_string)?,
+            id: required(obj, "id", limit(parse_string, |text: &String| text.chars().count() as f64, Some(1.0), None, None))?,
             format: required(obj, "format", GetGraphFormat::from_json)?,
             verbose: optional(obj, "verbose", parse_boolean)?,
             raw: obj.clone(),
@@ -625,6 +701,8 @@ impl GetGraph {
         out.insert("format".to_string(), (&self.format).to_json());
         if let Some(x) = &self.verbose {
             out.insert("verbose".to_string(), Value::Bool(*x));
+        } else {
+            out.remove("verbose");
         }
         out.insert("type".to_string(), Value::from("getGraph"));
         Value::Object(out)
@@ -645,6 +723,7 @@ impl InferenceComponent {
     pub fn from_json(value: &Value) -> std::result::Result<InferenceComponent, DecodeError> {
         let obj = parse_object(value)?;
         required(obj, "type", parse_const("inference"))?;
+        exactly_one(obj, &["ability", "abilityUuid"])?;
         Ok(InferenceComponent {
             ability: optional(obj, "ability", parse_string)?,
             abilityUuid: optional(obj, "abilityUuid", parse_string)?,
@@ -658,15 +737,23 @@ impl InferenceComponent {
         let mut out = self.raw.clone();
         if let Some(x) = &self.ability {
             out.insert("ability".to_string(), Value::String(x.clone()));
+        } else {
+            out.remove("ability");
         }
         if let Some(x) = &self.abilityUuid {
             out.insert("abilityUuid".to_string(), Value::String(x.clone()));
+        } else {
+            out.remove("abilityUuid");
         }
         if let Some(x) = &self.params {
             out.insert("params".to_string(), Value::Object(x.clone()));
+        } else {
+            out.remove("params");
         }
         if let Some(x) = &self.id {
             out.insert("id".to_string(), Value::from(*x));
+        } else {
+            out.remove("id");
         }
         out.insert("type".to_string(), Value::from("inference"));
         Value::Object(out)
@@ -685,7 +772,7 @@ impl Ping {
         let obj = parse_object(value)?;
         required(obj, "type", parse_const("ping"))?;
         Ok(Ping {
-            id: required(obj, "id", parse_string)?,
+            id: required(obj, "id", limit(parse_string, |text: &String| text.chars().count() as f64, Some(1.0), None, None))?,
             raw: obj.clone(),
         })
     }
@@ -710,7 +797,7 @@ impl Pong {
         let obj = parse_object(value)?;
         required(obj, "type", parse_const("pong"))?;
         Ok(Pong {
-            id: required(obj, "id", parse_string)?,
+            id: required(obj, "id", limit(parse_string, |text: &String| text.chars().count() as f64, Some(1.0), None, None))?,
             raw: obj.clone(),
         })
     }
@@ -750,12 +837,18 @@ impl Pop {
         out.insert("components".to_string(), Value::Array((&self.components).iter().map(|x| x.to_json()).collect()));
         if let Some(x) = &self.postTransform {
             out.insert("postTransform".to_string(), Value::String(x.clone()));
+        } else {
+            out.remove("postTransform");
         }
         if let Some(x) = &self.defaults {
             out.insert("defaults".to_string(), x.to_json());
+        } else {
+            out.remove("defaults");
         }
         if let Some(x) = &self.depthMap {
             out.insert("depthMap".to_string(), x.to_json());
+        } else {
+            out.remove("depthMap");
         }
         Value::Object(out)
     }
@@ -773,6 +866,7 @@ pub struct PopDepthMap {
 impl PopDepthMap {
     pub fn from_json(value: &Value) -> std::result::Result<PopDepthMap, DecodeError> {
         let obj = parse_object(value)?;
+        exactly_one(obj, &["ability", "abilityUuid"])?;
         Ok(PopDepthMap {
             ability: optional(obj, "ability", parse_string)?,
             abilityUuid: optional(obj, "abilityUuid", parse_string)?,
@@ -785,12 +879,18 @@ impl PopDepthMap {
         let mut out = self.raw.clone();
         if let Some(x) = &self.ability {
             out.insert("ability".to_string(), Value::String(x.clone()));
+        } else {
+            out.remove("ability");
         }
         if let Some(x) = &self.abilityUuid {
             out.insert("abilityUuid".to_string(), Value::String(x.clone()));
+        } else {
+            out.remove("abilityUuid");
         }
         if let Some(x) = &self.toWorld {
             out.insert("toWorld".to_string(), Value::Bool(*x));
+        } else {
+            out.remove("toWorld");
         }
         Value::Object(out)
     }
@@ -809,7 +909,7 @@ impl Prediction {
         let obj = parse_object(value)?;
         required(obj, "type", parse_const("prediction"))?;
         Ok(Prediction {
-            id: required(obj, "id", parse_string)?,
+            id: required(obj, "id", limit(parse_string, |text: &String| text.chars().count() as f64, Some(1.0), None, None))?,
             prediction: required(obj, "prediction", parse_free)?,
             raw: obj.clone(),
         })
@@ -836,7 +936,7 @@ impl Quit {
         let obj = parse_object(value)?;
         required(obj, "type", parse_const("quit"))?;
         Ok(Quit {
-            id: required(obj, "id", parse_string)?,
+            id: required(obj, "id", limit(parse_string, |text: &String| text.chars().count() as f64, Some(1.0), None, None))?,
             raw: obj.clone(),
         })
     }
@@ -884,7 +984,7 @@ impl Result {
         let obj = parse_object(value)?;
         required(obj, "type", parse_const("result"))?;
         Ok(Result {
-            id: required(obj, "id", parse_string)?,
+            id: required(obj, "id", limit(parse_string, |text: &String| text.chars().count() as f64, Some(1.0), None, None))?,
             raw: obj.clone(),
         })
     }
@@ -911,9 +1011,9 @@ impl Send {
         let obj = parse_object(value)?;
         required(obj, "type", parse_const("send"))?;
         Ok(Send {
-            id: required(obj, "id", parse_string)?,
-            credit: required(obj, "credit", parse_integer)?,
-            member: optional(obj, "member", parse_integer)?,
+            id: required(obj, "id", limit(parse_string, |text: &String| text.chars().count() as f64, Some(1.0), None, None))?,
+            credit: required(obj, "credit", limit(parse_integer, |n| *n as f64, Some(0.0), None, None))?,
+            member: optional(obj, "member", limit(parse_integer, |n| *n as f64, Some(0.0), None, None))?,
             raw: obj.clone(),
         })
     }
@@ -924,6 +1024,8 @@ impl Send {
         out.insert("credit".to_string(), Value::from(*(&self.credit)));
         if let Some(x) = &self.member {
             out.insert("member".to_string(), Value::from(*x));
+        } else {
+            out.remove("member");
         }
         out.insert("type".to_string(), Value::from("send"));
         Value::Object(out)
@@ -943,7 +1045,7 @@ impl SetPop {
         let obj = parse_object(value)?;
         required(obj, "type", parse_const("setPop"))?;
         Ok(SetPop {
-            id: required(obj, "id", parse_string)?,
+            id: required(obj, "id", limit(parse_string, |text: &String| text.chars().count() as f64, Some(1.0), None, None))?,
             pop: required(obj, "pop", Pop::from_json)?,
             raw: obj.clone(),
         })
@@ -1002,8 +1104,9 @@ impl SetSource {
     pub fn from_json(value: &Value) -> std::result::Result<SetSource, DecodeError> {
         let obj = parse_object(value)?;
         required(obj, "type", parse_const("setSource"))?;
+        exactly_one(obj, &["url", "assetUuid", "upload", "group"])?;
         Ok(SetSource {
-            id: required(obj, "id", parse_string)?,
+            id: required(obj, "id", limit(parse_string, |text: &String| text.chars().count() as f64, Some(1.0), None, None))?,
             url: optional(obj, "url", parse_string)?,
             assetUuid: optional(obj, "assetUuid", parse_string)?,
             upload: optional(obj, "upload", SetSourceUpload::from_json)?,
@@ -1023,33 +1126,53 @@ impl SetSource {
         out.insert("id".to_string(), Value::String((&self.id).clone()));
         if let Some(x) = &self.url {
             out.insert("url".to_string(), Value::String(x.clone()));
+        } else {
+            out.remove("url");
         }
         if let Some(x) = &self.assetUuid {
             out.insert("assetUuid".to_string(), Value::String(x.clone()));
+        } else {
+            out.remove("assetUuid");
         }
         if let Some(x) = &self.upload {
             out.insert("upload".to_string(), x.to_json());
+        } else {
+            out.remove("upload");
         }
         if let Some(x) = &self.group {
             out.insert("group".to_string(), Value::Array(x.iter().map(|x| x.to_json()).collect()));
+        } else {
+            out.remove("group");
         }
         if let Some(x) = &self.params {
             out.insert("params".to_string(), Value::Array(x.iter().map(|x| x.to_json()).collect()));
+        } else {
+            out.remove("params");
         }
         if let Some(x) = &self.fps {
             out.insert("fps".to_string(), Value::String(x.clone()));
+        } else {
+            out.remove("fps");
         }
         if let Some(x) = &self.roi {
             out.insert("roi".to_string(), x.to_json());
+        } else {
+            out.remove("roi");
         }
         if let Some(x) = &self.camera {
             out.insert("camera".to_string(), x.to_json());
+        } else {
+            out.remove("camera");
         }
         if let Some(x) = &self.live {
             out.insert("live".to_string(), Value::Bool(*x));
+        } else {
+            out.remove("live");
         }
         if let Some(x) = &self.mode {
             out.insert("mode".to_string(), x.to_json());
+        } else {
+            out.remove("mode");
         }
         out.insert("type".to_string(), Value::from("setSource"));
         Value::Object(out)
@@ -1092,30 +1215,48 @@ impl SourceDefaults {
         let mut out = self.raw.clone();
         if let Some(x) = &self.camera {
             out.insert("camera".to_string(), x.to_json());
+        } else {
+            out.remove("camera");
         }
         if let Some(x) = &self.fps {
             out.insert("fps".to_string(), Value::String(x.clone()));
+        } else {
+            out.remove("fps");
         }
         if let Some(x) = &self.roi {
             out.insert("roi".to_string(), x.to_json());
+        } else {
+            out.remove("roi");
         }
         if let Some(x) = &self.motionDetect {
             out.insert("motionDetect".to_string(), Value::Bool(*x));
+        } else {
+            out.remove("motionDetect");
         }
         if let Some(x) = &self.motionSensitivity {
-            out.insert("motionSensitivity".to_string(), number_to_json(*x));
+            put_number(&mut out, "motionSensitivity", *x);
+        } else {
+            out.remove("motionSensitivity");
         }
         if let Some(x) = &self.motionThreshold {
-            out.insert("motionThreshold".to_string(), number_to_json(*x));
+            put_number(&mut out, "motionThreshold", *x);
+        } else {
+            out.remove("motionThreshold");
         }
         if let Some(x) = &self.motionGap {
             out.insert("motionGap".to_string(), Value::from(*x));
+        } else {
+            out.remove("motionGap");
         }
         if let Some(x) = &self.motionGridX {
             out.insert("motionGridX".to_string(), Value::from(*x));
+        } else {
+            out.remove("motionGridX");
         }
         if let Some(x) = &self.motionGridY {
             out.insert("motionGridY".to_string(), Value::from(*x));
+        } else {
+            out.remove("motionGridY");
         }
         Value::Object(out)
     }
@@ -1133,7 +1274,7 @@ impl Start {
         let obj = parse_object(value)?;
         required(obj, "type", parse_const("start"))?;
         Ok(Start {
-            id: required(obj, "id", parse_string)?,
+            id: required(obj, "id", limit(parse_string, |text: &String| text.chars().count() as f64, Some(1.0), None, None))?,
             raw: obj.clone(),
         })
     }
@@ -1158,7 +1299,7 @@ impl StopSource {
         let obj = parse_object(value)?;
         required(obj, "type", parse_const("stopSource"))?;
         Ok(StopSource {
-            id: required(obj, "id", parse_string)?,
+            id: required(obj, "id", limit(parse_string, |text: &String| text.chars().count() as f64, Some(1.0), None, None))?,
             raw: obj.clone(),
         })
     }
@@ -1184,8 +1325,8 @@ impl Uploaded {
         let obj = parse_object(value)?;
         required(obj, "type", parse_const("uploaded"))?;
         Ok(Uploaded {
-            id: required(obj, "id", parse_string)?,
-            member: optional(obj, "member", parse_integer)?,
+            id: required(obj, "id", limit(parse_string, |text: &String| text.chars().count() as f64, Some(1.0), None, None))?,
+            member: optional(obj, "member", limit(parse_integer, |n| *n as f64, Some(0.0), None, None))?,
             raw: obj.clone(),
         })
     }
@@ -1195,6 +1336,8 @@ impl Uploaded {
         out.insert("id".to_string(), Value::String((&self.id).clone()));
         if let Some(x) = &self.member {
             out.insert("member".to_string(), Value::from(*x));
+        } else {
+            out.remove("member");
         }
         out.insert("type".to_string(), Value::from("uploaded"));
         Value::Object(out)
@@ -1214,8 +1357,8 @@ impl Usage {
         let obj = parse_object(value)?;
         required(obj, "type", parse_const("usage"))?;
         Ok(Usage {
-            id: required(obj, "id", parse_string)?,
-            milliComputeUnits: required(obj, "milliComputeUnits", parse_integer)?,
+            id: required(obj, "id", limit(parse_string, |text: &String| text.chars().count() as f64, Some(1.0), None, None))?,
+            milliComputeUnits: required(obj, "milliComputeUnits", limit(parse_integer, |n| *n as f64, Some(0.0), None, None))?,
             raw: obj.clone(),
         })
     }
@@ -1265,7 +1408,7 @@ impl GroupMemberUploadUpload {
         let obj = parse_object(value)?;
         Ok(GroupMemberUploadUpload {
             contentType: required(obj, "contentType", parse_string)?,
-            bytes: optional(obj, "bytes", parse_integer)?,
+            bytes: optional(obj, "bytes", limit(parse_integer, |n| *n as f64, Some(0.0), None, None))?,
             raw: obj.clone(),
         })
     }
@@ -1275,6 +1418,8 @@ impl GroupMemberUploadUpload {
         out.insert("contentType".to_string(), Value::String((&self.contentType).clone()));
         if let Some(x) = &self.bytes {
             out.insert("bytes".to_string(), Value::from(*x));
+        } else {
+            out.remove("bytes");
         }
         Value::Object(out)
     }
@@ -1328,10 +1473,10 @@ impl RoiRectangle {
 
     pub fn to_json(&self) -> Value {
         let mut out = self.raw.clone();
-        out.insert("x".to_string(), number_to_json(*(&self.x)));
-        out.insert("y".to_string(), number_to_json(*(&self.y)));
-        out.insert("width".to_string(), number_to_json(*(&self.width)));
-        out.insert("height".to_string(), number_to_json(*(&self.height)));
+        put_number(&mut out, "x", self.x);
+        put_number(&mut out, "y", self.y);
+        put_number(&mut out, "width", self.width);
+        put_number(&mut out, "height", self.height);
         out.insert("type".to_string(), Value::from("rectangle"));
         Value::Object(out)
     }
@@ -1357,8 +1502,8 @@ impl RoiContourPoint {
 
     pub fn to_json(&self) -> Value {
         let mut out = self.raw.clone();
-        out.insert("x".to_string(), number_to_json(*(&self.x)));
-        out.insert("y".to_string(), number_to_json(*(&self.y)));
+        put_number(&mut out, "x", self.x);
+        put_number(&mut out, "y", self.y);
         Value::Object(out)
     }
 }

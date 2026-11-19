@@ -1,0 +1,15 @@
+[
+  { "name": "an integer written as 1.0", "union": "message", "text": "{\"type\":\"credit\",\"id\":\"c1\",\"bytes\":1.0}", "known": true },
+  { "name": "a fractional integer", "union": "message", "text": "{\"type\":\"credit\",\"id\":\"c1\",\"bytes\":1.5}", "known": false },
+  { "name": "a boolean as an integer", "union": "message", "text": "{\"type\":\"credit\",\"id\":\"c1\",\"bytes\":true}", "known": false },
+  { "name": "an integer below its minimum", "union": "message", "text": "{\"type\":\"credit\",\"id\":\"c1\",\"bytes\":-1}", "known": false },
+  { "name": "an integer at its minimum", "union": "message", "text": "{\"type\":\"credit\",\"id\":\"c1\",\"bytes\":0}", "known": true },
+  { "name": "an empty id", "union": "message", "text": "{\"type\":\"credit\",\"id\":\"\",\"bytes\":0}", "known": false },
+  { "name": "a source with no selector", "union": "command", "text": "{\"type\":\"setSource\",\"id\":\"s1\"}", "known": false },
+  { "name": "a source with two selectors", "union": "command", "text": "{\"type\":\"setSource\",\"id\":\"s1\",\"url\":\"u\",\"assetUuid\":\"a\"}", "known": false },
+  { "name": "a source with one selector", "union": "command", "text": "{\"type\":\"setSource\",\"id\":\"s1\",\"url\":\"u\"}", "known": true },
+  { "name": "a number on an exclusive bound", "union": "command", "text": "{\"type\":\"setSource\",\"id\":\"s1\",\"url\":\"u\",\"camera\":{\"hfovDegrees\":180}}", "known": false },
+  { "name": "a number inside its exclusive bounds", "union": "command", "text": "{\"type\":\"setSource\",\"id\":\"s1\",\"url\":\"u\",\"camera\":{\"hfovDegrees\":90}}", "known": true },
+  { "name": "an integer above 2^53 stays exact", "union": "message", "text": "{\"type\":\"credit\",\"id\":\"c1\",\"bytes\":9007199254740993}", "known": true, "keeps": "9007199254740993" },
+  { "name": "a number above 2^53 stays exact", "union": "command", "text": "{\"type\":\"setSource\",\"id\":\"s1\",\"url\":\"u\",\"camera\":{\"intrinsics\":{\"fx\":9007199254740993,\"fy\":1,\"cx\":1,\"cy\":1}}}", "known": true, "keeps": "9007199254740993" }
+]
