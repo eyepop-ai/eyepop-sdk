@@ -8,6 +8,8 @@ from .csharp import emit as emit_csharp
 from .go import emit as emit_go
 from .rust import emit as emit_rust
 
+ROOTS = ("command", "message")
+
 
 def generate(schemas: Mapping[str, dict], roots: Sequence[str]) -> dict[str, str]:
     model = parse(schemas, roots)

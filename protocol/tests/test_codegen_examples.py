@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from codegen import generate, load_schemas
+from codegen import ROOTS, generate, load_schemas
 from conftest import load_python
 
 ROOT = Path(__file__).parent.parent
@@ -13,7 +13,7 @@ EXAMPLES = sorted((ROOT / "examples" / "valid").glob("*.json"))
 @pytest.fixture(scope="module")
 def protocol():
     schemas = load_schemas(ROOT / "schema")
-    return load_python(generate(schemas, ("command", "message"))["python"])
+    return load_python(generate(schemas, ROOTS)["python"])
 
 
 @pytest.mark.parametrize("example", EXAMPLES, ids=lambda p: p.stem)
