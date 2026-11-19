@@ -208,3 +208,9 @@ func TestDecodedJSONIsASnapshotOfTheInput(t *testing.T) {
 		t.Fatalf("status = %v", got)
 	}
 }
+
+func TestAStringLengthCountsCodePoints(t *testing.T) {
+	if got := []int{length("\U0001F600"), length("é")}; !reflect.DeepEqual(got, []int{1, 2}) {
+		t.Fatalf("lengths = %v, want [1 2]", got)
+	}
+}

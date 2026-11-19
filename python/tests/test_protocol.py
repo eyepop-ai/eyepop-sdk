@@ -5,7 +5,8 @@ from typing import Any, cast
 
 import pytest
 
-from eyepop.protocol import UnknownCommand, UnknownMessage, decode_command, decode_message
+from eyepop import protocol
+from eyepop.protocol import Result, UnknownCommand, UnknownMessage, decode_command, decode_message
 
 EXAMPLES = Path(__file__).resolve().parents[2] / "protocol" / "examples"
 CASES: list[dict[str, Any]] = json.loads((EXAMPLES / "decoding.json").read_text())
@@ -74,3 +75,42 @@ def test_a_decoding_case_has_its_stated_outcome(case: dict[str, Any]):
         assert found is not None, f"passes but is a known Python divergence ({reason}); remove it"
     else:
         assert found is None, found
+
+
+def test_a_string_length_counts_code_points():
+    length = protocol._LENGTH  # pyright: ignore[reportPrivateUsage]
+
+    assert (length("\U0001f600"), length("é")) == (1, 2)
+
+
+@pytest.mark.parametrize("bad", ["NaN", "sNaN", "Infinity"])
+def test_a_decimal_that_is_not_finite_decodes_to_unknown(bad: str):
+    credit = decode_message({"type": "credit", "id": "c1", "bytes": Decimal(bad)})
+    camera = decode_command(
+        {"type": "setSource", "id": "s1", "url": "u", "camera": {"hfovDegrees": Decimal(bad)}}
+    )
+
+    assert isinstance(credit, UnknownMessage)
+    assert isinstance(camera, UnknownCommand)
+
+
+def test_json_loads_reads_nan_tokens_that_unknown_fields_keep():
+    text = '{"type":"result","id":"r1","score":NaN}'
+    value = decode_message(json.loads(text, parse_float=Decimal))
+
+    assert isinstance(value, Result)
+    assert json.dumps(value.to_json()) == '{"type": "result", "id": "r1", "score": NaN}'
+    infinite = json.loads('{"type":"credit","id":"c1","bytes":Infinity}')
+    assert isinstance(decode_message(infinite), UnknownMessage)
+
+
+def reject(token: str) -> Any:
+    raise ValueError(f"{token} is not JSON")
+
+
+@pytest.mark.parametrize(
+    "text", ['{"score":NaN}', '{"score":-Infinity}', '{"bytes":' + "1" * 4301 + "}"]
+)
+def test_the_recommended_parse_refuses_what_is_not_wire_json(text: str):
+    with pytest.raises(ValueError):
+        json.loads(text, parse_float=Decimal, parse_constant=reject)

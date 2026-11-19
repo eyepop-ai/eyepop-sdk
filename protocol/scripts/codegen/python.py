@@ -38,6 +38,8 @@ def _string(value: Any) -> str:
 def _integer(value: Any) -> int:
     if isinstance(value, bool) or not isinstance(value, int | float | Decimal):
         raise ValueError(f"expected an integer, got {type(value).__name__}")
+    if isinstance(value, Decimal) and not value.is_finite():
+        raise ValueError(f"{value} is not finite")
     if not _INTEGER_MINIMUM <= value <= _INTEGER_MAXIMUM or int(value) != value:
         raise ValueError(f"{value} is not an integer from {_INTEGER_MINIMUM} to {_INTEGER_MAXIMUM}")
     return int(value)
@@ -143,6 +145,31 @@ def _within(value: Any, levels: int) -> bool:
     return levels > 0 and all(_within(child, levels - 1) for child in children)
 
 
+def _unicode(value: Any) -> bool:
+    if isinstance(value, str):
+        try:
+            value.encode("utf-8")
+        except UnicodeEncodeError:
+            return False
+        return True
+    if isinstance(value, dict):
+        return all(_unicode(key) and _unicode(item) for key, item in cast(dict[str, Any], value).items())
+    if isinstance(value, list):
+        return all(_unicode(item) for item in cast(list[Any], value))
+    return True
+
+
+def _put_number(out: dict[str, Any], key: str, number: float) -> None:
+    current = out.get(key)
+    if isinstance(current, int | float | Decimal) and not isinstance(current, bool):
+        try:
+            if float(current) == number:
+                return
+        except (OverflowError, ValueError):
+            pass
+    out[key] = number
+
+
 def _dispatch(value: Any, variants: _Variants) -> Any:
     obj = _object(value)
     for matches, parse in variants:
@@ -227,10 +254,12 @@ def declaration(f: Field) -> str:
 
 
 def write(f: Field) -> str:
+    number = f.type == "number" or (isinstance(f.type, Constrained) and f.type.kind == "number")
+    put = f"_put_number(out, {f.name!r}, self.{f.name})" if number else f"out[{f.name!r}] = _dump(self.{f.name})"
     if f.required:
-        return f"        out[{f.name!r}] = _dump(self.{f.name})"
+        return f"        {put}"
     return (
-        f"        if self.{f.name} is not None:\n            out[{f.name!r}] = _dump(self.{f.name})\n"
+        f"        if self.{f.name} is not None:\n            {put}\n"
         f"        else:\n            out.pop({f.name!r}, None)"
     )
 
@@ -315,6 +344,8 @@ def decode_{union.name.lower()}(value: Any) -> {union.name}:
     if not _within(value, _MAX_DEPTH):
         return {unknown}({{}})
     try:
+        if not _unicode(value):
+            raise ValueError("a string holds a lone surrogate")
         return _dispatch(value, {table})
     except ValueError:
         return {unknown}(copy.deepcopy(cast(dict[str, Any], value)) if isinstance(value, dict) else {{}})

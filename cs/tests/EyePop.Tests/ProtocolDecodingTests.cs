@@ -87,6 +87,7 @@ public class ProtocolDecodingTests
         (JsonArray x, JsonValueKind.Array) => x.Count == b.GetArrayLength() && x.Zip(b.EnumerateArray()).All(p => Same(p.First, p.Second)),
         (JsonValue x, JsonValueKind.Number) when x.GetValueKind() == JsonValueKind.Number =>
             Canonical(x.ToJsonString()) == Canonical(b.GetRawText()),
+        (JsonValue x, JsonValueKind.String) when x.TryGetValue<JsonElement>(out var raw) => raw.GetRawText() == b.GetRawText(),
         _ => b.ValueKind is not (JsonValueKind.Object or JsonValueKind.Array) && JsonNode.DeepEquals(a, JsonValue.Create(b)),
     };
 
@@ -129,6 +130,22 @@ public class ProtocolDecodingTests
         input["extra"]!["status"] = "changed";
 
         Assert.Equal("original", message.ToJson()["extra"]!["status"]!.GetValue<string>());
+    }
+
+    [Fact]
+    public void A_nan_double_keeps_every_field()
+    {
+        var known = Message.Decode(new JsonObject { ["type"] = "credit", ["id"] = "c1", ["bytes"] = 1, ["extra"] = JsonValue.Create(double.NaN) });
+        var unknown = Message.Decode(new JsonObject { ["type"] = "credit", ["id"] = "c1", ["bytes"] = JsonValue.Create(double.NaN) });
+
+        Assert.True(double.IsNaN(((Credit)known).Raw!["extra"]!.GetValue<double>()));
+        Assert.Equal(3, ((UnknownMessage)unknown).Raw.Count);
+    }
+
+    [Fact]
+    public void A_string_length_counts_code_points()
+    {
+        Assert.Equal((1, 2), (WireRules.Length("\U0001F600"), WireRules.Length("e\u0301")));
     }
 
     [Fact]

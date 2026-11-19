@@ -14,6 +14,7 @@ JSON Schema (draft 2020-12) for the messages on the pipeline socket: `GET /api/v
   - `minLength` counts Unicode code points.
   - A value nests at most 64 levels (the message object is level 1). A union decoder returns `Unknown` with no fields for anything deeper.
   - When an object repeats a key, the last value wins.
+  - A string or key holding a lone surrogate is not valid text. A union decoder returns `Unknown` keeping every field.
 
 ## Examples
 
@@ -21,7 +22,7 @@ JSON Schema (draft 2020-12) for the messages on the pipeline socket: `GET /api/v
 
 `examples/decoding.json` is the conformance set every Language SDK replays through its generated decoder. It has one case per example file (`file`) plus edge cases written as JSON text (`name` and `text`). Each case names its `union`, the `variant` it decodes to (a `type` tag, or `Unknown`), whether it encodes back `unchanged` (numbers compared by exact value), and optionally a number token the output `keeps`. A case whose decoder outcome differs from the schema states the `reason`: an invalid example decoders accept, or a schema-valid text case they reject, such as an integer beyond int64. `diverges` maps a language (`python`, `rust`, `go`, `csharp`) to why that SDK does not give the stated outcome: a known divergence still to fix, or a documented limit of its host JSON parser (the reason starts with "Documented limit"). That SDK's replay fails if the case starts passing, so whoever fixes it removes the marker.
 
-The edge cases cover integer forms and the int64 bounds, a non-finite number, a duplicate key, a character outside the Basic Multilingual Plane, and values nested 64, 65, 601 and 5001 levels deep. The Python replay reads text with `json.loads(text, parse_float=Decimal)`, which its decoders handle exactly. The Rust cases serde_json rounds or refuses before the decoder sees them are documented limits; [ADR 0003](../docs/adr/0003-one-in-repo-generator-writes-the-protocol-types.md) lists them.
+The edge cases cover integer forms and the int64 bounds (including the maximum written four other ways), a non-finite number, `number` fields holding decimals a double cannot hold, a duplicate key, a lone surrogate, a character outside the Basic Multilingual Plane, and values nested 64, 65, 601 and 5001 levels deep. The Python replay reads text with `json.loads(text, parse_float=Decimal)`, which its decoders handle exactly; a Python caller also passes a `parse_constant` that raises, because `json.loads` accepts `NaN` and `Infinity`, and treats its `ValueError` (also raised for an integer over 4,300 digits) as text that is not a message. The cases serde_json rounds or refuses before the Rust decoder sees them, and the lone surrogate Go's `encoding/json` replaces with U+FFFD, are documented limits; [ADR 0003](../docs/adr/0003-one-in-repo-generator-writes-the-protocol-types.md) lists them.
 
 ```sh
 devbox run -- task protocol:check

@@ -165,7 +165,7 @@ def emit(model: Model) -> str:
 def constants(wire: Wire) -> str:
     return (
         f"const INTEGER_MINIMUM: i128 = {wire.integer_minimum};\nconst INTEGER_MAXIMUM: i128 = {wire.integer_maximum};\n"
-        f"const MAX_DEPTH: usize = {wire.max_depth};\n\nfn length(text: &String) -> f64 {{\n    {LENGTHS[wire.length_unit]}\n}}\n"
+        f"const MAX_DEPTH: usize = {wire.max_depth};\n\npub(crate) fn length(text: &String) -> f64 {{\n    {LENGTHS[wire.length_unit]}\n}}\n"
     )
 
 

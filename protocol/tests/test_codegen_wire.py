@@ -36,7 +36,7 @@ def test_the_wire_rules_are_data_on_the_model():
 
     assert model.wire == WIRE
     assert (WIRE.integer_minimum, WIRE.integer_maximum, WIRE.length_unit, WIRE.max_depth) == (-(2**63), 2**63 - 1, "code point", 64)
-    assert set(WIRE_RULES) == {"integer", "number", "length", "exactly one", "depth", "duplicate keys"}
+    assert set(WIRE_RULES) == {"integer", "number", "length", "exactly one", "depth", "duplicate keys", "unicode"}
 
 
 def test_the_integer_bounds_come_from_the_model():

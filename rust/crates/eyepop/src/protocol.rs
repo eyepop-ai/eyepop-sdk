@@ -147,7 +147,7 @@ const INTEGER_MINIMUM: i128 = -9223372036854775808;
 const INTEGER_MAXIMUM: i128 = 9223372036854775807;
 const MAX_DEPTH: usize = 64;
 
-fn length(text: &String) -> f64 {
+pub(crate) fn length(text: &String) -> f64 {
     text.chars().count() as f64
 }
 

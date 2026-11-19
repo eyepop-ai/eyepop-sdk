@@ -119,6 +119,7 @@ WIRE_RULES = {
         " not read below that level."
     ),
     "duplicate keys": "When an object repeats a key, the last value wins.",
+    "unicode": "A string or key is valid Unicode: one holding a lone surrogate makes a union decoder return Unknown keeping every field.",
 }
 
 

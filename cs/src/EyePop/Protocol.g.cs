@@ -2,6 +2,7 @@
 #nullable enable
 using System.Buffers;
 using System.Numerics;
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 
@@ -9,7 +10,17 @@ namespace EyePop.Protocol;
 
 internal static class Wire
 {
-    private static string Show(JsonNode? value) => value?.ToJsonString() ?? "null";
+    private static string Show(JsonNode? value)
+    {
+        try
+        {
+            return value?.ToJsonString() ?? "null";
+        }
+        catch (Exception error) when (error is ArgumentException or InvalidOperationException)
+        {
+            return "a value JSON cannot hold";
+        }
+    }
 
     public static JsonObject Object(JsonNode? value) =>
         value as JsonObject ?? throw new FormatException($"expected an object, got {Show(value)}");
@@ -138,7 +149,66 @@ internal static class Wire
 
     public static JsonObject Copy(JsonObject? raw) => raw is null ? new JsonObject() : (JsonObject)raw.DeepClone();
 
-    public static JsonNode? Tree(JsonNode? value)
+    private static readonly UTF8Encoding StrictUtf8 = new(false, true);
+
+    private sealed class TooDeep : Exception;
+
+    public static JsonNode? Tree(JsonNode? value, out bool unicode)
+    {
+        var valid = true;
+        try
+        {
+            var tree = Walk(value, WireRules.MaxDepth, ref valid);
+            unicode = valid;
+            return tree;
+        }
+        catch (TooDeep)
+        {
+            unicode = true;
+            return null;
+        }
+        catch (Exception error) when (error is ArgumentException or InvalidOperationException)
+        {
+            unicode = true;
+            return Reread(value);
+        }
+    }
+
+    private static JsonNode? Walk(JsonNode? node, int levels, ref bool unicode)
+    {
+        switch (node)
+        {
+            case JsonObject obj:
+                if (levels == 0) throw new TooDeep();
+                var properties = new List<KeyValuePair<string, JsonNode?>>(obj.Count);
+                foreach (var property in obj) properties.Add(KeyValuePair.Create(property.Key, Walk(property.Value, levels - 1, ref unicode)));
+                return new JsonObject(properties);
+            case JsonArray array:
+                if (levels == 0) throw new TooDeep();
+                var items = new JsonNode?[array.Count];
+                for (var i = 0; i < items.Length; i++) items[i] = Walk(array[i], levels - 1, ref unicode);
+                return new JsonArray(items);
+            case JsonValue leaf:
+                unicode &= Unicode(leaf);
+                return leaf.DeepClone();
+            default:
+                return null;
+        }
+    }
+
+    private static bool Unicode(JsonValue leaf)
+    {
+        try
+        {
+            return !leaf.TryGetValue<string>(out var text) || StrictUtf8.GetByteCount(text) >= 0;
+        }
+        catch (Exception error) when (error is InvalidOperationException or ArgumentException)
+        {
+            return false;
+        }
+    }
+
+    private static JsonNode? Reread(JsonNode? value)
     {
         var buffer = new ArrayBufferWriter<byte>();
         using (var writer = new Utf8JsonWriter(buffer, new JsonWriterOptions { MaxDepth = WireRules.MaxDepth }))
@@ -162,9 +232,9 @@ internal static class Wire
         switch (element.ValueKind)
         {
             case JsonValueKind.Object:
-                var obj = new JsonObject();
-                foreach (var property in element.EnumerateObject()) obj[property.Name] = Rebuild(property.Value);
-                return obj;
+                var last = new Dictionary<string, JsonElement>();
+                foreach (var property in element.EnumerateObject()) last[property.Name] = property.Value;
+                return new JsonObject(last.Select(property => KeyValuePair.Create(property.Key, Rebuild(property.Value))));
             case JsonValueKind.Array:
                 return new JsonArray(element.EnumerateArray().Select(Rebuild).ToArray());
             default:
@@ -1093,9 +1163,10 @@ public abstract record Command
 
     public static Command Decode(JsonNode? value)
     {
-        var tree = Wire.Tree(value);
+        var tree = Wire.Tree(value, out var unicode);
         try
         {
+            if (!unicode) throw new FormatException("a string holds a lone surrogate");
             return FromJson(tree);
         }
         catch (FormatException)
@@ -1148,9 +1219,10 @@ public abstract record Message
 
     public static Message Decode(JsonNode? value)
     {
-        var tree = Wire.Tree(value);
+        var tree = Wire.Tree(value, out var unicode);
         try
         {
+            if (!unicode) throw new FormatException("a string holds a lone surrogate");
             return FromJson(tree);
         }
         catch (FormatException)
