@@ -115,6 +115,28 @@ def test_an_array_without_items_is_rejected():
     rejects({"thing": thing(tags={"type": "array"})}, "thing.json#/properties/tags: an array needs `items`")
 
 
+def test_a_ref_that_does_not_end_in_json_is_rejected():
+    rejects({"thing": thing(other={"$ref": "thing"})}, "thing.json#/properties/other: `$ref` 'thing' does not name a schema file")
+
+
+def test_a_type_other_than_object_beside_properties_is_rejected():
+    body = thing()
+    body["type"] = "string"
+
+    rejects({"thing": body}, "thing.json#: `type` beside `properties` must be 'object'")
+
+
+def test_properties_that_are_not_an_object_are_rejected():
+    rejects({"thing": schema("thing", {"type": "object", "properties": []})}, "thing.json#/properties: `properties` must be an object")
+
+
+def test_a_one_of_selector_key_that_is_not_a_property_is_rejected():
+    body = thing()
+    body["oneOf"] = [{"required": ["id"]}, {"required": ["url"]}]
+
+    rejects({"thing": body}, "thing.json#: `required` names url")
+
+
 def test_a_ref_to_a_missing_schema_is_rejected():
     rejects({"thing": thing(other={"$ref": "missing.json"})}, "thing.json#/properties/other: `$ref` 'missing.json'")
 
@@ -124,7 +146,11 @@ def test_a_const_that_is_not_a_string_is_rejected():
 
 
 def test_an_enum_that_is_not_strings_is_rejected():
-    rejects({"thing": thing(level={"enum": [1, 2]})}, "thing.json#/properties/level: `enum` must list strings")
+    rejects({"thing": thing(level={"enum": [1, 2]})}, "thing.json#/properties/level: `enum` must list one or more strings")
+
+
+def test_an_empty_enum_is_rejected():
+    rejects({"thing": thing(level={"enum": []})}, "thing.json#/properties/level: `enum` must list one or more strings")
 
 
 def test_a_one_of_beside_properties_that_is_not_a_required_key_selector_is_rejected():
@@ -171,14 +197,34 @@ def test_two_object_types_with_one_name_are_rejected():
     body = thing(detail={"type": "object", "properties": {"x": {"type": "number"}}})
     detail = schema("thingDetail", {"type": "object", "properties": {"y": {"type": "number"}}})
 
-    rejects({"thing": body, "thingDetail": detail}, "thingDetail.json#: two object types are named ThingDetail; the other comes from thing.json#")
+    rejects({"thing": body, "thingDetail": detail}, "thingDetail.json#: two types are named ThingDetail; the other comes from thing.json#")
+
+
+def test_two_enums_with_one_name_are_rejected():
+    body = thing(level={"enum": ["a"]}, levels={"type": "array", "items": {"enum": ["b"]}})
+
+    rejects({"thing": body}, "thing.json#: two types are named ThingLevel; the other comes from thing.json#")
+
+
+def test_an_object_named_like_a_union_is_rejected():
+    body = thing(either={"type": "object", "properties": {"x": {"type": "number"}}})
+    union = schema("thingEither", {"oneOf": [{"$ref": "other.json"}]})
+    other = schema("other", {"type": "object", "properties": {"type": {"const": "other"}}})
+
+    rejects({"thing": body, "thingEither": union, "other": other}, "thing.json#: two types are named ThingEither; the other comes from thingEither.json#")
+
+
+def test_an_enum_named_like_an_object_is_rejected():
+    level = schema("thingLevel", {"type": "object", "properties": {"x": {"type": "number"}}})
+
+    rejects({"thing": thing(level={"enum": ["a"]}), "thingLevel": level}, "thingLevel.json#: two types are named ThingLevel; the other comes from thing.json#")
 
 
 def test_an_inline_union_variant_named_like_another_object_is_rejected():
     union = schema("either", {"oneOf": [{"type": "object", "properties": {"type": {"const": "thing"}}}]})
     clash = schema("eitherThing", {"type": "object", "properties": {"y": {"type": "number"}}})
 
-    rejects({"either": union, "eitherThing": clash}, "either.json#/oneOf/0: two object types are named EitherThing")
+    rejects({"either": union, "eitherThing": clash}, "either.json#/oneOf/0: two types are named EitherThing")
 
 
 @pytest.mark.parametrize(
@@ -226,6 +272,9 @@ def test_a_description_leaves_the_generated_output_unchanged():
         ("$comment", "a note", "object"),
         ("examples", ["a"], "value"),
         ("deprecated", True, "value"),
+        ("default", "a", "value"),
+        ("readOnly", True, "value"),
+        ("writeOnly", True, "value"),
     ],
 )
 def test_ignored_keywords_and_annotations_are_accepted_and_change_nothing(keyword, value, at):

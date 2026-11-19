@@ -107,7 +107,7 @@ def ref_name(node: dict) -> str:
 NUMBER_LIMITS = ("minimum", "exclusiveMinimum", "exclusiveMaximum")
 LIMITS = (*NUMBER_LIMITS, "minLength")
 SCALARS = {"string": ("minLength",), "integer": NUMBER_LIMITS, "number": NUMBER_LIMITS, "boolean": ()}
-ANNOTATIONS = ("$schema", "$id", "title", "description", "$comment", "examples", "deprecated")
+ANNOTATIONS = ("$schema", "$id", "title", "description", "$comment", "examples", "deprecated", "default", "readOnly", "writeOnly")
 IGNORED = {
     "additionalProperties": (
         "true or false",
@@ -223,8 +223,8 @@ def check(schemas: Mapping[str, dict], name: str) -> None:
                 fail(path, "`const` must be a string")
         elif "enum" in node:
             allow(node, path, {"enum", "type"})
-            if not all(isinstance(v, str) for v in node["enum"]) or node.get("type", "string") != "string":
-                fail(path, "`enum` must list strings")
+            if not node["enum"] or not all(isinstance(v, str) for v in node["enum"]) or node.get("type", "string") != "string":
+                fail(path, "`enum` must list one or more strings")
         elif node.get("type") == "array":
             allow(node, path, {"type", "items"})
             if "items" not in node:
@@ -270,6 +270,12 @@ def parse(schemas: Mapping[str, dict], roots: Sequence[str]) -> Model:
     sources: dict[str, str] = {}
     origin = ""
 
+    def claim(name: str) -> str:
+        if name in sources:
+            raise ValueError(f"{origin}: two types are named {name}; the other comes from {sources[name]}")
+        sources[name] = origin
+        return name
+
     def flatten(body: dict) -> tuple[dict, set, tuple[str, ...]]:
         properties: dict = {}
         required: set = set()
@@ -284,10 +290,7 @@ def parse(schemas: Mapping[str, dict], roots: Sequence[str]) -> Model:
     def add_object(name: str, body: dict) -> str:
         properties, required, exactly_one = flatten(body)
         fields = tuple(Field(key, type_of(prop, name + pascal(key)), key in required) for key, prop in properties.items())
-        if name in objects:
-            raise ValueError(f"{origin}: two object types are named {name}; the other comes from {sources[name]}")
-        objects[name] = Object(name, fields, exactly_one)
-        sources[name] = origin
+        objects[claim(name)] = Object(name, fields, exactly_one)
         return name
 
     def type_of(prop: dict, hint: str) -> Type:
@@ -297,7 +300,7 @@ def parse(schemas: Mapping[str, dict], roots: Sequence[str]) -> Model:
         if "const" in prop:
             return Const(prop["const"])
         if "enum" in prop:
-            return Enum(tuple(prop["enum"]), hint)
+            return Enum(tuple(prop["enum"]), claim(hint))
         if prop["type"] == "array":
             return Array(type_of(prop["items"], singular(hint)))
         if prop["type"] == "object":
@@ -315,6 +318,11 @@ def parse(schemas: Mapping[str, dict], roots: Sequence[str]) -> Model:
             origin = f"{name}.json#/oneOf/{i}"
             names.append(pascal(ref_name(item)) if "$ref" in item else add_object(pascal(name) + variant_suffix(item), item))
         return names
+
+    for name, body in schemas.items():
+        origin = f"{name}.json#"
+        if kind(body) == "union":
+            claim(pascal(name))
 
     for name, body in schemas.items():
         if kind(body) == "object":
