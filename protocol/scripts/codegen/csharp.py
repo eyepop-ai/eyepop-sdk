@@ -189,21 +189,37 @@ internal static class Wire
         {
             return Copy(value, WireRules.MaxDepth, ref unicode);
         }
-        catch (TooDeep)
+        catch (Exception error) when (error is TooDeep or ArgumentException or InvalidOperationException)
         {
             unicode = true;
             return null;
         }
     }
 
+    internal static bool ReadsUnreadObjects = true;
+
     [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "_jsonElement")]
     private static extern ref JsonElement? Unread(JsonObject obj);
+
+    private static JsonElement? Element(JsonObject obj)
+    {
+        if (!ReadsUnreadObjects) return null;
+        try
+        {
+            return Unread(obj);
+        }
+        catch (MissingFieldException)
+        {
+            ReadsUnreadObjects = false;
+            return null;
+        }
+    }
 
     private static JsonNode? Copy(JsonNode? node, int levels, ref bool unicode)
     {
         switch (node)
         {
-            case JsonObject obj when Unread(obj) is { } element:
+            case JsonObject obj when Element(obj) is { } element:
                 return Copy(element, levels, ref unicode);
             case JsonObject obj:
                 if (levels == 0) throw new TooDeep();

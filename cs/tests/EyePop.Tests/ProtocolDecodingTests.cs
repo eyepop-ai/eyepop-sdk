@@ -1,4 +1,5 @@
 using System.Numerics;
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using EyePop.Protocol;
@@ -57,7 +58,7 @@ public class ProtocolDecodingTests
             return $"decoded to {variant}, want {c["variant"]}";
         }
         using var input = JsonDocument.Parse(text, options);
-        if (Unchanged(encoded, input.RootElement) != c["unchanged"]!.GetValue<bool>())
+        if (Unchanged(encoded, input.RootElement, text) != c["unchanged"]!.GetValue<bool>())
         {
             return $"encoded {encoded.ToJsonString()}, want unchanged = {c["unchanged"]}";
         }
@@ -72,16 +73,34 @@ public class ProtocolDecodingTests
 
     private static (bool, JsonNode) Result(Message message) => (message is UnknownMessage, message.ToJson());
 
-    private static bool Unchanged(JsonNode encoded, JsonElement input)
+    private static bool Unchanged(JsonNode encoded, JsonElement input, string text)
     {
         try
         {
             return Same(encoded, input);
         }
-        catch (InvalidOperationException)
+        catch (InvalidOperationException) when (HoldsALoneSurrogate(text))
         {
             return false;
         }
+    }
+
+    private static bool HoldsALoneSurrogate(string text)
+    {
+        var reader = new Utf8JsonReader(Encoding.UTF8.GetBytes(text), new JsonReaderOptions { MaxDepth = int.MaxValue });
+        while (reader.Read())
+        {
+            if (reader.TokenType is not (JsonTokenType.String or JsonTokenType.PropertyName)) continue;
+            try
+            {
+                reader.GetString();
+            }
+            catch (InvalidOperationException)
+            {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static bool Same(JsonNode? a, JsonElement b) => (a, b.ValueKind) switch
@@ -163,6 +182,24 @@ public class ProtocolDecodingTests
         var message = Assert.IsType<UnknownMessage>(Message.Decode(JsonNode.Parse(text)));
 
         Assert.Equal(("credit", written), (message.Raw["type"]!.GetValue<string>(), message.ToJson().ToJsonString()));
+    }
+
+    [Theory]
+    [InlineData("""{"type":"credit","id":"\ufffd","bytes":1,"bytes":2}""")]
+    [InlineData("""{"\ud800":1,"type":"credit","id":"c1","bytes":1}""")]
+    public void Without_the_element_accessor_a_parsed_object_it_cannot_read_decodes_to_an_empty_unknown(string text)
+    {
+        Wire.ReadsUnreadObjects = false;
+        try
+        {
+            var message = Assert.IsType<UnknownMessage>(Message.Decode(JsonNode.Parse(text)));
+
+            Assert.Empty(message.Raw);
+        }
+        finally
+        {
+            Wire.ReadsUnreadObjects = true;
+        }
     }
 
     [Fact]
