@@ -2,103 +2,157 @@ package eyepop
 
 import (
 	"encoding/json"
+	"fmt"
+	"math/big"
 	"os"
-	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
 )
 
-func TestEveryValidExampleDecodesToAKnownVariantAndEncodesBackUnchanged(t *testing.T) {
-	paths, err := filepath.Glob("../protocol/examples/valid/*.json")
-	if err != nil || len(paths) < 30 {
-		t.Fatalf("found %d examples, err %v", len(paths), err)
+type decodingCase struct {
+	Name      string            `json:"name"`
+	File      string            `json:"file"`
+	Union     string            `json:"union"`
+	Text      string            `json:"text"`
+	Variant   string            `json:"variant"`
+	Unchanged bool              `json:"unchanged"`
+	Keeps     string            `json:"keeps"`
+	Diverges  map[string]string `json:"diverges"`
+}
+
+func TestEveryDecodingCaseHasItsStatedOutcome(t *testing.T) {
+	raw, err := os.ReadFile("../protocol/examples/decoding.json")
+	if err != nil {
+		t.Fatal(err)
 	}
-	for _, path := range paths {
-		name := filepath.Base(path)
+	var cases []decodingCase
+	if err := json.Unmarshal(raw, &cases); err != nil {
+		t.Fatal(err)
+	}
+	if len(cases) < 60 {
+		t.Fatalf("found %d cases", len(cases))
+	}
+	for _, c := range cases {
+		name, text := c.Name, c.Text
+		if c.File != "" {
+			bytes, err := os.ReadFile("../protocol/examples/" + c.File)
+			if err != nil {
+				t.Fatal(err)
+			}
+			name, text = c.File, string(bytes)
+		}
 		t.Run(name, func(t *testing.T) {
-			raw, err := os.ReadFile(path)
-			if err != nil {
-				t.Fatal(err)
+			problem := decodingProblem(c, text, exactJSON)
+			reason, diverges := c.Diverges["go"]
+			if diverges && problem == "" {
+				t.Fatalf("passes but is marked as a known Go divergence (%s); remove the marker", reason)
 			}
-			var data any
-			if err := json.Unmarshal(raw, &data); err != nil {
-				t.Fatal(err)
+			if !diverges && problem != "" {
+				t.Fatal(problem)
 			}
-			var encoded any
-			if strings.HasPrefix(name, "command-") {
-				command := DecodeCommand(data)
-				if _, unknown := command.(UnknownCommand); unknown {
-					t.Fatal("decoded to UnknownCommand")
+			if c.Keeps == "" && len(c.Diverges) == 0 {
+				if problem := decodingProblem(c, text, plainJSON); problem != "" {
+					t.Fatal("float64 input: " + problem)
 				}
-				encoded = command.ToJSON()
-			} else {
-				message := DecodeMessage(data)
-				if _, unknown := message.(UnknownMessage); unknown {
-					t.Fatal("decoded to UnknownMessage")
-				}
-				encoded = message.ToJSON()
-			}
-			bytes, err := json.Marshal(encoded)
-			if err != nil {
-				t.Fatal(err)
-			}
-			var again any
-			if err := json.Unmarshal(bytes, &again); err != nil {
-				t.Fatal(err)
-			}
-			if !reflect.DeepEqual(again, data) {
-				t.Fatalf("encoded %s, want %s", bytes, raw)
 			}
 		})
 	}
 }
 
-func TestDecodingCasesAreKnownOrUnknownAndKeepExactNumbers(t *testing.T) {
-	raw, err := os.ReadFile("../protocol/examples/decoding.json")
+func decodingProblem(c decodingCase, text string, read func(string) (any, error)) string {
+	data, err := read(text)
 	if err != nil {
-		t.Fatal(err)
+		return err.Error()
 	}
-	var cases []struct {
-		Name  string `json:"name"`
-		Union string `json:"union"`
-		Text  string `json:"text"`
-		Known bool   `json:"known"`
-		Keeps string `json:"keeps"`
+	variant := "Unknown"
+	var encoded any
+	if c.Union == "command" {
+		command := DecodeCommand(data)
+		encoded = command.ToJSON()
+		if _, unknown := command.(UnknownCommand); !unknown {
+			variant = fmt.Sprint(encoded.(map[string]any)["type"])
+		}
+	} else {
+		message := DecodeMessage(data)
+		encoded = message.ToJSON()
+		if _, unknown := message.(UnknownMessage); !unknown {
+			variant = fmt.Sprint(encoded.(map[string]any)["type"])
+		}
 	}
-	if err := json.Unmarshal(raw, &cases); err != nil {
-		t.Fatal(err)
+	if variant != c.Variant {
+		return fmt.Sprintf("decoded to %s, want %s", variant, c.Variant)
 	}
-	for _, c := range cases {
-		t.Run(c.Name, func(t *testing.T) {
-			decoder := json.NewDecoder(strings.NewReader(c.Text))
-			decoder.UseNumber()
-			var data any
-			if err := decoder.Decode(&data); err != nil {
-				t.Fatal(err)
+	bytes, err := json.Marshal(encoded)
+	if err != nil {
+		return err.Error()
+	}
+	again, err := exactJSON(string(bytes))
+	if err != nil {
+		return err.Error()
+	}
+	want, err := exactJSON(text)
+	if err != nil {
+		return err.Error()
+	}
+	if sameJSON(again, want) != c.Unchanged {
+		return fmt.Sprintf("encoded %s, want unchanged = %v", bytes, c.Unchanged)
+	}
+	if !strings.Contains(string(bytes), c.Keeps) {
+		return fmt.Sprintf("encoded %s, want it to contain %s", bytes, c.Keeps)
+	}
+	return ""
+}
+
+func exactJSON(text string) (any, error) {
+	decoder := json.NewDecoder(strings.NewReader(text))
+	decoder.UseNumber()
+	var value any
+	err := decoder.Decode(&value)
+	return value, err
+}
+
+func plainJSON(text string) (any, error) {
+	var value any
+	err := json.Unmarshal([]byte(text), &value)
+	return value, err
+}
+
+func sameJSON(a, b any) bool {
+	switch x := a.(type) {
+	case json.Number:
+		y, ok := b.(json.Number)
+		if !ok {
+			return false
+		}
+		p, okP := new(big.Rat).SetString(string(x))
+		q, okQ := new(big.Rat).SetString(string(y))
+		return okP && okQ && p.Cmp(q) == 0
+	case []any:
+		y, ok := b.([]any)
+		if !ok || len(x) != len(y) {
+			return false
+		}
+		for i := range x {
+			if !sameJSON(x[i], y[i]) {
+				return false
 			}
-			var known bool
-			var encoded any
-			if c.Union == "command" {
-				command := DecodeCommand(data)
-				_, unknown := command.(UnknownCommand)
-				known, encoded = !unknown, command.ToJSON()
-			} else {
-				message := DecodeMessage(data)
-				_, unknown := message.(UnknownMessage)
-				known, encoded = !unknown, message.ToJSON()
+		}
+		return true
+	case map[string]any:
+		y, ok := b.(map[string]any)
+		if !ok || len(x) != len(y) {
+			return false
+		}
+		for key, value := range x {
+			other, has := y[key]
+			if !has || !sameJSON(value, other) {
+				return false
 			}
-			if known != c.Known {
-				t.Fatalf("known = %v, want %v", known, c.Known)
-			}
-			bytes, err := json.Marshal(encoded)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if c.Keeps != "" && !strings.Contains(string(bytes), c.Keeps) {
-				t.Fatalf("encoded %s, want it to contain %s", bytes, c.Keeps)
-			}
-		})
+		}
+		return true
+	default:
+		return reflect.DeepEqual(a, b)
 	}
 }
 
@@ -138,41 +192,5 @@ func TestDecodedJSONIsASnapshotOfTheInput(t *testing.T) {
 
 	if got := message.ToJSON().(map[string]any)["extra"].(map[string]any)["status"]; got != "original" {
 		t.Fatalf("status = %v", got)
-	}
-}
-
-func decodeExact(t *testing.T, text string) Message {
-	t.Helper()
-	decoder := json.NewDecoder(strings.NewReader(text))
-	decoder.UseNumber()
-	var value any
-	if err := decoder.Decode(&value); err != nil {
-		t.Fatal(err)
-	}
-	return DecodeMessage(value)
-}
-
-func TestAnIntegerTokenIsNeverRounded(t *testing.T) {
-	if _, unknown := decodeExact(t, `{"type":"credit","id":"c1","bytes":1.00000000000000001}`).(UnknownMessage); !unknown {
-		t.Fatal("a fraction that rounds to a whole number was accepted")
-	}
-	credit, ok := decodeExact(t, `{"type":"credit","id":"c1","bytes":9007199254740993.0}`).(Credit)
-	if !ok || credit.Bytes != 9007199254740993 {
-		t.Fatalf("got %v", credit)
-	}
-}
-
-func TestIntegerTokensInExponentFormAreReadExactly(t *testing.T) {
-	cases := map[string]int64{"1e3": 1000, "1.50e1": 15, "10e-1": 1, "2E+2": 200}
-	for token, want := range cases {
-		credit, ok := decodeExact(t, `{"type":"credit","id":"c1","bytes":`+token+`}`).(Credit)
-		if !ok || credit.Bytes != want {
-			t.Fatalf("%s: got %v, want %d", token, credit, want)
-		}
-	}
-	for _, token := range []string{"1e-1", "1e-29", "1e19", "1e1000000", "1e-1000000", "9223372036854775808"} {
-		if _, unknown := decodeExact(t, `{"type":"credit","id":"c1","bytes":`+token+`}`).(UnknownMessage); !unknown {
-			t.Fatalf("%s was accepted", token)
-		}
 	}
 }

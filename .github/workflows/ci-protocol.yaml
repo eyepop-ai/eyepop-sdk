@@ -5,6 +5,12 @@ on:
     paths: &paths
       - 'protocol/**'
       - '.github/workflows/ci-protocol.yaml'
+      - '.github/actions/setup-go/**'
+      - 'go/go.mod'
+      - 'python/src/eyepop/protocol.py'
+      - 'rust/crates/eyepop/src/protocol.rs'
+      - 'go/protocol.go'
+      - 'cs/src/EyePop/Protocol.g.cs'
   push:
     branches: [main]
     paths: *paths

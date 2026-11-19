@@ -13,8 +13,10 @@ from jsonschema.exceptions import SchemaError, best_match
 from referencing import Registry, Resource
 from referencing.jsonschema import DRAFT202012
 
+from codegen import ROOTS
+
 ROOT = Path(__file__).resolve().parent.parent
-UNIONS = MappingProxyType({"command": "command.json", "message": "message.json"})
+UNIONS = MappingProxyType({root: f"{root}.json" for root in ROOTS})
 EXPECTED = "expected.json"
 
 

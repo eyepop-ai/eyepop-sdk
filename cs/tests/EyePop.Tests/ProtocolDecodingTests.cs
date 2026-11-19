@@ -1,3 +1,5 @@
+using System.Numerics;
+using System.Text.Json;
 using System.Text.Json.Nodes;
 using EyePop.Protocol;
 using Xunit;
@@ -6,34 +8,100 @@ namespace EyePop.Tests;
 
 public class ProtocolDecodingTests
 {
-    public static IEnumerable<object[]> Cases() =>
-        JsonNode.Parse(File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "protocol-decoding.json")))!
-            .AsArray()
-            .Select(c => new object[] { c!["name"]!.GetValue<string>() });
+    private static readonly string Examples = Path.Combine(AppContext.BaseDirectory, "protocol-examples");
+
+    private static JsonArray LoadCases() => JsonNode.Parse(File.ReadAllText(Path.Combine(Examples, "decoding.json")))!.AsArray();
+
+    private static string NameOf(JsonNode c) => (c["file"] ?? c["name"])!.GetValue<string>();
+
+    public static IEnumerable<object[]> Cases() => LoadCases().Select(c => new object[] { NameOf(c!) });
+
+    [Fact]
+    public void The_decoding_cases_are_found()
+    {
+        Assert.True(LoadCases().Count > 60);
+    }
 
     [Theory]
     [MemberData(nameof(Cases))]
-    public void A_decoding_case_is_known_or_unknown_and_keeps_exact_numbers(string name)
+    public void A_decoding_case_has_its_stated_outcome(string name)
     {
-        var c = JsonNode.Parse(File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "protocol-decoding.json")))!
-            .AsArray()
-            .Single(x => x!["name"]!.GetValue<string>() == name)!;
-        var data = JsonNode.Parse(c["text"]!.GetValue<string>());
+        var c = LoadCases().Single(x => NameOf(x!) == name)!;
 
-        var (known, encoded) = c["union"]!.GetValue<string>() == "command"
-            ? Result(Command.Decode(data), Command.Decode(data) is not UnknownCommand)
-            : Result(Message.Decode(data), Message.Decode(data) is not UnknownMessage);
-
-        Assert.Equal(c["known"]!.GetValue<bool>(), known);
-        if (c["keeps"] is { } keeps)
+        string? problem;
+        try
         {
-            Assert.Contains(keeps.GetValue<string>(), encoded.ToJsonString());
+            problem = Problem(c);
+        }
+        catch (Exception error)
+        {
+            problem = error.ToString();
+        }
+
+        if (c["diverges"]?["csharp"] is { } reason)
+        {
+            Assert.True(problem is not null, $"passes but is marked as a known C# divergence ({reason}); remove the marker");
+        }
+        else
+        {
+            Assert.True(problem is null, problem);
         }
     }
 
-    private static (bool, JsonNode) Result(Command command, bool known) => (known, command.ToJson());
+    private static string? Problem(JsonNode c)
+    {
+        var text = c["file"] is { } file
+            ? File.ReadAllText(Path.Combine(Examples, file.GetValue<string>()))
+            : c["text"]!.GetValue<string>();
+        var data = JsonNode.Parse(text);
+        var (unknown, encoded) = c["union"]!.GetValue<string>() == "command"
+            ? Result(Command.Decode(data))
+            : Result(Message.Decode(data));
+        var variant = unknown ? "Unknown" : encoded["type"]!.GetValue<string>();
+        if (variant != c["variant"]!.GetValue<string>())
+        {
+            return $"decoded to {variant}, want {c["variant"]}";
+        }
+        if (Same(encoded, data) != c["unchanged"]!.GetValue<bool>())
+        {
+            return $"encoded {encoded.ToJsonString()}, want unchanged = {c["unchanged"]}";
+        }
+        if (c["keeps"] is { } keeps && !encoded.ToJsonString().Contains(keeps.GetValue<string>()))
+        {
+            return $"encoded {encoded.ToJsonString()}, want it to contain {keeps}";
+        }
+        return null;
+    }
 
-    private static (bool, JsonNode) Result(Message message, bool known) => (known, message.ToJson());
+    private static (bool, JsonNode) Result(Command command) => (command is UnknownCommand, command.ToJson());
+
+    private static (bool, JsonNode) Result(Message message) => (message is UnknownMessage, message.ToJson());
+
+    private static bool Same(JsonNode? a, JsonNode? b) => (a, b) switch
+    {
+        (JsonObject x, JsonObject y) => x.Count == y.Count && x.All(p => y.TryGetPropertyValue(p.Key, out var v) && Same(p.Value, v)),
+        (JsonArray x, JsonArray y) => x.Count == y.Count && x.Zip(y).All(p => Same(p.First, p.Second)),
+        (JsonValue x, JsonValue y) when x.GetValueKind() == JsonValueKind.Number && y.GetValueKind() == JsonValueKind.Number =>
+            Canonical(x.ToJsonString()) == Canonical(y.ToJsonString()),
+        _ => JsonNode.DeepEquals(a, b),
+    };
+
+    private static string Canonical(string number)
+    {
+        var parts = number.Split('e', 'E');
+        var exponent = parts.Length > 1 ? BigInteger.Parse(parts[1]) : BigInteger.Zero;
+        var sign = parts[0].StartsWith('-') ? "-" : "";
+        var decimals = parts[0].TrimStart('-').Split('.');
+        var fraction = decimals.Length > 1 ? decimals[1] : "";
+        var digits = (decimals[0] + fraction).TrimStart('0');
+        if (digits.Length == 0)
+        {
+            return "0";
+        }
+        var significant = digits.TrimEnd('0');
+        exponent += digits.Length - significant.Length - fraction.Length;
+        return $"{sign}{significant}e{exponent}";
+    }
 
     [Fact]
     public void A_field_set_to_null_is_removed_from_the_retained_json()
@@ -54,48 +122,6 @@ public class ProtocolDecodingTests
         input["extra"]!["status"] = "changed";
 
         Assert.Equal("original", message.ToJson()["extra"]!["status"]!.GetValue<string>());
-    }
-
-    [Fact]
-    public void A_fraction_that_rounds_to_a_whole_number_is_rejected()
-    {
-        var input = JsonNode.Parse("""{"type":"credit","id":"c1","bytes":1.00000000000000001}""");
-
-        Assert.IsType<UnknownMessage>(Message.Decode(input));
-    }
-
-    [Fact]
-    public void A_whole_number_written_with_a_decimal_point_stays_exact()
-    {
-        var input = JsonNode.Parse("""{"type":"credit","id":"c1","bytes":9007199254740993.0}""");
-
-        var credit = Assert.IsType<Credit>(Message.Decode(input));
-
-        Assert.Equal(9007199254740993L, credit.Bytes);
-    }
-
-    [Theory]
-    [InlineData("1e3", 1000L)]
-    [InlineData("1.50e1", 15L)]
-    [InlineData("10e-1", 1L)]
-    [InlineData("2E+2", 200L)]
-    public void An_integer_in_exponent_form_is_read_exactly(string token, long expected)
-    {
-        var credit = Assert.IsType<Credit>(Message.Decode(JsonNode.Parse("{\"type\":\"credit\",\"id\":\"c1\",\"bytes\":" + token + "}")));
-
-        Assert.Equal(expected, credit.Bytes);
-    }
-
-    [Theory]
-    [InlineData("1e-1")]
-    [InlineData("1e-29")]
-    [InlineData("1e19")]
-    [InlineData("1e1000000")]
-    [InlineData("1e-1000000")]
-    [InlineData("9223372036854775808")]
-    public void A_number_that_is_not_an_int64_is_rejected(string token)
-    {
-        Assert.IsType<UnknownMessage>(Message.Decode(JsonNode.Parse("{\"type\":\"credit\",\"id\":\"c1\",\"bytes\":" + token + "}")));
     }
 
     [Fact]
