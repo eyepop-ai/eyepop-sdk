@@ -13,6 +13,7 @@ TARGETS = {
     "python": ROOT.parent / "python" / "src" / "eyepop" / "protocol.py",
     "rust": ROOT.parent / "rust" / "crates" / "eyepop" / "src" / "protocol.rs",
     "go": ROOT.parent / "go" / "protocol.go",
+    "csharp": ROOT.parent / "cs" / "src" / "EyePop" / "Protocol.g.cs",
 }
 FORMATTERS = {"go": ["gofmt"]}
 
