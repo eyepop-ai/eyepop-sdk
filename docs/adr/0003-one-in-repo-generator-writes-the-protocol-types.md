@@ -26,7 +26,11 @@ Using the tools for structs and a script for the unions would leave four differe
 
 ## Consequences
 
-- A schema construct the generator does not know fails the generate task. The model checks every keyword in every schema before any emitter runs. A keyword is modelled, an annotation (`$schema`, `$id`, `title`), or ignored for a reason recorded in the model: `additionalProperties`, because decoders are tolerant readers that keep unknown fields, and `not`, because a union already tries the tagged variants before the one with an open `type`. Any other keyword, or a shape the model cannot express (a `type` array, an inline `oneOf` on a property), fails with the schema file, the path inside it and the keyword. A new construct needs a change to the model and each emitter, with a test.
-- Decoders accept more than the schema allows. They keep fields a closed object does not name, and do not enforce `not`. The schema and `task protocol:validate` stay the strict contract.
+- A schema construct the generator does not know fails the generate task. Before any emitter runs, the model checks each schema file. A keyword must be modelled, an annotation (`$schema`, `$id`, `title`, `description`, `$comment`, `examples`, `deprecated`), or one of two ignored forms, each with its reason recorded in the model:
+  - `additionalProperties: true` or `false`, because decoders are tolerant readers that keep unknown fields.
+  - `not: {"const": "<string>"}` on a string property, as in `rawComponent`. A union tries its tagged variants first, so through the union a value with the excluded tag never reaches that variant.
+
+  Any other keyword or form, or a shape the model cannot express (a `type` array, an inline `oneOf` on a property, a boolean schema, a `$ref` or `allOf` cycle), fails with the schema file, the path inside it and the keyword. A new construct needs a change to the model and each emitter, with a test.
+- Decoders accept more than the schema allows. They keep fields a closed object does not name, and a variant decoded on its own does not check `not`. The schema and `task protocol:validate` stay the strict contract.
 - Adding a language is one emitter, a round-trip test and a target in `generate.py`.
 - Schema changes show up as diffs in four generated files, reviewed with the schema change.

@@ -19,7 +19,7 @@ devbox run -- task protocol:check
 
 ## Generated types
 
-`task protocol:generate` writes the types into each Language SDK from these schemas, and `task protocol:generate:check` fails when a generated file is stale. Run the first after any schema change and commit the result. Never edit a generated file. A keyword or shape the generator cannot express fails generation with the file, the path and the keyword. It ignores `additionalProperties` and `not`, so decoders accept more than the schema allows: they keep unknown fields even on a closed object. [ADR 0003](../docs/adr/0003-one-in-repo-generator-writes-the-protocol-types.md) has the rules.
+`task protocol:generate` writes the types into each Language SDK from these schemas, and `task protocol:generate:check` fails when a generated file is stale. Run the first after any schema change and commit the result. Never edit a generated file. A keyword or shape the generator cannot express fails generation with the file, the path and the keyword. It ignores `additionalProperties: true|false` and a `not: {"const": ...}` on a string, so decoders accept more than the schema allows: they keep unknown fields even on a closed object. [ADR 0003](../docs/adr/0003-one-in-repo-generator-writes-the-protocol-types.md) has the rules.
 
 ## Binary frames
 
