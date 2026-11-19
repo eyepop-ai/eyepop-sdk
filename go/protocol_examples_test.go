@@ -43,7 +43,7 @@ func TestEveryDecodingCaseHasItsStatedOutcome(t *testing.T) {
 			name, text = c.File, string(bytes)
 		}
 		t.Run(name, func(t *testing.T) {
-			problem := decodingProblem(c, text)
+			problem := decodingProblem(c, text, exactJSON)
 			reason, diverges := c.Diverges["go"]
 			if diverges && problem == "" {
 				t.Fatalf("passes but is marked as a known Go divergence (%s); remove the marker", reason)
@@ -51,12 +51,17 @@ func TestEveryDecodingCaseHasItsStatedOutcome(t *testing.T) {
 			if !diverges && problem != "" {
 				t.Fatal(problem)
 			}
+			if c.Keeps == "" && len(c.Diverges) == 0 {
+				if problem := decodingProblem(c, text, plainJSON); problem != "" {
+					t.Fatal("float64 input: " + problem)
+				}
+			}
 		})
 	}
 }
 
-func decodingProblem(c decodingCase, text string) string {
-	data, err := exactJSON(text)
+func decodingProblem(c decodingCase, text string, read func(string) (any, error)) string {
+	data, err := read(text)
 	if err != nil {
 		return err.Error()
 	}
@@ -86,7 +91,11 @@ func decodingProblem(c decodingCase, text string) string {
 	if err != nil {
 		return err.Error()
 	}
-	if sameJSON(again, data) != c.Unchanged {
+	want, err := exactJSON(text)
+	if err != nil {
+		return err.Error()
+	}
+	if sameJSON(again, want) != c.Unchanged {
 		return fmt.Sprintf("encoded %s, want unchanged = %v", bytes, c.Unchanged)
 	}
 	if !strings.Contains(string(bytes), c.Keeps) {
@@ -100,6 +109,12 @@ func exactJSON(text string) (any, error) {
 	decoder.UseNumber()
 	var value any
 	err := decoder.Decode(&value)
+	return value, err
+}
+
+func plainJSON(text string) (any, error) {
+	var value any
+	err := json.Unmarshal([]byte(text), &value)
 	return value, err
 }
 

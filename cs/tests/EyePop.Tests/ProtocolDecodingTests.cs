@@ -28,7 +28,15 @@ public class ProtocolDecodingTests
     {
         var c = LoadCases().Single(x => NameOf(x!) == name)!;
 
-        var problem = Problem(c);
+        string? problem;
+        try
+        {
+            problem = Problem(c);
+        }
+        catch (Exception error)
+        {
+            problem = error.ToString();
+        }
 
         if (c["diverges"]?["csharp"] is { } reason)
         {

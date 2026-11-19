@@ -53,7 +53,10 @@ def test_the_decoding_cases_are_found():
 
 @pytest.mark.parametrize("case", CASES, ids=case_id)
 def test_a_decoding_case_has_its_stated_outcome(case: dict[str, Any]):
-    found = problem(case)
+    try:
+        found = problem(case)
+    except Exception as error:
+        found = repr(error)
 
     reason = case.get("diverges", {}).get("python")
     if reason is not None:
