@@ -76,7 +76,7 @@ def test_a_union_decodes_to_the_variant_named_by_its_type_tag():
     protocol = python(messages(), roots=("message",))
 
     assert isinstance(protocol.decode_message({"type": "pong"}), protocol.Pong)
-    assert protocol.decode_message({"type": "ping", "id": "p1"}) == protocol.Ping(type="ping", id="p1")
+    assert protocol.decode_message({"type": "ping", "id": "p1"}) == protocol.Ping(id="p1")
 
 
 def test_an_unknown_type_decodes_to_the_unknown_variant_keeping_its_json():

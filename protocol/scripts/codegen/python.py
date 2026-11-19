@@ -122,7 +122,7 @@ def annotation(type_: Type) -> str:
     match type_:
         case Const(value):
             return f"Literal[{value!r}]"
-        case Enum(values):
+        case Enum(values, _):
             return f"Literal[{', '.join(repr(v) for v in values)}]"
         case Free():
             return "Mapping[str, Any]"
@@ -138,7 +138,7 @@ def parser(type_: Type, unions: frozenset[str]) -> str:
     match type_:
         case Const(value):
             return f"_const({value!r})"
-        case Enum(values):
+        case Enum(values, _):
             return f"_enum({values!r})"
         case Free():
             return "_free"
@@ -161,16 +161,18 @@ def write(f: Field) -> str:
 
 
 def emit_object(obj: Object, unions: frozenset[str] = frozenset()) -> str:
-    ordered = sorted(obj.fields, key=lambda f: not f.required)
-    fields = "\n".join(declaration(f) for f in ordered)
+    consts = [f for f in obj.fields if isinstance(f.type, Const)]
+    typed = sorted((f for f in obj.fields if not isinstance(f.type, Const)), key=lambda f: not f.required)
+    fields = "\n".join(declaration(f) for f in typed)
+    checks = "".join(f"        _required(obj, {f.name!r}, {parser(f.type, unions)})\n" for f in consts)
     reads = ", ".join(
         [
             f"{f.name}={'_required' if f.required else '_optional'}(obj, {f.name!r}, {parser(f.type, unions)})"
-            for f in obj.fields
+            for f in typed
         ]
         + ["raw=obj"]
     )
-    writes = "\n".join(write(f) for f in obj.fields)
+    writes = "\n".join([write(f) for f in typed] + [f"        out[{f.name!r}] = {f.type.value!r}" for f in consts])
     return f"""
 @dataclass(frozen=True)
 class {obj.name}:
@@ -180,7 +182,7 @@ class {obj.name}:
     @staticmethod
     def from_json(value: Any) -> {obj.name}:
         obj = _object(value)
-        return {obj.name}({reads})
+{checks}        return {obj.name}({reads})
 
     def to_json(self) -> dict[str, Any]:
         out = dict(self.raw)

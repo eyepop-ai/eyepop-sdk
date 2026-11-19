@@ -10,6 +10,7 @@ class Const:
 @dataclass(frozen=True)
 class Enum:
     values: tuple[str, ...]
+    name: str
 
 
 @dataclass(frozen=True)
@@ -125,7 +126,7 @@ def parse(schemas: Mapping[str, dict], roots: Sequence[str]) -> Model:
         if "const" in prop:
             return Const(prop["const"])
         if "enum" in prop:
-            return Enum(tuple(prop["enum"]))
+            return Enum(tuple(prop["enum"]), hint)
         if prop["type"] == "array":
             return Array(type_of(prop["items"], singular(hint)))
         if prop["type"] == "object":

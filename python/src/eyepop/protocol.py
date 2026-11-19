@@ -297,7 +297,6 @@ class ComponentParams:
 
 @dataclass(frozen=True)
 class Credit:
-    type: Literal['credit']
     id: str
     bytes: int
     member: int | None = None
@@ -306,39 +305,40 @@ class Credit:
     @staticmethod
     def from_json(value: Any) -> Credit:
         obj = _object(value)
-        return Credit(type=_required(obj, 'type', _const('credit')), id=_required(obj, 'id', _string), bytes=_required(obj, 'bytes', _integer), member=_optional(obj, 'member', _integer), raw=obj)
+        _required(obj, 'type', _const('credit'))
+        return Credit(id=_required(obj, 'id', _string), bytes=_required(obj, 'bytes', _integer), member=_optional(obj, 'member', _integer), raw=obj)
 
     def to_json(self) -> dict[str, Any]:
         out = dict(self.raw)
-        out['type'] = _dump(self.type)
         out['id'] = _dump(self.id)
         out['bytes'] = _dump(self.bytes)
         if self.member is not None:
             out['member'] = _dump(self.member)
+        out['type'] = 'credit'
         return out
 
 
 
 @dataclass(frozen=True)
 class Done:
-    type: Literal['done']
+
     raw: Mapping[str, Any] = field(default_factory=dict[str, Any], compare=False, repr=False)
 
     @staticmethod
     def from_json(value: Any) -> Done:
         obj = _object(value)
-        return Done(type=_required(obj, 'type', _const('done')), raw=obj)
+        _required(obj, 'type', _const('done'))
+        return Done(raw=obj)
 
     def to_json(self) -> dict[str, Any]:
         out = dict(self.raw)
-        out['type'] = _dump(self.type)
+        out['type'] = 'done'
         return out
 
 
 
 @dataclass(frozen=True)
 class Dropped:
-    type: Literal['dropped']
     id: str
     count: int
     raw: Mapping[str, Any] = field(default_factory=dict[str, Any], compare=False, repr=False)
@@ -346,20 +346,20 @@ class Dropped:
     @staticmethod
     def from_json(value: Any) -> Dropped:
         obj = _object(value)
-        return Dropped(type=_required(obj, 'type', _const('dropped')), id=_required(obj, 'id', _string), count=_required(obj, 'count', _integer), raw=obj)
+        _required(obj, 'type', _const('dropped'))
+        return Dropped(id=_required(obj, 'id', _string), count=_required(obj, 'count', _integer), raw=obj)
 
     def to_json(self) -> dict[str, Any]:
         out = dict(self.raw)
-        out['type'] = _dump(self.type)
         out['id'] = _dump(self.id)
         out['count'] = _dump(self.count)
+        out['type'] = 'dropped'
         return out
 
 
 
 @dataclass(frozen=True)
 class End:
-    type: Literal['end']
     id: str
     reason: Literal['eos', 'error', 'preempted', 'stopped']
     message: str | None = None
@@ -369,24 +369,24 @@ class End:
     @staticmethod
     def from_json(value: Any) -> End:
         obj = _object(value)
-        return End(type=_required(obj, 'type', _const('end')), id=_required(obj, 'id', _string), reason=_required(obj, 'reason', _enum(('eos', 'error', 'preempted', 'stopped'))), message=_optional(obj, 'message', _string), milliComputeUnits=_optional(obj, 'milliComputeUnits', _integer), raw=obj)
+        _required(obj, 'type', _const('end'))
+        return End(id=_required(obj, 'id', _string), reason=_required(obj, 'reason', _enum(('eos', 'error', 'preempted', 'stopped'))), message=_optional(obj, 'message', _string), milliComputeUnits=_optional(obj, 'milliComputeUnits', _integer), raw=obj)
 
     def to_json(self) -> dict[str, Any]:
         out = dict(self.raw)
-        out['type'] = _dump(self.type)
         out['id'] = _dump(self.id)
         out['reason'] = _dump(self.reason)
         if self.message is not None:
             out['message'] = _dump(self.message)
         if self.milliComputeUnits is not None:
             out['milliComputeUnits'] = _dump(self.milliComputeUnits)
+        out['type'] = 'end'
         return out
 
 
 
 @dataclass(frozen=True)
 class Error:
-    type: Literal['error']
     error: str
     message: str
     id: str | None = None
@@ -395,22 +395,22 @@ class Error:
     @staticmethod
     def from_json(value: Any) -> Error:
         obj = _object(value)
-        return Error(type=_required(obj, 'type', _const('error')), id=_optional(obj, 'id', _string), error=_required(obj, 'error', _string), message=_required(obj, 'message', _string), raw=obj)
+        _required(obj, 'type', _const('error'))
+        return Error(error=_required(obj, 'error', _string), message=_required(obj, 'message', _string), id=_optional(obj, 'id', _string), raw=obj)
 
     def to_json(self) -> dict[str, Any]:
         out = dict(self.raw)
-        out['type'] = _dump(self.type)
-        if self.id is not None:
-            out['id'] = _dump(self.id)
         out['error'] = _dump(self.error)
         out['message'] = _dump(self.message)
+        if self.id is not None:
+            out['id'] = _dump(self.id)
+        out['type'] = 'error'
         return out
 
 
 
 @dataclass(frozen=True)
 class GetGraph:
-    type: Literal['getGraph']
     id: str
     format: Literal['dot', 'png', 'pdf']
     verbose: bool | None = None
@@ -419,22 +419,22 @@ class GetGraph:
     @staticmethod
     def from_json(value: Any) -> GetGraph:
         obj = _object(value)
-        return GetGraph(type=_required(obj, 'type', _const('getGraph')), id=_required(obj, 'id', _string), format=_required(obj, 'format', _enum(('dot', 'png', 'pdf'))), verbose=_optional(obj, 'verbose', _boolean), raw=obj)
+        _required(obj, 'type', _const('getGraph'))
+        return GetGraph(id=_required(obj, 'id', _string), format=_required(obj, 'format', _enum(('dot', 'png', 'pdf'))), verbose=_optional(obj, 'verbose', _boolean), raw=obj)
 
     def to_json(self) -> dict[str, Any]:
         out = dict(self.raw)
-        out['type'] = _dump(self.type)
         out['id'] = _dump(self.id)
         out['format'] = _dump(self.format)
         if self.verbose is not None:
             out['verbose'] = _dump(self.verbose)
+        out['type'] = 'getGraph'
         return out
 
 
 
 @dataclass(frozen=True)
 class InferenceComponent:
-    type: Literal['inference']
     ability: str | None = None
     abilityUuid: str | None = None
     params: Mapping[str, Any] | None = None
@@ -444,7 +444,8 @@ class InferenceComponent:
     @staticmethod
     def from_json(value: Any) -> InferenceComponent:
         obj = _object(value)
-        return InferenceComponent(ability=_optional(obj, 'ability', _string), abilityUuid=_optional(obj, 'abilityUuid', _string), params=_optional(obj, 'params', _free), type=_required(obj, 'type', _const('inference')), id=_optional(obj, 'id', _integer), raw=obj)
+        _required(obj, 'type', _const('inference'))
+        return InferenceComponent(ability=_optional(obj, 'ability', _string), abilityUuid=_optional(obj, 'abilityUuid', _string), params=_optional(obj, 'params', _free), id=_optional(obj, 'id', _integer), raw=obj)
 
     def to_json(self) -> dict[str, Any]:
         out = dict(self.raw)
@@ -454,47 +455,47 @@ class InferenceComponent:
             out['abilityUuid'] = _dump(self.abilityUuid)
         if self.params is not None:
             out['params'] = _dump(self.params)
-        out['type'] = _dump(self.type)
         if self.id is not None:
             out['id'] = _dump(self.id)
+        out['type'] = 'inference'
         return out
 
 
 
 @dataclass(frozen=True)
 class Ping:
-    type: Literal['ping']
     id: str
     raw: Mapping[str, Any] = field(default_factory=dict[str, Any], compare=False, repr=False)
 
     @staticmethod
     def from_json(value: Any) -> Ping:
         obj = _object(value)
-        return Ping(type=_required(obj, 'type', _const('ping')), id=_required(obj, 'id', _string), raw=obj)
+        _required(obj, 'type', _const('ping'))
+        return Ping(id=_required(obj, 'id', _string), raw=obj)
 
     def to_json(self) -> dict[str, Any]:
         out = dict(self.raw)
-        out['type'] = _dump(self.type)
         out['id'] = _dump(self.id)
+        out['type'] = 'ping'
         return out
 
 
 
 @dataclass(frozen=True)
 class Pong:
-    type: Literal['pong']
     id: str
     raw: Mapping[str, Any] = field(default_factory=dict[str, Any], compare=False, repr=False)
 
     @staticmethod
     def from_json(value: Any) -> Pong:
         obj = _object(value)
-        return Pong(type=_required(obj, 'type', _const('pong')), id=_required(obj, 'id', _string), raw=obj)
+        _required(obj, 'type', _const('pong'))
+        return Pong(id=_required(obj, 'id', _string), raw=obj)
 
     def to_json(self) -> dict[str, Any]:
         out = dict(self.raw)
-        out['type'] = _dump(self.type)
         out['id'] = _dump(self.id)
+        out['type'] = 'pong'
         return out
 
 
@@ -551,7 +552,6 @@ class PopDepthMap:
 
 @dataclass(frozen=True)
 class Prediction:
-    type: Literal['prediction']
     id: str
     prediction: Mapping[str, Any]
     raw: Mapping[str, Any] = field(default_factory=dict[str, Any], compare=False, repr=False)
@@ -559,32 +559,33 @@ class Prediction:
     @staticmethod
     def from_json(value: Any) -> Prediction:
         obj = _object(value)
-        return Prediction(type=_required(obj, 'type', _const('prediction')), id=_required(obj, 'id', _string), prediction=_required(obj, 'prediction', _free), raw=obj)
+        _required(obj, 'type', _const('prediction'))
+        return Prediction(id=_required(obj, 'id', _string), prediction=_required(obj, 'prediction', _free), raw=obj)
 
     def to_json(self) -> dict[str, Any]:
         out = dict(self.raw)
-        out['type'] = _dump(self.type)
         out['id'] = _dump(self.id)
         out['prediction'] = _dump(self.prediction)
+        out['type'] = 'prediction'
         return out
 
 
 
 @dataclass(frozen=True)
 class Quit:
-    type: Literal['quit']
     id: str
     raw: Mapping[str, Any] = field(default_factory=dict[str, Any], compare=False, repr=False)
 
     @staticmethod
     def from_json(value: Any) -> Quit:
         obj = _object(value)
-        return Quit(type=_required(obj, 'type', _const('quit')), id=_required(obj, 'id', _string), raw=obj)
+        _required(obj, 'type', _const('quit'))
+        return Quit(id=_required(obj, 'id', _string), raw=obj)
 
     def to_json(self) -> dict[str, Any]:
         out = dict(self.raw)
-        out['type'] = _dump(self.type)
         out['id'] = _dump(self.id)
+        out['type'] = 'quit'
         return out
 
 
@@ -608,26 +609,25 @@ class RawComponent:
 
 @dataclass(frozen=True)
 class Result:
-    type: Literal['result']
     id: str
     raw: Mapping[str, Any] = field(default_factory=dict[str, Any], compare=False, repr=False)
 
     @staticmethod
     def from_json(value: Any) -> Result:
         obj = _object(value)
-        return Result(type=_required(obj, 'type', _const('result')), id=_required(obj, 'id', _string), raw=obj)
+        _required(obj, 'type', _const('result'))
+        return Result(id=_required(obj, 'id', _string), raw=obj)
 
     def to_json(self) -> dict[str, Any]:
         out = dict(self.raw)
-        out['type'] = _dump(self.type)
         out['id'] = _dump(self.id)
+        out['type'] = 'result'
         return out
 
 
 
 @dataclass(frozen=True)
 class Send:
-    type: Literal['send']
     id: str
     credit: int
     member: int | None = None
@@ -636,22 +636,22 @@ class Send:
     @staticmethod
     def from_json(value: Any) -> Send:
         obj = _object(value)
-        return Send(type=_required(obj, 'type', _const('send')), id=_required(obj, 'id', _string), credit=_required(obj, 'credit', _integer), member=_optional(obj, 'member', _integer), raw=obj)
+        _required(obj, 'type', _const('send'))
+        return Send(id=_required(obj, 'id', _string), credit=_required(obj, 'credit', _integer), member=_optional(obj, 'member', _integer), raw=obj)
 
     def to_json(self) -> dict[str, Any]:
         out = dict(self.raw)
-        out['type'] = _dump(self.type)
         out['id'] = _dump(self.id)
         out['credit'] = _dump(self.credit)
         if self.member is not None:
             out['member'] = _dump(self.member)
+        out['type'] = 'send'
         return out
 
 
 
 @dataclass(frozen=True)
 class SetPop:
-    type: Literal['setPop']
     id: str
     pop: Pop
     raw: Mapping[str, Any] = field(default_factory=dict[str, Any], compare=False, repr=False)
@@ -659,13 +659,14 @@ class SetPop:
     @staticmethod
     def from_json(value: Any) -> SetPop:
         obj = _object(value)
-        return SetPop(type=_required(obj, 'type', _const('setPop')), id=_required(obj, 'id', _string), pop=_required(obj, 'pop', Pop.from_json), raw=obj)
+        _required(obj, 'type', _const('setPop'))
+        return SetPop(id=_required(obj, 'id', _string), pop=_required(obj, 'pop', Pop.from_json), raw=obj)
 
     def to_json(self) -> dict[str, Any]:
         out = dict(self.raw)
-        out['type'] = _dump(self.type)
         out['id'] = _dump(self.id)
         out['pop'] = _dump(self.pop)
+        out['type'] = 'setPop'
         return out
 
 
@@ -689,7 +690,6 @@ class SetSourceUpload:
 
 @dataclass(frozen=True)
 class SetSource:
-    type: Literal['setSource']
     id: str
     url: str | None = None
     assetUuid: str | None = None
@@ -706,11 +706,11 @@ class SetSource:
     @staticmethod
     def from_json(value: Any) -> SetSource:
         obj = _object(value)
-        return SetSource(type=_required(obj, 'type', _const('setSource')), id=_required(obj, 'id', _string), url=_optional(obj, 'url', _string), assetUuid=_optional(obj, 'assetUuid', _string), upload=_optional(obj, 'upload', SetSourceUpload.from_json), group=_optional(obj, 'group', _array(decode_groupmember)), params=_optional(obj, 'params', _array(ComponentParams.from_json)), fps=_optional(obj, 'fps', _string), roi=_optional(obj, 'roi', decode_roi), camera=_optional(obj, 'camera', Camera.from_json), live=_optional(obj, 'live', _boolean), mode=_optional(obj, 'mode', _enum(('queue', 'preempt'))), raw=obj)
+        _required(obj, 'type', _const('setSource'))
+        return SetSource(id=_required(obj, 'id', _string), url=_optional(obj, 'url', _string), assetUuid=_optional(obj, 'assetUuid', _string), upload=_optional(obj, 'upload', SetSourceUpload.from_json), group=_optional(obj, 'group', _array(decode_groupmember)), params=_optional(obj, 'params', _array(ComponentParams.from_json)), fps=_optional(obj, 'fps', _string), roi=_optional(obj, 'roi', decode_roi), camera=_optional(obj, 'camera', Camera.from_json), live=_optional(obj, 'live', _boolean), mode=_optional(obj, 'mode', _enum(('queue', 'preempt'))), raw=obj)
 
     def to_json(self) -> dict[str, Any]:
         out = dict(self.raw)
-        out['type'] = _dump(self.type)
         out['id'] = _dump(self.id)
         if self.url is not None:
             out['url'] = _dump(self.url)
@@ -732,6 +732,7 @@ class SetSource:
             out['live'] = _dump(self.live)
         if self.mode is not None:
             out['mode'] = _dump(self.mode)
+        out['type'] = 'setSource'
         return out
 
 
@@ -780,45 +781,44 @@ class SourceDefaults:
 
 @dataclass(frozen=True)
 class Start:
-    type: Literal['start']
     id: str
     raw: Mapping[str, Any] = field(default_factory=dict[str, Any], compare=False, repr=False)
 
     @staticmethod
     def from_json(value: Any) -> Start:
         obj = _object(value)
-        return Start(type=_required(obj, 'type', _const('start')), id=_required(obj, 'id', _string), raw=obj)
+        _required(obj, 'type', _const('start'))
+        return Start(id=_required(obj, 'id', _string), raw=obj)
 
     def to_json(self) -> dict[str, Any]:
         out = dict(self.raw)
-        out['type'] = _dump(self.type)
         out['id'] = _dump(self.id)
+        out['type'] = 'start'
         return out
 
 
 
 @dataclass(frozen=True)
 class StopSource:
-    type: Literal['stopSource']
     id: str
     raw: Mapping[str, Any] = field(default_factory=dict[str, Any], compare=False, repr=False)
 
     @staticmethod
     def from_json(value: Any) -> StopSource:
         obj = _object(value)
-        return StopSource(type=_required(obj, 'type', _const('stopSource')), id=_required(obj, 'id', _string), raw=obj)
+        _required(obj, 'type', _const('stopSource'))
+        return StopSource(id=_required(obj, 'id', _string), raw=obj)
 
     def to_json(self) -> dict[str, Any]:
         out = dict(self.raw)
-        out['type'] = _dump(self.type)
         out['id'] = _dump(self.id)
+        out['type'] = 'stopSource'
         return out
 
 
 
 @dataclass(frozen=True)
 class Uploaded:
-    type: Literal['uploaded']
     id: str
     member: int | None = None
     raw: Mapping[str, Any] = field(default_factory=dict[str, Any], compare=False, repr=False)
@@ -826,21 +826,21 @@ class Uploaded:
     @staticmethod
     def from_json(value: Any) -> Uploaded:
         obj = _object(value)
-        return Uploaded(type=_required(obj, 'type', _const('uploaded')), id=_required(obj, 'id', _string), member=_optional(obj, 'member', _integer), raw=obj)
+        _required(obj, 'type', _const('uploaded'))
+        return Uploaded(id=_required(obj, 'id', _string), member=_optional(obj, 'member', _integer), raw=obj)
 
     def to_json(self) -> dict[str, Any]:
         out = dict(self.raw)
-        out['type'] = _dump(self.type)
         out['id'] = _dump(self.id)
         if self.member is not None:
             out['member'] = _dump(self.member)
+        out['type'] = 'uploaded'
         return out
 
 
 
 @dataclass(frozen=True)
 class Usage:
-    type: Literal['usage']
     id: str
     milliComputeUnits: int
     raw: Mapping[str, Any] = field(default_factory=dict[str, Any], compare=False, repr=False)
@@ -848,13 +848,14 @@ class Usage:
     @staticmethod
     def from_json(value: Any) -> Usage:
         obj = _object(value)
-        return Usage(type=_required(obj, 'type', _const('usage')), id=_required(obj, 'id', _string), milliComputeUnits=_required(obj, 'milliComputeUnits', _integer), raw=obj)
+        _required(obj, 'type', _const('usage'))
+        return Usage(id=_required(obj, 'id', _string), milliComputeUnits=_required(obj, 'milliComputeUnits', _integer), raw=obj)
 
     def to_json(self) -> dict[str, Any]:
         out = dict(self.raw)
-        out['type'] = _dump(self.type)
         out['id'] = _dump(self.id)
         out['milliComputeUnits'] = _dump(self.milliComputeUnits)
+        out['type'] = 'usage'
         return out
 
 
@@ -915,7 +916,6 @@ class GroupMemberUpload:
 
 @dataclass(frozen=True)
 class RoiRectangle:
-    type: Literal['rectangle']
     x: float
     y: float
     width: float
@@ -925,15 +925,16 @@ class RoiRectangle:
     @staticmethod
     def from_json(value: Any) -> RoiRectangle:
         obj = _object(value)
-        return RoiRectangle(type=_required(obj, 'type', _const('rectangle')), x=_required(obj, 'x', _number), y=_required(obj, 'y', _number), width=_required(obj, 'width', _number), height=_required(obj, 'height', _number), raw=obj)
+        _required(obj, 'type', _const('rectangle'))
+        return RoiRectangle(x=_required(obj, 'x', _number), y=_required(obj, 'y', _number), width=_required(obj, 'width', _number), height=_required(obj, 'height', _number), raw=obj)
 
     def to_json(self) -> dict[str, Any]:
         out = dict(self.raw)
-        out['type'] = _dump(self.type)
         out['x'] = _dump(self.x)
         out['y'] = _dump(self.y)
         out['width'] = _dump(self.width)
         out['height'] = _dump(self.height)
+        out['type'] = 'rectangle'
         return out
 
 
@@ -959,19 +960,19 @@ class RoiContourPoint:
 
 @dataclass(frozen=True)
 class RoiContour:
-    type: Literal['contour']
     points: list[RoiContourPoint]
     raw: Mapping[str, Any] = field(default_factory=dict[str, Any], compare=False, repr=False)
 
     @staticmethod
     def from_json(value: Any) -> RoiContour:
         obj = _object(value)
-        return RoiContour(type=_required(obj, 'type', _const('contour')), points=_required(obj, 'points', _array(RoiContourPoint.from_json)), raw=obj)
+        _required(obj, 'type', _const('contour'))
+        return RoiContour(points=_required(obj, 'points', _array(RoiContourPoint.from_json)), raw=obj)
 
     def to_json(self) -> dict[str, Any]:
         out = dict(self.raw)
-        out['type'] = _dump(self.type)
         out['points'] = _dump(self.points)
+        out['type'] = 'contour'
         return out
 
 
