@@ -28,15 +28,7 @@ public class ProtocolDecodingTests
     {
         var c = LoadCases().Single(x => NameOf(x!) == name)!;
 
-        string? problem;
-        try
-        {
-            problem = Problem(c);
-        }
-        catch (Exception error)
-        {
-            problem = error.ToString();
-        }
+        var problem = Problem(c);
 
         if (c["diverges"]?["csharp"] is { } reason)
         {
@@ -65,7 +57,7 @@ public class ProtocolDecodingTests
             return $"decoded to {variant}, want {c["variant"]}";
         }
         using var input = JsonDocument.Parse(text, options);
-        if (Same(encoded, input.RootElement) != c["unchanged"]!.GetValue<bool>())
+        if (Unchanged(encoded, input.RootElement) != c["unchanged"]!.GetValue<bool>())
         {
             return $"encoded {encoded.ToJsonString()}, want unchanged = {c["unchanged"]}";
         }
@@ -79,6 +71,18 @@ public class ProtocolDecodingTests
     private static (bool, JsonNode) Result(Command command) => (command is UnknownCommand, command.ToJson());
 
     private static (bool, JsonNode) Result(Message message) => (message is UnknownMessage, message.ToJson());
+
+    private static bool Unchanged(JsonNode encoded, JsonElement input)
+    {
+        try
+        {
+            return Same(encoded, input);
+        }
+        catch (InvalidOperationException)
+        {
+            return false;
+        }
+    }
 
     private static bool Same(JsonNode? a, JsonElement b) => (a, b.ValueKind) switch
     {
@@ -148,6 +152,17 @@ public class ProtocolDecodingTests
         var message = Message.Decode(new JsonObject { ["type"] = "credit", ["id"] = "c1", ["bytes"] = 1, ["\ud800"] = 1 });
 
         Assert.Equal(4, Assert.IsType<UnknownMessage>(message).Raw.Count);
+    }
+
+    [Theory]
+    [InlineData("""{"type":"credit","id":"c1","bytes":1,"\ud800":1}""", """{"type":"credit","id":"c1","bytes":1,"\uFFFD":1}""")]
+    [InlineData("""{"\ud800":1,"type":"credit","id":"c1","bytes":1,"bytes":2}""", """{"\uFFFD":1,"type":"credit","id":"c1","bytes":2}""")]
+    [InlineData("""{"type":"credit","id":"\ud800","bytes":1,"bytes":2}""", """{"type":"credit","id":"\uFFFD","bytes":2}""")]
+    public void A_lone_surrogate_in_parsed_text_decodes_to_a_readable_unknown(string text, string written)
+    {
+        var message = Assert.IsType<UnknownMessage>(Message.Decode(JsonNode.Parse(text)));
+
+        Assert.Equal(("credit", written), (message.Raw["type"]!.GetValue<string>(), message.ToJson().ToJsonString()));
     }
 
     [Fact]

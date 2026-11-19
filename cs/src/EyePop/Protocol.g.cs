@@ -2,6 +2,7 @@
 #nullable enable
 using System.Buffers;
 using System.Numerics;
+using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -164,58 +165,133 @@ internal static class Wire
         }
         catch (Exception error) when (error is InvalidOperationException or ArgumentException)
         {
-            return Inspect(value, out unicode);
+            return Copy(value, out unicode);
         }
         var scan = Scan(buffer.WrittenSpan);
         if (scan == Read.Clean) return value;
-        if (scan == Read.Replaced) return Inspect(value, out unicode);
+        if (scan == Read.Replaced) return Copy(value, out unicode);
         using var document = JsonDocument.Parse(buffer.WrittenMemory, new JsonDocumentOptions { MaxDepth = WireRules.MaxDepth });
         return Rebuild(document.RootElement.Clone());
     }
 
-    private static JsonNode? Inspect(JsonNode? value, out bool unicode)
+    private sealed class TooDeep : Exception
+    {
+    }
+
+    private static JsonNode? Copy(JsonNode? value, out bool unicode)
     {
         unicode = true;
         try
         {
-            return Within(value, WireRules.MaxDepth, ref unicode) ? value : null;
+            return Copy(value, WireRules.MaxDepth, ref unicode);
         }
-        catch (InvalidOperationException)
+        catch (TooDeep)
         {
-            unicode = false;
-            return value;
-        }
-        catch (ArgumentException)
-        {
+            unicode = true;
             return null;
         }
     }
 
-    private static bool Within(JsonNode? node, int levels, ref bool unicode)
+    [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "_jsonElement")]
+    private static extern ref JsonElement? Unread(JsonObject obj);
+
+    private static JsonNode? Copy(JsonNode? node, int levels, ref bool unicode)
     {
         switch (node)
         {
+            case JsonObject obj when Unread(obj) is { } element:
+                return Copy(element, levels, ref unicode);
             case JsonObject obj:
-                if (levels == 0) return false;
+                if (levels == 0) throw new TooDeep();
+                var properties = new List<KeyValuePair<string, JsonNode?>>(obj.Count);
                 foreach (var property in obj)
                 {
                     unicode &= Unicode(property.Key);
-                    if (!Within(property.Value, levels - 1, ref unicode)) return false;
+                    properties.Add(KeyValuePair.Create(property.Key, Copy(property.Value, levels - 1, ref unicode)));
                 }
-                return true;
+                return new JsonObject(properties);
             case JsonArray array:
-                if (levels == 0) return false;
-                foreach (var item in array)
-                {
-                    if (!Within(item, levels - 1, ref unicode)) return false;
-                }
-                return true;
+                if (levels == 0) throw new TooDeep();
+                var items = new JsonNode?[array.Count];
+                for (var i = 0; i < items.Length; i++) items[i] = Copy(array[i], levels - 1, ref unicode);
+                return new JsonArray(items);
+            case JsonValue leaf when leaf.TryGetValue<JsonElement>(out var element):
+                return Copy(element, levels, ref unicode);
             case JsonValue leaf:
-                unicode &= Unicode(leaf);
-                return true;
+                unicode &= !leaf.TryGetValue<string>(out var text) || Unicode(text);
+                return leaf.DeepClone();
             default:
-                return true;
+                return null;
         }
+    }
+
+    private static JsonNode? Copy(JsonElement element, int levels, ref bool unicode)
+    {
+        switch (element.ValueKind)
+        {
+            case JsonValueKind.Object:
+                if (levels == 0) throw new TooDeep();
+                var last = new Dictionary<string, JsonElement>();
+                foreach (var property in element.EnumerateObject()) last[Name(property, ref unicode)] = property.Value;
+                var properties = new List<KeyValuePair<string, JsonNode?>>(last.Count);
+                foreach (var (key, item) in last) properties.Add(KeyValuePair.Create(key, Copy(item, levels - 1, ref unicode)));
+                return new JsonObject(properties);
+            case JsonValueKind.Array:
+                if (levels == 0) throw new TooDeep();
+                var items = new List<JsonNode?>();
+                foreach (var item in element.EnumerateArray()) items.Add(Copy(item, levels - 1, ref unicode));
+                return new JsonArray(items.ToArray());
+            case JsonValueKind.String:
+                try
+                {
+                    element.GetString();
+                    return JsonValue.Create(element);
+                }
+                catch (InvalidOperationException)
+                {
+                    unicode = false;
+                    return JsonValue.Create(Unescape(element.GetRawText()));
+                }
+            default:
+                return JsonValue.Create(element);
+        }
+    }
+
+    private static string Name(JsonProperty property, ref bool unicode)
+    {
+        try
+        {
+            return property.Name;
+        }
+        catch (InvalidOperationException)
+        {
+            unicode = false;
+            return Unescape(property.ToString());
+        }
+    }
+
+    private static string Unescape(string quoted)
+    {
+        var text = new StringBuilder();
+        for (var i = 1; quoted[i] != '"'; i++)
+        {
+            if (quoted[i] != '\\')
+            {
+                text.Append(quoted[i]);
+                continue;
+            }
+            i++;
+            if (quoted[i] == 'u')
+            {
+                text.Append((char)Convert.ToUInt16(quoted.Substring(i + 1, 4), 16));
+                i += 4;
+            }
+            else
+            {
+                text.Append(quoted[i] switch { 'b' => '\b', 'f' => '\f', 'n' => '\n', 'r' => '\r', 't' => '\t', var other => other });
+            }
+        }
+        return text.ToString();
     }
 
     private static bool Unicode(string text)
@@ -225,18 +301,6 @@ internal static class Wire
             return StrictUtf8.GetByteCount(text) >= 0;
         }
         catch (ArgumentException)
-        {
-            return false;
-        }
-    }
-
-    private static bool Unicode(JsonValue leaf)
-    {
-        try
-        {
-            return !leaf.TryGetValue<string>(out var text) || Unicode(text);
-        }
-        catch (InvalidOperationException)
         {
             return false;
         }
