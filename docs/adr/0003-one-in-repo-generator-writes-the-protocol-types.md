@@ -8,7 +8,7 @@ The types for the pipeline socket are generated from `protocol/schema` by one sc
 - **Same behavior everywhere.** Every type has a decode and an encode (`from_json`/`to_json`, `FromJSON`/`ToJSON`). A value keeps its original JSON, and unknown fields survive a round trip. A constant such as `"type": "ping"` is checked on decode and written on encode, and is not a field. `Message` and `Command` decode by their `type` tag, and a known tag that does not parse, or an unknown one, decodes to an `Unknown` variant that keeps its JSON. Decoding the two unions never fails.
 - **Only the standard library**, plus `serde_json` in Rust. The Python SDK has no dependencies, so the generated Python uses dataclasses.
 - **Generated files are committed and never edited.** `task protocol:generate` rewrites them; `task protocol:generate:check` fails when they differ from what the schemas produce, and runs in the protocol gate. Hand-written code sits beside them.
-- **Each SDK round-trips the real examples.** Every language's own test suite decodes each file in `protocol/examples/valid` to a known variant and checks that it encodes back unchanged. A Language SDK's CI also runs when `protocol/**` changes.
+- **Each SDK replays one conformance set.** Every language's own test suite decodes each case in `protocol/examples/decoding.json` (every valid and invalid example, plus edge-case JSON text) through its generated decoder, and checks the variant it decodes to and whether it encodes back unchanged. A case one SDK gets wrong carries a known-divergence marker for that language, and the replay fails once the marker is no longer needed. A Language SDK's CI also runs when `protocol/**` changes.
 
 ## Considered and rejected
 
