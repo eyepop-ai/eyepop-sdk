@@ -3,7 +3,7 @@ import re
 import pytest
 
 from codegen import generate
-from codegen.model import parse
+from codegen.model import Always, Key, Tag, Variant, parse
 from conftest import schema
 
 
@@ -186,11 +186,66 @@ def test_an_inline_union_variant_without_a_name_is_rejected():
     rejects({"either": union}, "either.json#/oneOf/0: an inline union variant needs")
 
 
-def test_a_union_variant_that_cannot_be_told_apart_is_rejected():
-    union = schema("either", {"oneOf": [{"$ref": "thing.json"}, {"$ref": "other.json"}]})
-    other = schema("other", {"type": "object", "properties": {"id": {"type": "string"}}, "required": ["id"]})
+def variant(properties: dict, required: list[str]) -> dict:
+    return {"type": "object", "properties": {key: {"type": "string"} if prop is None else prop for key, prop in properties.items()}, "required": required}
 
-    rejects({"either": union, "thing": thing(), "other": other}, "either.json#/oneOf: variant Thing has no")
+
+def either(**variants) -> dict:
+    return {"either": schema("either", {"oneOf": [{"$ref": f"{n}.json"} for n in variants]}), **variants}
+
+
+def dispatch(schemas: dict) -> tuple[Variant, ...]:
+    return parse(schemas, ()).unions[0].variants
+
+
+def test_a_union_tries_tags_and_keys_in_schema_order_and_the_open_type_last():
+    raw = variant({"type": None}, ["type"])
+    a = variant({"type": {"const": "a"}}, ["type"])
+    k = variant({"k": None}, ["k"])
+
+    assert dispatch(either(raw=raw, a=a, k=k)) == (Variant("A", Tag("a")), Variant("K", Key("k")), Variant("Raw", Always()))
+
+
+def test_two_variants_with_one_tag_are_rejected():
+    a = variant({"type": {"const": "x"}}, ["type"])
+    b = variant({"type": {"const": "x"}, "q": None}, ["type", "q"])
+
+    rejects(either(a=a, b=b), "either.json#/oneOf/1: variants A and B both have the `type` const 'x'")
+
+
+def test_two_variants_with_an_open_type_are_rejected():
+    a = variant({"type": None}, ["type"])
+    b = variant({"type": None, "q": None}, ["type"])
+
+    rejects(either(a=a, b=b), "either.json#/oneOf/1: variants A and B both have an open `type`")
+
+
+def test_a_key_required_by_another_variant_is_not_a_selector():
+    rejects(either(a=variant({"id": None}, ["id"]), b=variant({"id": None}, ["id"])), "either.json#/oneOf/0: variant A has no `type` const")
+
+
+def test_a_key_that_is_only_a_property_of_another_variant_is_not_a_selector():
+    a = variant({"x": None}, ["x"]) | {"additionalProperties": False}
+    b = variant({"x": None, "y": None}, ["y"])
+
+    rejects(
+        either(a=a, b=b),
+        "either.json#/oneOf/0: variant A has no `type` const and no required key that is not a property of another variant: x (a property of B)",
+    )
+
+
+def test_a_variant_with_no_required_key_is_rejected():
+    union = either(a=variant({"x": None}, []), b=variant({"y": None}, ["y"]))
+
+    with pytest.raises(ValueError, match=re.escape("either.json#/oneOf/0: variant A has no `type` const and no required key") + "$"):
+        parse(union, ())
+
+
+def test_the_selector_is_the_first_required_key_by_name_that_no_other_variant_has():
+    a = variant({"c": None, "f": None, "d": None}, ["f", "d", "c"])
+    b = variant({"c": None, "y": None}, ["y"])
+
+    assert dispatch(either(a=a, b=b)) == (Variant("A", Key("d")), Variant("B", Key("y")))
 
 
 def test_two_object_types_with_one_name_are_rejected():
