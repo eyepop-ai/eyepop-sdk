@@ -4,6 +4,10 @@ from dataclasses import dataclass
 from typing import NoReturn
 
 
+class SchemaError(ValueError):
+    pass
+
+
 @dataclass(frozen=True)
 class Const:
     value: str
@@ -184,28 +188,28 @@ class Naming:
 def check_fields(owner: str, where: str, fields: Sequence[Field], places: Mapping[str, str], namings: Mapping[str, Naming]) -> None:
     for f in fields:
         if not IDENTIFIER.fullmatch(f.name):
-            raise ValueError(f"{places[f.name]}: property {f.name!r} of {owner} is not an identifier ([A-Za-z][A-Za-z0-9_]*)")
+            raise SchemaError(f"{places[f.name]}: property {f.name!r} of {owner} is not an identifier ([A-Za-z][A-Za-z0-9_]*)")
     for language, naming in namings.items():
         taken: dict[str, str] = {}
         for f in fields:
             name = naming.field(owner, f.name)
             if name in naming.reserved(f, fields):
-                raise ValueError(f"{places[f.name]}: property {f.name!r} of {owner} becomes the {language} name {name}, which the generated code already uses")
+                raise SchemaError(f"{places[f.name]}: property {f.name!r} of {owner} becomes the {language} name {name}, which the generated code already uses")
             if name in taken:
-                raise ValueError(f"{where}: properties {taken[name]!r} and {f.name!r} of {owner} both become the {language} name {name}")
+                raise SchemaError(f"{where}: properties {taken[name]!r} and {f.name!r} of {owner} both become the {language} name {name}")
             taken[name] = f.name
 
 
 def check_literal(where: str, what: str, text: str) -> None:
     if not text.isprintable() or any(c in text for c in "\\\"'"):
-        raise ValueError(f"{where}: {what} holds a quote, a backslash or a character that is not printable, which a generated string literal cannot hold")
+        raise SchemaError(f"{where}: {what} holds a quote, a backslash or a character that is not printable, which a generated string literal cannot hold")
 
 
 def check_values(enum: Enum, where: str, namings: Mapping[str, Naming]) -> None:
     for v in enum.values:
         check_literal(where, f"enum value {v!r} of {enum.name}", v)
         if not IDENTIFIER.fullmatch(value_name(v)):
-            raise ValueError(f"{where}: enum value {v!r} of {enum.name} does not start with a letter, so it has no identifier")
+            raise SchemaError(f"{where}: enum value {v!r} of {enum.name} does not start with a letter, so it has no identifier")
     for language, naming in namings.items():
         if naming.value is None:
             continue
@@ -213,9 +217,9 @@ def check_values(enum: Enum, where: str, namings: Mapping[str, Naming]) -> None:
         for v in enum.values:
             name = naming.value(v)
             if name in naming.values:
-                raise ValueError(f"{where}: enum value {v!r} of {enum.name} becomes the {language} name {name}, which the generated code already uses")
+                raise SchemaError(f"{where}: enum value {v!r} of {enum.name} becomes the {language} name {name}, which the generated code already uses")
             if name in taken:
-                raise ValueError(f"{where}: enum values {taken[name]!r} and {v!r} of {enum.name} both become the {language} name {name}")
+                raise SchemaError(f"{where}: enum values {taken[name]!r} and {v!r} of {enum.name} both become the {language} name {name}")
             taken[name] = v
 
 
@@ -281,7 +285,7 @@ def property_names(schemas: Mapping[str, dict], body: dict) -> set[str]:
 
 def check(schemas: Mapping[str, dict], name: str) -> None:
     def fail(path: list[str], message: str) -> NoReturn:
-        raise ValueError(f"{name}.json#{''.join('/' + p for p in path)}: {message}")
+        raise SchemaError(f"{name}.json#{''.join('/' + p for p in path)}: {message}")
 
     def ignored(node: dict, key: str) -> bool:
         if key == "additionalProperties":
@@ -399,7 +403,7 @@ def parse(schemas: Mapping[str, dict], roots: Sequence[str], namings: Mapping[st
 
     def claim(name: str) -> str:
         if name in sources:
-            raise ValueError(f"{origin}: two types are named {name}; the other comes from {sources[name]}")
+            raise SchemaError(f"{origin}: two types are named {name}; the other comes from {sources[name]}")
         sources[name] = origin
         return name
 
@@ -462,7 +466,7 @@ def parse(schemas: Mapping[str, dict], roots: Sequence[str], namings: Mapping[st
                 continue
             type_name = pascal(name) + variant_suffix(item)
             if not IDENTIFIER.fullmatch(type_name):
-                raise ValueError(f"{origin}: the inline variant's type name {type_name} is not an identifier ([A-Za-z][A-Za-z0-9_]*)")
+                raise SchemaError(f"{origin}: the inline variant's type name {type_name} is not an identifier ([A-Za-z][A-Za-z0-9_]*)")
             names.append(add_object(type_name, item, origin))
         return names
 
@@ -483,7 +487,7 @@ def parse(schemas: Mapping[str, dict], roots: Sequence[str], namings: Mapping[st
     unions = tuple(union_of(name, body) for name, body in schemas.items() if kind(body) == "union")
     missing = [root for root in roots if pascal(root) not in {u.name for u in unions}]
     if missing:
-        raise ValueError(f"requested roots that are not unions: {', '.join(missing)}")
+        raise SchemaError(f"requested roots that are not unions: {', '.join(missing)}")
     return Model(tuple(objects.values()), unions)
 
 
@@ -517,11 +521,11 @@ def variants_of(name: str, objects: list[Object]) -> tuple[Variant, ...]:
     names = [o.name for o in objects]
     for i, obj in enumerate(objects):
         if obj.name in names[:i]:
-            raise ValueError(f"{name}.json#/oneOf/{i}: variant {obj.name} is listed twice")
+            raise SchemaError(f"{name}.json#/oneOf/{i}: variant {obj.name} is listed twice")
     variants = []
     for i, obj in enumerate(objects):
         def fail(message: str) -> NoReturn:
-            raise ValueError(f"{name}.json#/oneOf/{i}: {message}")
+            raise SchemaError(f"{name}.json#/oneOf/{i}: {message}")
 
         others = objects[:i] + objects[i + 1 :]
         tag = tag_of(obj)

@@ -2,7 +2,7 @@ import json
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 
-from .model import parse
+from .model import SchemaError, parse
 from . import csharp, go, python, rust
 
 ROOTS = ("command", "message")
@@ -15,4 +15,10 @@ def generate(schemas: Mapping[str, dict], roots: Sequence[str]) -> dict[str, str
 
 
 def load_schemas(directory: Path) -> dict[str, dict]:
-    return {path.stem: json.loads(path.read_text()) for path in sorted(directory.glob("*.json"))}
+    schemas = {}
+    for path in sorted(directory.glob("*.json")):
+        try:
+            schemas[path.stem] = json.loads(path.read_text())
+        except ValueError as error:
+            raise SchemaError(f"{path.name}: {error}") from error
+    return schemas
