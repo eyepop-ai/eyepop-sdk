@@ -36,7 +36,9 @@ fn parse_raw(text: &str, at: &mut usize) -> Raw {
                         };
                         skip_space(bytes, at);
                         *at += 1;
-                        items.push((key, parse_raw(text, at)));
+                        let item = parse_raw(text, at);
+                        items.retain(|(existing, _)| *existing != key);
+                        items.push((key, item));
                     }
                     _ => items.push((String::new(), parse_raw(text, at))),
                 }
@@ -106,9 +108,12 @@ fn same(a: &Value, b: &Raw) -> bool {
 }
 
 fn problem(case: &Value, text: &str) -> Option<String> {
-    let data: Value = match serde_json::from_str(text) {
-        Ok(data) => data,
-        Err(error) => return Some(error.to_string()),
+    let mut reader = serde_json::Deserializer::from_str(text);
+    reader.disable_recursion_limit();
+    let data: Value = match reader.into_iter().next() {
+        Some(Ok(data)) => data,
+        Some(Err(error)) => return Some(error.to_string()),
+        None => return Some("empty text".to_string()),
     };
     let (unknown, encoded) = if case["union"] == "command" {
         let command = Command::decode(&data);
@@ -141,6 +146,15 @@ fn problem(case: &Value, text: &str) -> Option<String> {
 
 #[test]
 fn every_decoding_case_has_its_stated_outcome() {
+    std::thread::Builder::new()
+        .stack_size(256 << 20)
+        .spawn(replay_every_case)
+        .unwrap()
+        .join()
+        .unwrap_or_else(|panic| std::panic::resume_unwind(panic));
+}
+
+fn replay_every_case() {
     let cases: Vec<Value> =
         serde_json::from_str(&fs::read_to_string(format!("{EXAMPLES}/decoding.json")).unwrap())
             .unwrap();
@@ -159,7 +173,7 @@ fn every_decoding_case_has_its_stated_outcome() {
         };
         match (case["diverges"].get("rust"), problem(case, &text)) {
             (Some(reason), None) => failures.push(format!(
-                "{name}: passes but is marked as a known Rust divergence ({reason}); remove the marker"
+                "{name}: passes but carries a Rust diverges marker ({reason}); remove the marker"
             )),
             (None, Some(problem)) => failures.push(format!("{name}: {problem}")),
             _ => {}

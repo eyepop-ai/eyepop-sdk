@@ -51,7 +51,7 @@ func TestEveryDecodingCaseHasItsStatedOutcome(t *testing.T) {
 			if !diverges && problem != "" {
 				t.Fatal(problem)
 			}
-			if c.Keeps == "" && len(c.Diverges) == 0 {
+			if c.Keeps == "" && len(c.Diverges) == 0 && float64Holds(text) {
 				if problem := decodingProblem(c, text, plainJSON); problem != "" {
 					t.Fatal("float64 input: " + problem)
 				}
@@ -110,6 +110,20 @@ func exactJSON(text string) (any, error) {
 	var value any
 	err := decoder.Decode(&value)
 	return value, err
+}
+
+func float64Holds(text string) bool {
+	plain, err := plainJSON(text)
+	if err != nil {
+		return false
+	}
+	bytes, err := json.Marshal(plain)
+	if err != nil {
+		return false
+	}
+	again, errAgain := exactJSON(string(bytes))
+	want, errWant := exactJSON(text)
+	return errAgain == nil && errWant == nil && sameJSON(again, want)
 }
 
 func plainJSON(text string) (any, error) {
@@ -192,5 +206,11 @@ func TestDecodedJSONIsASnapshotOfTheInput(t *testing.T) {
 
 	if got := message.ToJSON().(map[string]any)["extra"].(map[string]any)["status"]; got != "original" {
 		t.Fatalf("status = %v", got)
+	}
+}
+
+func TestAStringLengthCountsCodePoints(t *testing.T) {
+	if got := []int{length("\U0001F600"), length("é")}; !reflect.DeepEqual(got, []int{1, 2}) {
+		t.Fatalf("lengths = %v, want [1 2]", got)
 	}
 }

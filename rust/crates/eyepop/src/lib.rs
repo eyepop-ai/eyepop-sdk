@@ -13,4 +13,13 @@ mod tests {
         assert!(!super::version().is_empty());
         assert_eq!(super::version(), env!("CARGO_PKG_VERSION"));
     }
+
+    #[test]
+    fn a_string_length_counts_code_points() {
+        let lengths = [
+            crate::protocol::length(&"\u{1F600}".to_string()),
+            crate::protocol::length(&"e\u{301}".to_string()),
+        ];
+        assert_eq!(lengths, [1.0, 2.0]);
+    }
 }

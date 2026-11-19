@@ -2,7 +2,9 @@
 from __future__ import annotations
 
 import copy
-from collections.abc import Callable, Mapping, Sequence
+import math
+from collections.abc import Callable, Iterable, Mapping, Sequence
+from decimal import Decimal
 from dataclasses import dataclass, field
 from typing import Any, Literal, cast
 
@@ -32,17 +34,25 @@ def _string(value: Any) -> str:
 
 
 def _integer(value: Any) -> int:
-    if isinstance(value, float) and value.is_integer():
-        return int(value)
-    if isinstance(value, bool) or not isinstance(value, int):
+    if isinstance(value, bool) or not isinstance(value, int | float | Decimal):
         raise ValueError(f"expected an integer, got {type(value).__name__}")
-    return value
+    if isinstance(value, Decimal) and not value.is_finite():
+        raise ValueError(f"{value} is not finite")
+    if not _INTEGER_MINIMUM <= value <= _INTEGER_MAXIMUM or int(value) != value:
+        raise ValueError(f"{value} is not an integer from {_INTEGER_MINIMUM} to {_INTEGER_MAXIMUM}")
+    return int(value)
 
 
 def _number(value: Any) -> float:
-    if isinstance(value, bool) or not isinstance(value, (int, float)):
+    if isinstance(value, bool) or not isinstance(value, int | float | Decimal):
         raise ValueError(f"expected a number, got {type(value).__name__}")
-    return value
+    try:
+        number = float(value)
+    except OverflowError:
+        number = math.inf
+    if not math.isfinite(number):
+        raise ValueError(f"{value} is not a finite double")
+    return value if isinstance(value, int) else number
 
 
 def _boolean(value: Any) -> bool:
@@ -70,7 +80,7 @@ def _limit(
             raise ValueError(f"{parsed} is not above {exclusive_minimum}")
         if exclusive_maximum is not None and parsed >= exclusive_maximum:
             raise ValueError(f"{parsed} is not below {exclusive_maximum}")
-        if min_length is not None and len(parsed) < min_length:
+        if min_length is not None and _LENGTH(parsed) < min_length:
             raise ValueError(f"shorter than {min_length}")
         return parsed
 
@@ -122,6 +132,42 @@ def _always(obj: dict[str, Any]) -> bool:
     return True
 
 
+def _within(value: Any, levels: int) -> bool:
+    children: Iterable[Any]
+    if isinstance(value, dict):
+        children = cast(dict[str, Any], value).values()
+    elif isinstance(value, list):
+        children = cast(list[Any], value)
+    else:
+        return True
+    return levels > 0 and all(_within(child, levels - 1) for child in children)
+
+
+def _unicode(value: Any) -> bool:
+    if isinstance(value, str):
+        try:
+            value.encode("utf-8")
+        except UnicodeEncodeError:
+            return False
+        return True
+    if isinstance(value, dict):
+        return all(_unicode(key) and _unicode(item) for key, item in cast(dict[str, Any], value).items())
+    if isinstance(value, list):
+        return all(_unicode(item) for item in cast(list[Any], value))
+    return True
+
+
+def _put_number(out: dict[str, Any], key: str, number: float) -> None:
+    current = out.get(key)
+    if isinstance(current, int | float | Decimal) and not isinstance(current, bool):
+        try:
+            if float(current) == number:
+                return
+        except (OverflowError, ValueError):
+            pass
+    out[key] = number
+
+
 def _dispatch(value: Any, variants: _Variants) -> Any:
     obj = _object(value)
     for matches, parse in variants:
@@ -139,6 +185,11 @@ def _dump(value: Any) -> Any:
         return [_dump(element) for element in cast(list[Any], value)]
     return value
 
+
+_INTEGER_MINIMUM = -9223372036854775808
+_INTEGER_MAXIMUM = 9223372036854775807
+_MAX_DEPTH = 64
+_LENGTH = len
 
 
 @dataclass(frozen=True)
@@ -187,10 +238,10 @@ class CameraIntrinsics:
 
     def to_json(self) -> dict[str, Any]:
         out = copy.deepcopy(dict(self.raw))
-        out['fx'] = _dump(self.fx)
-        out['fy'] = _dump(self.fy)
-        out['cx'] = _dump(self.cx)
-        out['cy'] = _dump(self.cy)
+        _put_number(out, 'fx', self.fx)
+        _put_number(out, 'fy', self.fy)
+        _put_number(out, 'cx', self.cx)
+        _put_number(out, 'cy', self.cy)
         return out
 
 
@@ -212,23 +263,23 @@ class CameraDistortion:
     def to_json(self) -> dict[str, Any]:
         out = copy.deepcopy(dict(self.raw))
         if self.k1 is not None:
-            out['k1'] = _dump(self.k1)
+            _put_number(out, 'k1', self.k1)
         else:
             out.pop('k1', None)
         if self.k2 is not None:
-            out['k2'] = _dump(self.k2)
+            _put_number(out, 'k2', self.k2)
         else:
             out.pop('k2', None)
         if self.p1 is not None:
-            out['p1'] = _dump(self.p1)
+            _put_number(out, 'p1', self.p1)
         else:
             out.pop('p1', None)
         if self.p2 is not None:
-            out['p2'] = _dump(self.p2)
+            _put_number(out, 'p2', self.p2)
         else:
             out.pop('p2', None)
         if self.k3 is not None:
-            out['k3'] = _dump(self.k3)
+            _put_number(out, 'k3', self.k3)
         else:
             out.pop('k3', None)
         return out
@@ -250,10 +301,10 @@ class CameraExtrinsicsRotation:
 
     def to_json(self) -> dict[str, Any]:
         out = copy.deepcopy(dict(self.raw))
-        out['w'] = _dump(self.w)
-        out['x'] = _dump(self.x)
-        out['y'] = _dump(self.y)
-        out['z'] = _dump(self.z)
+        _put_number(out, 'w', self.w)
+        _put_number(out, 'x', self.x)
+        _put_number(out, 'y', self.y)
+        _put_number(out, 'z', self.z)
         return out
 
 
@@ -272,9 +323,9 @@ class CameraExtrinsicsTranslation:
 
     def to_json(self) -> dict[str, Any]:
         out = copy.deepcopy(dict(self.raw))
-        out['x'] = _dump(self.x)
-        out['y'] = _dump(self.y)
-        out['z'] = _dump(self.z)
+        _put_number(out, 'x', self.x)
+        _put_number(out, 'y', self.y)
+        _put_number(out, 'z', self.z)
         return out
 
 
@@ -325,7 +376,7 @@ class Camera:
         else:
             out.pop('intrinsics', None)
         if self.hfovDegrees is not None:
-            out['hfovDegrees'] = _dump(self.hfovDegrees)
+            _put_number(out, 'hfovDegrees', self.hfovDegrees)
         else:
             out.pop('hfovDegrees', None)
         if self.distortion is not None:
@@ -893,11 +944,11 @@ class SourceDefaults:
         else:
             out.pop('motionDetect', None)
         if self.motionSensitivity is not None:
-            out['motionSensitivity'] = _dump(self.motionSensitivity)
+            _put_number(out, 'motionSensitivity', self.motionSensitivity)
         else:
             out.pop('motionSensitivity', None)
         if self.motionThreshold is not None:
-            out['motionThreshold'] = _dump(self.motionThreshold)
+            _put_number(out, 'motionThreshold', self.motionThreshold)
         else:
             out.pop('motionThreshold', None)
         if self.motionGap is not None:
@@ -1071,10 +1122,10 @@ class RoiRectangle:
 
     def to_json(self) -> dict[str, Any]:
         out = copy.deepcopy(dict(self.raw))
-        out['x'] = _dump(self.x)
-        out['y'] = _dump(self.y)
-        out['width'] = _dump(self.width)
-        out['height'] = _dump(self.height)
+        _put_number(out, 'x', self.x)
+        _put_number(out, 'y', self.y)
+        _put_number(out, 'width', self.width)
+        _put_number(out, 'height', self.height)
         out['type'] = 'rectangle'
         return out
 
@@ -1093,8 +1144,8 @@ class RoiContourPoint:
 
     def to_json(self) -> dict[str, Any]:
         out = copy.deepcopy(dict(self.raw))
-        out['x'] = _dump(self.x)
-        out['y'] = _dump(self.y)
+        _put_number(out, 'x', self.x)
+        _put_number(out, 'y', self.y)
         return out
 
 
@@ -1140,7 +1191,11 @@ Command = SetPop | Ping | SetSource | Uploaded | StopSource | GetGraph | Quit | 
 
 
 def decode_command(value: Any) -> Command:
+    if not _within(value, _MAX_DEPTH):
+        return UnknownCommand({})
     try:
+        if not _unicode(value):
+            raise ValueError("a string holds a lone surrogate")
         return _dispatch(value, _COMMAND_VARIANTS)
     except ValueError:
         return UnknownCommand(copy.deepcopy(cast(dict[str, Any], value)) if isinstance(value, dict) else {})
@@ -1186,7 +1241,11 @@ Message = Result | Send | Credit | Start | Prediction | Dropped | Usage | End | 
 
 
 def decode_message(value: Any) -> Message:
+    if not _within(value, _MAX_DEPTH):
+        return UnknownMessage({})
     try:
+        if not _unicode(value):
+            raise ValueError("a string holds a lone surrogate")
         return _dispatch(value, _MESSAGE_VARIANTS)
     except ValueError:
         return UnknownMessage(copy.deepcopy(cast(dict[str, Any], value)) if isinstance(value, dict) else {})
