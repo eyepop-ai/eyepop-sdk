@@ -5,7 +5,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from codegen import ROOTS, generate, load_schemas
+from codegen import ROOTS, SchemaError, generate, load_schemas
 
 ROOT = Path(__file__).resolve().parent.parent
 TARGETS = {
@@ -24,7 +24,11 @@ def render(language: str, source: str) -> str:
 
 
 def main(argv: list[str]) -> int:
-    generated = generate(load_schemas(ROOT / "schema"), ROOTS)
+    try:
+        generated = generate(load_schemas(ROOT / "schema"), ROOTS)
+    except SchemaError as error:
+        print(f"error: {error}", file=sys.stderr)
+        return 1
     outputs = {language: render(language, source) for language, source in generated.items()}
     if "--check" in argv:
         stale = [path for language, path in TARGETS.items() if not path.exists() or path.read_text() != outputs[language]]
