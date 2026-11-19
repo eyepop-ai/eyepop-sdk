@@ -109,8 +109,16 @@ def reject(token: str) -> Any:
 
 
 @pytest.mark.parametrize(
-    "text", ['{"score":NaN}', '{"score":-Infinity}', '{"bytes":' + "1" * 4301 + "}"]
+    "text",
+    [
+        '{"score":NaN}',
+        '{"score":-Infinity}',
+        '{"bytes":' + "1" * 4301 + "}",
+        '{"a":0e999999999999999999999}',
+        "[" * 20000 + "]" * 20000,
+    ],
+    ids=["nan", "infinity", "long-integer", "decimal-exponent", "deep"],
 )
 def test_the_recommended_parse_refuses_what_is_not_wire_json(text: str):
-    with pytest.raises(ValueError):
+    with pytest.raises((ValueError, ArithmeticError, RecursionError)):
         json.loads(text, parse_float=Decimal, parse_constant=reject)

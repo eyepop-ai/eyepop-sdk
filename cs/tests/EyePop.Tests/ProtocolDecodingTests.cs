@@ -55,9 +55,10 @@ public class ProtocolDecodingTests
             : c["text"]!.GetValue<string>();
         var options = new JsonDocumentOptions { MaxDepth = int.MaxValue };
         var data = JsonNode.Parse(text, documentOptions: options);
-        var (unknown, encoded) = c["union"]!.GetValue<string>() == "command"
+        var (unknown, decoded) = c["union"]!.GetValue<string>() == "command"
             ? Result(Command.Decode(data))
             : Result(Message.Decode(data));
+        var encoded = JsonNode.Parse(decoded.ToJsonString(), documentOptions: options)!;
         var variant = unknown ? "Unknown" : encoded["type"]!.GetValue<string>();
         if (variant != c["variant"]!.GetValue<string>())
         {
@@ -87,7 +88,6 @@ public class ProtocolDecodingTests
         (JsonArray x, JsonValueKind.Array) => x.Count == b.GetArrayLength() && x.Zip(b.EnumerateArray()).All(p => Same(p.First, p.Second)),
         (JsonValue x, JsonValueKind.Number) when x.GetValueKind() == JsonValueKind.Number =>
             Canonical(x.ToJsonString()) == Canonical(b.GetRawText()),
-        (JsonValue x, JsonValueKind.String) when x.TryGetValue<JsonElement>(out var raw) => raw.GetRawText() == b.GetRawText(),
         _ => b.ValueKind is not (JsonValueKind.Object or JsonValueKind.Array) && JsonNode.DeepEquals(a, JsonValue.Create(b)),
     };
 
@@ -140,6 +140,28 @@ public class ProtocolDecodingTests
 
         Assert.True(double.IsNaN(((Credit)known).Raw!["extra"]!.GetValue<double>()));
         Assert.Equal(3, ((UnknownMessage)unknown).Raw.Count);
+    }
+
+    [Fact]
+    public void A_lone_surrogate_key_decodes_to_unknown_keeping_every_field()
+    {
+        var message = Message.Decode(new JsonObject { ["type"] = "credit", ["id"] = "c1", ["bytes"] = 1, ["\ud800"] = 1 });
+
+        Assert.Equal(4, Assert.IsType<UnknownMessage>(message).Raw.Count);
+    }
+
+    [Fact]
+    public void A_lone_surrogate_value_held_in_memory_decodes_to_unknown_keeping_every_field()
+    {
+        var message = Message.Decode(new JsonObject { ["type"] = "credit", ["id"] = "c1", ["bytes"] = 1, ["note"] = "\ud800" });
+
+        Assert.Equal(4, Assert.IsType<UnknownMessage>(message).Raw.Count);
+    }
+
+    [Fact]
+    public void A_replacement_character_is_ordinary_text()
+    {
+        Assert.IsType<Credit>(Message.Decode(JsonNode.Parse("""{"type":"credit","id":"\ufffd","bytes":1,"\ufffd":"\ufffd"}""")));
     }
 
     [Fact]

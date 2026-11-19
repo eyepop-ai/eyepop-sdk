@@ -155,48 +155,82 @@ internal static class Wire
 
     private static readonly UTF8Encoding StrictUtf8 = new(false, true);
 
-    private sealed class TooDeep : Exception;
-
     public static JsonNode? Tree(JsonNode? value, out bool unicode)
     {
-        var valid = true;
+        unicode = true;
+        var buffer = new ArrayBufferWriter<byte>();
         try
         {
-            var tree = Walk(value, WireRules.MaxDepth, ref valid);
-            unicode = valid;
-            return tree;
+            using var writer = new Utf8JsonWriter(buffer, new JsonWriterOptions { MaxDepth = WireRules.MaxDepth });
+            if (value is null) writer.WriteNullValue();
+            else value.WriteTo(writer);
+            writer.Flush();
         }
-        catch (TooDeep)
+        catch (Exception error) when (error is InvalidOperationException or ArgumentException)
         {
-            unicode = true;
+            return Inspect(value, out unicode);
+        }
+        var scan = Scan(buffer.WrittenSpan);
+        if (scan == Read.Clean) return value;
+        if (scan == Read.Replaced) return Inspect(value, out unicode);
+        using var document = JsonDocument.Parse(buffer.WrittenMemory, new JsonDocumentOptions { MaxDepth = WireRules.MaxDepth });
+        return Rebuild(document.RootElement.Clone());
+    }
+
+    private static JsonNode? Inspect(JsonNode? value, out bool unicode)
+    {
+        unicode = true;
+        try
+        {
+            return Within(value, WireRules.MaxDepth, ref unicode) ? value : null;
+        }
+        catch (InvalidOperationException)
+        {
+            unicode = false;
+            return value;
+        }
+        catch (ArgumentException)
+        {
             return null;
-        }
-        catch (Exception error) when (error is ArgumentException or InvalidOperationException)
-        {
-            unicode = true;
-            return Reread(value);
         }
     }
 
-    private static JsonNode? Walk(JsonNode? node, int levels, ref bool unicode)
+    private static bool Within(JsonNode? node, int levels, ref bool unicode)
     {
         switch (node)
         {
             case JsonObject obj:
-                if (levels == 0) throw new TooDeep();
-                var properties = new List<KeyValuePair<string, JsonNode?>>(obj.Count);
-                foreach (var property in obj) properties.Add(KeyValuePair.Create(property.Key, Walk(property.Value, levels - 1, ref unicode)));
-                return new JsonObject(properties);
+                if (levels == 0) return false;
+                foreach (var property in obj)
+                {
+                    unicode &= Unicode(property.Key);
+                    if (!Within(property.Value, levels - 1, ref unicode)) return false;
+                }
+                return true;
             case JsonArray array:
-                if (levels == 0) throw new TooDeep();
-                var items = new JsonNode?[array.Count];
-                for (var i = 0; i < items.Length; i++) items[i] = Walk(array[i], levels - 1, ref unicode);
-                return new JsonArray(items);
+                if (levels == 0) return false;
+                foreach (var item in array)
+                {
+                    if (!Within(item, levels - 1, ref unicode)) return false;
+                }
+                return true;
             case JsonValue leaf:
                 unicode &= Unicode(leaf);
-                return leaf.DeepClone();
+                return true;
             default:
-                return null;
+                return true;
+        }
+    }
+
+    private static bool Unicode(string text)
+    {
+        try
+        {
+            return StrictUtf8.GetByteCount(text) >= 0;
+        }
+        catch (ArgumentException)
+        {
+            return false;
         }
     }
 
@@ -204,31 +238,45 @@ internal static class Wire
     {
         try
         {
-            return !leaf.TryGetValue<string>(out var text) || StrictUtf8.GetByteCount(text) >= 0;
+            return !leaf.TryGetValue<string>(out var text) || Unicode(text);
         }
-        catch (Exception error) when (error is InvalidOperationException or ArgumentException)
+        catch (InvalidOperationException)
         {
             return false;
         }
     }
 
-    private static JsonNode? Reread(JsonNode? value)
+    private enum Read { Clean, RepeatsAKey, Replaced }
+
+    private static Read Scan(ReadOnlySpan<byte> json)
     {
-        var buffer = new ArrayBufferWriter<byte>();
-        using (var writer = new Utf8JsonWriter(buffer, new JsonWriterOptions { MaxDepth = WireRules.MaxDepth }))
+        var reader = new Utf8JsonReader(json, new JsonReaderOptions { MaxDepth = WireRules.MaxDepth });
+        var names = new List<HashSet<string>>();
+        var depth = -1;
+        var repeats = false;
+        while (reader.Read())
         {
-            try
+            switch (reader.TokenType)
             {
-                if (value is null) writer.WriteNullValue();
-                else value.WriteTo(writer);
-            }
-            catch (Exception error) when (error is InvalidOperationException or ArgumentException)
-            {
-                return null;
+                case JsonTokenType.StartObject:
+                    depth++;
+                    if (depth == names.Count) names.Add(new HashSet<string>());
+                    else names[depth].Clear();
+                    break;
+                case JsonTokenType.EndObject:
+                    depth--;
+                    break;
+                case JsonTokenType.PropertyName:
+                    var name = reader.GetString()!;
+                    if (reader.ValueIsEscaped && name.Contains('\\uFFFD')) return Read.Replaced;
+                    repeats |= !names[depth].Add(name);
+                    break;
+                case JsonTokenType.String:
+                    if (reader.ValueIsEscaped && reader.GetString()!.Contains('\\uFFFD')) return Read.Replaced;
+                    break;
             }
         }
-        using var document = JsonDocument.Parse(buffer.WrittenMemory, new JsonDocumentOptions { MaxDepth = WireRules.MaxDepth });
-        return Rebuild(document.RootElement.Clone());
+        return repeats ? Read.RepeatsAKey : Read.Clean;
     }
 
     private static JsonNode? Rebuild(JsonElement element)
@@ -483,7 +531,7 @@ public sealed record Unknown{name}(JsonObject Raw) : {name}
         }}
         catch (FormatException)
         {{
-            return new Unknown{name}(tree as JsonObject ?? new JsonObject());
+            return new Unknown{name}(tree is JsonObject obj ? (JsonObject)obj.DeepClone() : new JsonObject());
         }}
     }}
 """
