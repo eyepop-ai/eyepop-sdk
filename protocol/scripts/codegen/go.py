@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
+	"math/big"
 )
 
 func parseObject(value any) (map[string]any, error) {
@@ -49,10 +50,8 @@ func parseInteger(value any) (int64, error) {
 		if exact, err := number.Int64(); err == nil {
 			return exact, nil
 		}
-		if approximate, err := number.Float64(); err == nil {
-			if whole, ok := wholeInt64(approximate); ok {
-				return whole, nil
-			}
+		if exact, ok := new(big.Rat).SetString(string(number)); ok && exact.IsInt() && exact.Num().IsInt64() {
+			return exact.Num().Int64(), nil
 		}
 	}
 	return 0, fmt.Errorf("expected an integer, got %v", value)

@@ -20,8 +20,15 @@ internal static class Wire
         {
             if (v.TryGetValue<long>(out var exact)) return exact;
             if (v.TryGetValue<int>(out var small)) return small;
-            if (v.TryGetValue<double>(out var approximate) && approximate == Math.Truncate(approximate) && Math.Abs(approximate) < 9.2e18)
+            if (v.TryGetValue<decimal>(out var exactDecimal))
+            {
+                if (exactDecimal == decimal.Truncate(exactDecimal) && exactDecimal >= long.MinValue && exactDecimal <= long.MaxValue)
+                    return (long)exactDecimal;
+            }
+            else if (v.TryGetValue<double>(out var approximate) && approximate == Math.Truncate(approximate) && Math.Abs(approximate) < 9.2e18)
+            {
                 return (long)approximate;
+            }
         }
         throw new FormatException($"expected an integer, got {Show(value)}");
     }

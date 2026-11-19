@@ -57,6 +57,24 @@ public class ProtocolDecodingTests
     }
 
     [Fact]
+    public void A_fraction_that_rounds_to_a_whole_number_is_rejected()
+    {
+        var input = JsonNode.Parse("""{"type":"credit","id":"c1","bytes":1.00000000000000001}""");
+
+        Assert.IsType<UnknownMessage>(Message.Decode(input));
+    }
+
+    [Fact]
+    public void A_whole_number_written_with_a_decimal_point_stays_exact()
+    {
+        var input = JsonNode.Parse("""{"type":"credit","id":"c1","bytes":9007199254740993.0}""");
+
+        var credit = Assert.IsType<Credit>(Message.Decode(input));
+
+        Assert.Equal(9007199254740993L, credit.Bytes);
+    }
+
+    [Fact]
     public void An_integer_held_as_a_clr_int_is_accepted()
     {
         var input = new JsonObject { ["type"] = "credit", ["id"] = "c1", ["bytes"] = JsonValue.Create(1) };

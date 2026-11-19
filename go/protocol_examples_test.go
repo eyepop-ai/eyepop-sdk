@@ -140,3 +140,23 @@ func TestDecodedJSONIsASnapshotOfTheInput(t *testing.T) {
 		t.Fatalf("status = %v", got)
 	}
 }
+
+func TestAnIntegerTokenIsNeverRounded(t *testing.T) {
+	decode := func(text string) Message {
+		decoder := json.NewDecoder(strings.NewReader(text))
+		decoder.UseNumber()
+		var value any
+		if err := decoder.Decode(&value); err != nil {
+			t.Fatal(err)
+		}
+		return DecodeMessage(value)
+	}
+
+	if _, unknown := decode(`{"type":"credit","id":"c1","bytes":1.00000000000000001}`).(UnknownMessage); !unknown {
+		t.Fatal("a fraction that rounds to a whole number was accepted")
+	}
+	credit, ok := decode(`{"type":"credit","id":"c1","bytes":9007199254740993.0}`).(Credit)
+	if !ok || credit.Bytes != 9007199254740993 {
+		t.Fatalf("got %v", credit)
+	}
+}
