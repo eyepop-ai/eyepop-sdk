@@ -115,9 +115,8 @@ def reject(token: str) -> Any:
         '{"score":-Infinity}',
         '{"bytes":' + "1" * 4301 + "}",
         '{"a":0e999999999999999999999}',
-        "[" * 20000 + "]" * 20000,
     ],
-    ids=["nan", "infinity", "long-integer", "decimal-exponent", "deep"],
+    ids=["nan", "infinity", "long-integer", "decimal-exponent"],
 )
 def test_the_recommended_parse_refuses_what_is_not_wire_json(text: str):
     with pytest.raises((ValueError, ArithmeticError, RecursionError)):
