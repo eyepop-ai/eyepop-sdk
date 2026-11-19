@@ -1,0 +1,18 @@
+version: '3'
+
+tasks:
+  validate:
+    desc: Check the examples and the unions against the schemas
+    cmds:
+      - uv run scripts/validate.py
+
+  test:
+    desc: Test the validator on fixture schemas
+    cmds:
+      - uv run --with pytest --with jsonschema --with referencing pytest -q
+
+  check:
+    desc: The CI gate. test, validate
+    cmds:
+      - task: test
+      - task: validate

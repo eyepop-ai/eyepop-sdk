@@ -1,0 +1,1 @@
+{"type":"setSource","id":"s1","url":"https://example.com/a.jpg","roi":{"type":"rectangle","x":0.1,"y":0.1,"width":0.5,"height":0.5}}

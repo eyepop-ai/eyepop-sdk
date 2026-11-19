@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.eyepop.ai/pipeline-socket/v1/getGraph.json",
+  "title": "getGraph",
+  "type": "object",
+  "properties": {
+    "type": { "const": "getGraph" },
+    "id": { "$ref": "id.json" },
+    "format": { "enum": ["dot", "png", "pdf"] },
+    "verbose": { "type": "boolean" }
+  },
+  "required": ["type", "id", "format"],
+  "additionalProperties": false
+}

@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.eyepop.ai/pipeline-socket/v1/credit.json",
+  "title": "credit",
+  "type": "object",
+  "properties": {
+    "type": { "const": "credit" },
+    "id": { "$ref": "id.json" },
+    "bytes": { "type": "integer", "minimum": 0 },
+    "member": { "type": "integer", "minimum": 0 }
+  },
+  "required": ["type", "id", "bytes"]
+}

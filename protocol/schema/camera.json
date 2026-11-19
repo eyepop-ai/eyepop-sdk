@@ -1,0 +1,60 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.eyepop.ai/pipeline-socket/v1/camera.json",
+  "title": "camera",
+  "type": "object",
+  "properties": {
+    "intrinsics": {
+      "type": "object",
+      "properties": {
+        "fx": { "type": "number" },
+        "fy": { "type": "number" },
+        "cx": { "type": "number" },
+        "cy": { "type": "number" }
+      },
+      "required": ["fx", "fy", "cx", "cy"],
+      "additionalProperties": false
+    },
+    "hfovDegrees": { "type": "number", "exclusiveMinimum": 0, "exclusiveMaximum": 180 },
+    "distortion": {
+      "type": "object",
+      "properties": {
+        "k1": { "type": "number" },
+        "k2": { "type": "number" },
+        "p1": { "type": "number" },
+        "p2": { "type": "number" },
+        "k3": { "type": "number" }
+      },
+      "additionalProperties": false
+    },
+    "extrinsics": {
+      "type": "object",
+      "properties": {
+        "rotation": {
+          "type": "object",
+          "properties": {
+            "w": { "type": "number" },
+            "x": { "type": "number" },
+            "y": { "type": "number" },
+            "z": { "type": "number" }
+          },
+          "required": ["w", "x", "y", "z"],
+          "additionalProperties": false
+        },
+        "translation": {
+          "type": "object",
+          "properties": {
+            "x": { "type": "number" },
+            "y": { "type": "number" },
+            "z": { "type": "number" }
+          },
+          "required": ["x", "y", "z"],
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "oneOf": [{ "required": ["intrinsics"] }, { "required": ["hfovDegrees"] }],
+  "additionalProperties": false
+}

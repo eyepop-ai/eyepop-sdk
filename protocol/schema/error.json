@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.eyepop.ai/pipeline-socket/v1/error.json",
+  "title": "error",
+  "type": "object",
+  "properties": {
+    "type": { "const": "error" },
+    "id": { "$ref": "id.json" },
+    "error": { "type": "string", "minLength": 1 },
+    "message": { "type": "string" }
+  },
+  "required": ["type", "error", "message"]
+}

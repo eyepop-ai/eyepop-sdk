@@ -1,0 +1,98 @@
+{
+  "command-getGraph-bad-format.json": {
+    "path": "/format",
+    "keyword": "enum"
+  },
+  "command-missing-id.json": {
+    "path": "",
+    "keyword": "required"
+  },
+  "command-setPop-ability-two-kinds.json": {
+    "path": "/pop/components/0/type",
+    "keyword": "not"
+  },
+  "command-setPop-component-no-type.json": {
+    "path": "/pop/components/0",
+    "keyword": "oneOf"
+  },
+  "command-setPop-defaults-bad-roi.json": {
+    "path": "/pop/defaults/roi",
+    "keyword": "oneOf"
+  },
+  "command-setPop-depthMap-two-kinds.json": {
+    "path": "/pop/depthMap",
+    "keyword": "oneOf"
+  },
+  "command-setPop-unknown-field.json": {
+    "path": "/pop",
+    "keyword": "additionalProperties"
+  },
+  "command-setSource-bad-mode.json": {
+    "path": "/mode",
+    "keyword": "enum"
+  },
+  "command-setSource-camera-hfov-out-of-range.json": {
+    "path": "/camera/hfovDegrees",
+    "keyword": "exclusiveMaximum"
+  },
+  "command-setSource-camera-no-lens.json": {
+    "path": "/camera",
+    "keyword": "oneOf"
+  },
+  "command-setSource-camera-two-lenses.json": {
+    "path": "/camera",
+    "keyword": "oneOf"
+  },
+  "command-setSource-empty-id.json": {
+    "path": "/id",
+    "keyword": "minLength"
+  },
+  "command-setSource-group-member-two-kinds.json": {
+    "path": "/group/0",
+    "keyword": "oneOf"
+  },
+  "command-setSource-no-kind.json": {
+    "path": "",
+    "keyword": "oneOf"
+  },
+  "command-setSource-roi-unknown-area.json": {
+    "path": "/roi",
+    "keyword": "oneOf"
+  },
+  "command-setSource-two-kinds.json": {
+    "path": "",
+    "keyword": "oneOf"
+  },
+  "command-setSource-unknown-field.json": {
+    "path": "",
+    "keyword": "additionalProperties"
+  },
+  "command-unknown-type.json": {
+    "path": "",
+    "keyword": "oneOf"
+  },
+  "message-credit-no-bytes.json": {
+    "path": "",
+    "keyword": "required"
+  },
+  "message-end-bad-reason.json": {
+    "path": "/reason",
+    "keyword": "enum"
+  },
+  "message-end-missing-id.json": {
+    "path": "",
+    "keyword": "required"
+  },
+  "message-error-no-message.json": {
+    "path": "",
+    "keyword": "required"
+  },
+  "message-prediction-no-prediction.json": {
+    "path": "",
+    "keyword": "required"
+  },
+  "message-unknown-type.json": {
+    "path": "",
+    "keyword": "oneOf"
+  }
+}

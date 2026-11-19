@@ -1,0 +1,10 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.eyepop.ai/pipeline-socket/v1/rawComponent.json",
+  "title": "rawComponent",
+  "type": "object",
+  "properties": {
+    "type": { "type": "string", "not": { "const": "inference" } }
+  },
+  "required": ["type"]
+}

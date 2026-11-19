@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.eyepop.ai/pipeline-socket/v1/componentParams.json",
+  "title": "componentParams",
+  "type": "object",
+  "properties": {
+    "componentId": { "type": "integer" },
+    "values": { "type": "object" }
+  },
+  "required": ["componentId", "values"]
+}

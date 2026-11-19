@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.eyepop.ai/pipeline-socket/v1/end.json",
+  "title": "end",
+  "type": "object",
+  "properties": {
+    "type": { "const": "end" },
+    "id": { "$ref": "id.json" },
+    "reason": { "enum": ["eos", "error", "preempted", "stopped"] },
+    "message": { "type": "string" },
+    "milliComputeUnits": { "type": "integer", "minimum": 0 }
+  },
+  "required": ["type", "id", "reason"]
+}

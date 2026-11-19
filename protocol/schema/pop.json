@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.eyepop.ai/pipeline-socket/v1/pop.json",
+  "title": "pop",
+  "type": "object",
+  "properties": {
+    "components": { "type": "array", "items": { "$ref": "popComponent.json" } },
+    "postTransform": { "type": "string" },
+    "defaults": { "$ref": "sourceDefaults.json" },
+    "depthMap": { "$ref": "popDepthMap.json" }
+  },
+  "required": ["components"],
+  "additionalProperties": false
+}

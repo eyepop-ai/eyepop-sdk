@@ -1,0 +1,1 @@
+{"type":"setSource","id":"s1","url":"https://example.com/a.jpg","camera":{"hfovDegrees":90,"intrinsics":{"fx":0.9,"fy":1.6,"cx":0.5,"cy":0.5}}}

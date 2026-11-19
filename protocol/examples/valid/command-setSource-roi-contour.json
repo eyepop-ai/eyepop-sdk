@@ -1,0 +1,1 @@
+{"type":"setSource","id":"s1","url":"https://example.com/a.jpg","roi":{"type":"contour","points":[{"x":0,"y":0},{"x":1,"y":0},{"x":1,"y":1}]}}

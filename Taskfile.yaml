@@ -19,6 +19,7 @@ includes:
   go: { taskfile: go/Taskfile.yaml, dir: go }
   rust: { taskfile: rust/Taskfile.yaml, dir: rust }
   cs: { taskfile: cs/Taskfile.yaml, dir: cs }
+  protocol: { taskfile: protocol/Taskfile.yaml, dir: protocol }
 
 tasks:
   build:

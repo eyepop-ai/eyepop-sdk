@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.eyepop.ai/pipeline-socket/v1/message.json",
+  "title": "message",
+  "oneOf": [
+    {
+      "$ref": "result.json"
+    },
+    {
+      "$ref": "send.json"
+    },
+    {
+      "$ref": "credit.json"
+    },
+    {
+      "$ref": "start.json"
+    },
+    {
+      "$ref": "prediction.json"
+    },
+    {
+      "$ref": "dropped.json"
+    },
+    {
+      "$ref": "usage.json"
+    },
+    {
+      "$ref": "end.json"
+    },
+    {
+      "$ref": "done.json"
+    },
+    {
+      "$ref": "pong.json"
+    },
+    {
+      "$ref": "error.json"
+    }
+  ]
+}

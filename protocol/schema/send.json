@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.eyepop.ai/pipeline-socket/v1/send.json",
+  "title": "send",
+  "type": "object",
+  "properties": {
+    "type": { "const": "send" },
+    "id": { "$ref": "id.json" },
+    "credit": { "type": "integer", "minimum": 0 },
+    "member": { "type": "integer", "minimum": 0 }
+  },
+  "required": ["type", "id", "credit"]
+}

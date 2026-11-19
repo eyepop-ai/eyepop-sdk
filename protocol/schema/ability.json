@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.eyepop.ai/pipeline-socket/v1/ability.json",
+  "title": "ability",
+  "type": "object",
+  "properties": {
+    "ability": { "type": "string" },
+    "abilityUuid": { "type": "string" },
+    "params": { "type": "object" }
+  },
+  "oneOf": [{ "required": ["ability"] }, { "required": ["abilityUuid"] }]
+}

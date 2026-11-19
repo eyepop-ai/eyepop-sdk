@@ -1,0 +1,1 @@
+{"type":"setSource","id":"s1","url":"rtsp://camera.local/stream","mode":"preempt","live":true}
