@@ -35,5 +35,5 @@ jobs:
       - run: task check
       - name: Release dry-run
         run: |
-          task package TAG=v4.0.0-alpha.0 OUT="$RUNNER_TEMP/out"
-          task publish:dry-run TAG=v4.0.0-alpha.0
+          task package TAG=v4.1.2-alpha.0 OUT="$RUNNER_TEMP/out"
+          task publish:dry-run TAG=v4.1.2-alpha.0
