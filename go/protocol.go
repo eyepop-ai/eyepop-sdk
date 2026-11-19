@@ -2065,6 +2065,9 @@ func GroupMemberFromJSON(value any) (GroupMember, error) {
 		return nil, err
 	}
 	if hasKey(obj, "url") {
+		if err := exactlyOne(obj, "url", "upload"); err != nil {
+			return nil, err
+		}
 		parsed, err := GroupMemberUrlFromJSON(value)
 		if err != nil {
 			return nil, err
@@ -2072,6 +2075,9 @@ func GroupMemberFromJSON(value any) (GroupMember, error) {
 		return parsed, nil
 	}
 	if hasKey(obj, "upload") {
+		if err := exactlyOne(obj, "url", "upload"); err != nil {
+			return nil, err
+		}
 		parsed, err := GroupMemberUploadFromJSON(value)
 		if err != nil {
 			return nil, err

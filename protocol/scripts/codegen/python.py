@@ -126,8 +126,13 @@ def _tag(expected: str) -> Callable[[dict[str, Any]], bool]:
     return lambda obj: obj.get("type") == expected
 
 
-def _key(name: str) -> Callable[[dict[str, Any]], bool]:
-    return lambda obj: name in obj
+def _key(name: str, selectors: Sequence[str]) -> Callable[[dict[str, Any]], bool]:
+    def matches(obj: dict[str, Any]) -> bool:
+        if name in obj:
+            _exactly_one(obj, selectors)
+        return name in obj
+
+    return matches
 
 
 def _always(obj: dict[str, Any]) -> bool:
@@ -297,19 +302,19 @@ class {obj.name}:
 """
 
 
-def predicate(variant: Variant) -> str:
+def predicate(variant: Variant, selectors: tuple[str, ...]) -> str:
     match variant.match:
         case Tag(value):
             return f"_tag({value!r})"
         case Key(name):
-            return f"_key({name!r})"
+            return f"_key({name!r}, {selectors!r})"
         case Always():
             return "_always"
 
 
 def emit_union(union: Union) -> str:
     table = f"_{union.name.upper()}_VARIANTS"
-    cases = "\n".join(f"    ({predicate(v)}, {v.name}.from_json)," for v in union.variants)
+    cases = "\n".join(f"    ({predicate(v, union.selectors)}, {v.name}.from_json)," for v in union.variants)
     members = [v.name for v in union.variants]
     if not union.open:
         return f"""

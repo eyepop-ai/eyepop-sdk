@@ -1626,9 +1626,11 @@ impl GroupMember {
     pub fn from_json(value: &Value) -> std::result::Result<GroupMember, DecodeError> {
         let obj = parse_object(value)?;
         if obj.contains_key("url") {
+            exactly_one(obj, &["url", "upload"])?;
             return Ok(GroupMember::GroupMemberUrl(GroupMemberUrl::from_json(value)?));
         }
         if obj.contains_key("upload") {
+            exactly_one(obj, &["url", "upload"])?;
             return Ok(GroupMember::GroupMemberUpload(GroupMemberUpload::from_json(value)?));
         }
         fail("no variant matches".to_string())

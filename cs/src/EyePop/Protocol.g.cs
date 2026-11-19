@@ -1317,8 +1317,16 @@ public abstract record GroupMember
     public static GroupMember FromJson(JsonNode? value)
     {
         var obj = Wire.Object(value);
-        if (Wire.Has(obj, "url")) return GroupMemberUrl.FromJson(value);
-        if (Wire.Has(obj, "upload")) return GroupMemberUpload.FromJson(value);
+        if (Wire.Has(obj, "url"))
+        {
+            Wire.ExactlyOne(obj, "url", "upload");
+            return GroupMemberUrl.FromJson(value);
+        }
+        if (Wire.Has(obj, "upload"))
+        {
+            Wire.ExactlyOne(obj, "url", "upload");
+            return GroupMemberUpload.FromJson(value);
+        }
         throw new FormatException("no variant matches");
     }
 }

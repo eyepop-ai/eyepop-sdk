@@ -86,6 +86,7 @@ class Union:
     name: str
     variants: tuple[Variant, ...]
     open: bool
+    selectors: tuple[str, ...]
 
 
 @dataclass(frozen=True)
@@ -369,11 +370,11 @@ def parse(schemas: Mapping[str, dict], roots: Sequence[str]) -> Model:
             origin = f"{name}.json#"
             add_object(pascal(name), body)
 
-    unions = tuple(
-        Union(pascal(name), variants_of(name, [objects[n] for n in variant_names(name, body)]), name in roots)
-        for name, body in schemas.items()
-        if kind(body) == "union"
-    )
+    def union_of(name: str, body: dict) -> Union:
+        variants = variants_of(name, [objects[n] for n in variant_names(name, body)])
+        return Union(pascal(name), variants, name in roots, tuple(v.match.name for v in variants if isinstance(v.match, Key)))
+
+    unions = tuple(union_of(name, body) for name, body in schemas.items() if kind(body) == "union")
     missing = [root for root in roots if pascal(root) not in {u.name for u in unions}]
     if missing:
         raise ValueError(f"requested roots that are not unions: {', '.join(missing)}")

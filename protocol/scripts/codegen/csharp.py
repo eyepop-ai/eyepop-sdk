@@ -589,6 +589,10 @@ def emit_union(union: Union) -> str:
     branches = []
     for v in union.variants:
         cond = condition(v)
+        if isinstance(v.match, Key):
+            keys = ", ".join(f'"{k}"' for k in union.selectors)
+            branches.append(f"        if ({cond})\n        {{\n            Wire.ExactlyOne(obj, {keys});\n            return {v.name}.FromJson(value);\n        }}")
+            continue
         branches.append(f"        if ({cond}) return {v.name}.FromJson(value);" if cond else f"        return {v.name}.FromJson(value);")
     tail = "" if any(condition(v) is None for v in union.variants) else '        throw new FormatException("no variant matches");\n'
     unknown = ""
