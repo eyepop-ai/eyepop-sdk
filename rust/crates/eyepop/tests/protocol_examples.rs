@@ -1,36 +1,107 @@
 use eyepop::protocol::{Command, Message};
-use serde_json::{Number, Value};
+use serde_json::Value;
 use std::fs;
 
 const EXAMPLES: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../../protocol/examples");
 
-fn integer(n: &Number) -> Option<i128> {
-    n.as_i64()
-        .map(i128::from)
-        .or_else(|| n.as_u64().map(i128::from))
-        .or_else(|| {
-            n.as_f64()
-                .filter(|f| f.fract() == 0.0 && f.abs() < 2f64.powi(127))
-                .map(|f| f as i128)
-        })
+enum Raw {
+    Number(String),
+    Array(Vec<Raw>),
+    Object(Vec<(String, Raw)>),
+    Leaf(Value),
 }
 
-fn same(a: &Value, b: &Value) -> bool {
+fn skip_space(bytes: &[u8], at: &mut usize) {
+    while *at < bytes.len() && bytes[*at].is_ascii_whitespace() {
+        *at += 1;
+    }
+}
+
+fn parse_raw(text: &str, at: &mut usize) -> Raw {
+    let bytes = text.as_bytes();
+    skip_space(bytes, at);
+    let start = *at;
+    match bytes[start] {
+        b'[' | b'{' => {
+            *at += 1;
+            let mut items = Vec::new();
+            loop {
+                skip_space(bytes, at);
+                match bytes[*at] {
+                    b']' | b'}' => break *at += 1,
+                    b',' => *at += 1,
+                    _ if bytes[start] == b'{' => {
+                        let Raw::Leaf(Value::String(key)) = parse_raw(text, at) else {
+                            panic!("object key is not a string");
+                        };
+                        skip_space(bytes, at);
+                        *at += 1;
+                        items.push((key, parse_raw(text, at)));
+                    }
+                    _ => items.push((String::new(), parse_raw(text, at))),
+                }
+            }
+            if bytes[start] == b'{' {
+                Raw::Object(items)
+            } else {
+                Raw::Array(items.into_iter().map(|(_, item)| item).collect())
+            }
+        }
+        b'"' => {
+            *at += 1;
+            while bytes[*at] != b'"' {
+                *at += if bytes[*at] == b'\\' { 2 } else { 1 };
+            }
+            *at += 1;
+            Raw::Leaf(serde_json::from_str(&text[start..*at]).unwrap())
+        }
+        b'-' | b'0'..=b'9' => {
+            while *at < bytes.len()
+                && matches!(bytes[*at], b'-' | b'+' | b'.' | b'e' | b'E' | b'0'..=b'9')
+            {
+                *at += 1;
+            }
+            Raw::Number(text[start..*at].to_string())
+        }
+        _ => {
+            while *at < bytes.len() && bytes[*at].is_ascii_alphabetic() {
+                *at += 1;
+            }
+            Raw::Leaf(serde_json::from_str(&text[start..*at]).unwrap())
+        }
+    }
+}
+
+fn canonical(token: &str) -> String {
+    let (mantissa, exponent) = token.split_once(['e', 'E']).unwrap_or((token, "0"));
+    let mut exponent: i64 = exponent.parse().unwrap();
+    let (sign, mantissa) = mantissa
+        .strip_prefix('-')
+        .map_or(("", mantissa), |m| ("-", m));
+    let (whole, fraction) = mantissa.split_once('.').unwrap_or((mantissa, ""));
+    let digits = format!("{whole}{fraction}");
+    let digits = digits.trim_start_matches('0');
+    if digits.is_empty() {
+        return "0".to_string();
+    }
+    let significant = digits.trim_end_matches('0');
+    exponent += (digits.len() - significant.len()) as i64 - fraction.len() as i64;
+    format!("{sign}{significant}e{exponent}")
+}
+
+fn same(a: &Value, b: &Raw) -> bool {
     match (a, b) {
-        (Value::Number(x), Value::Number(y)) => match (integer(x), integer(y)) {
-            (Some(x), Some(y)) => x == y,
-            (None, None) => x.as_f64() == y.as_f64(),
-            _ => false,
-        },
-        (Value::Array(x), Value::Array(y)) => {
+        (Value::Number(x), Raw::Number(y)) => canonical(&x.to_string()) == canonical(y),
+        (Value::Array(x), Raw::Array(y)) => {
             x.len() == y.len() && x.iter().zip(y).all(|(a, b)| same(a, b))
         }
-        (Value::Object(x), Value::Object(y)) => {
+        (Value::Object(x), Raw::Object(y)) => {
             x.len() == y.len()
-                && x.iter()
-                    .all(|(key, a)| y.get(key).is_some_and(|b| same(a, b)))
+                && y.iter()
+                    .all(|(key, b)| x.get(key).is_some_and(|a| same(a, b)))
         }
-        _ => a == b,
+        (a, Raw::Leaf(b)) => a == b,
+        _ => false,
     }
 }
 
@@ -54,7 +125,7 @@ fn problem(case: &Value, text: &str) -> Option<String> {
     if case["variant"] != variant {
         return Some(format!("decoded to {variant}, want {}", case["variant"]));
     }
-    if same(&encoded, &data) != case["unchanged"].as_bool().unwrap() {
+    if same(&encoded, &parse_raw(text, &mut 0)) != case["unchanged"].as_bool().unwrap() {
         return Some(format!(
             "encoded {encoded}, want unchanged = {}",
             case["unchanged"]
