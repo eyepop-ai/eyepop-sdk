@@ -1,4 +1,4 @@
-from .model import Always, Array, Const, Constrained, Enum, Field, Free, Key, Model, Object, Ref, Tag, Type, Union, Variant, Wire
+from .model import Always, Array, Const, Constrained, Enum, Field, Free, Key, Model, Object, Ref, Tag, Type, Union, Variant, Wire, is_number
 
 HEADER = '''# Generated from protocol/schema by protocol/scripts/generate.py. Do not edit.
 from __future__ import annotations
@@ -259,8 +259,7 @@ def declaration(f: Field) -> str:
 
 
 def write(f: Field) -> str:
-    number = f.type == "number" or (isinstance(f.type, Constrained) and f.type.kind == "number")
-    put = f"_put_number(out, {f.name!r}, self.{f.name})" if number else f"out[{f.name!r}] = _dump(self.{f.name})"
+    put = f"_put_number(out, {f.name!r}, self.{f.name})" if is_number(f.type) else f"out[{f.name!r}] = _dump(self.{f.name})"
     if f.required:
         return f"        {put}"
     return (
@@ -270,10 +269,9 @@ def write(f: Field) -> str:
 
 
 def emit_object(obj: Object, unions: frozenset[str] = frozenset()) -> str:
-    consts = [f for f in obj.fields if isinstance(f.type, Const)]
-    typed = sorted((f for f in obj.fields if not isinstance(f.type, Const)), key=lambda f: not f.required)
+    typed = sorted(obj.typed, key=lambda f: not f.required)
     fields = "\n".join(declaration(f) for f in typed)
-    checks = "".join(f"        _required(obj, {f.name!r}, {parser(f.type, unions)})\n" for f in consts)
+    checks = "".join(f"        _required(obj, {f.name!r}, {parser(f.type, unions)})\n" for f in obj.consts)
     if obj.exactly_one:
         checks += f"        _exactly_one(obj, {obj.exactly_one!r})\n"
     reads = ", ".join(
@@ -283,7 +281,7 @@ def emit_object(obj: Object, unions: frozenset[str] = frozenset()) -> str:
         ]
         + ["raw=copy.deepcopy(obj)"]
     )
-    writes = "\n".join([write(f) for f in typed] + [f"        out[{f.name!r}] = {f.type.value!r}" for f in consts])
+    writes = "\n".join([write(f) for f in typed] + [f"        out[{f.name!r}] = {f.type.value!r}" for f in obj.consts])
     return f"""
 @dataclass(frozen=True)
 class {obj.name}:

@@ -3,7 +3,7 @@ import re
 import pytest
 
 from codegen import generate
-from codegen.model import Always, Key, Tag, Variant, parse
+from codegen.model import Always, Key, Tag, Variant, is_number, parse
 from conftest import schema
 
 
@@ -414,3 +414,52 @@ def test_additional_properties_false_and_an_excluded_const_are_kept_in_the_model
     (obj,) = parse({"thing": marked}, ()).objects
     assert obj.closed and obj.fields[1].excluded == "x"
     assert generate({"thing": marked}, ()) == generate({"thing": plain}, ())
+
+
+def test_the_model_lists_every_enum_sorted_by_name_including_array_items():
+    other = schema("other", {"type": "object", "properties": {"mode": {"enum": ["on", "off"]}}})
+    things = thing(level={"enum": ["low"]}, tags={"type": "array", "items": {"enum": ["a"]}}, name={"type": "string"})
+
+    assert [e.name for e in parse({"thing": things, "other": other}, ()).enums] == ["OtherMode", "ThingLevel", "ThingTag"]
+
+
+def test_an_enum_value_is_named_by_its_alphanumeric_parts_each_capitalised():
+    (enum,) = parse({"thing": thing(level={"enum": ["low-power", "high_speed", "x2", "--odd", "Max"]})}, ()).enums
+
+    assert enum.value_names == ("LowPower", "HighSpeed", "X2", "Odd", "Max")
+
+
+def test_a_number_field_with_or_without_limits_is_a_number_and_an_integer_is_not():
+    schemas = {
+        "thing": thing(
+            ratio={"type": "number"},
+            share={"type": "number", "exclusiveMinimum": 0},
+            count={"type": "integer"},
+            size={"type": "integer", "minimum": 0},
+        )
+    }
+
+    (obj,) = parse(schemas, ()).objects
+    assert {f.name: is_number(f.type) for f in obj.fields} == {"id": False, "ratio": True, "share": True, "count": False, "size": False}
+
+
+def test_an_object_splits_its_const_fields_from_its_typed_fields_in_schema_order():
+    (obj,) = parse({"thing": thing(kind={"const": "thing"}, size={"type": "integer"}, mode={"const": "x"})}, ()).objects
+
+    assert [f.name for f in obj.consts] == ["kind", "mode"]
+    assert [f.name for f in obj.typed] == ["id", "size"]
+
+
+def test_an_object_knows_every_union_that_lists_it_in_schema_order():
+    a = variant({"type": {"const": "a"}}, ["type"])
+    b = variant({"type": {"const": "b"}}, ["type"])
+    schemas = {
+        "first": schema("first", {"oneOf": [{"$ref": "a.json"}, {"$ref": "b.json"}]}),
+        "second": schema("second", {"oneOf": [{"$ref": "a.json"}]}),
+        "a": a,
+        "b": b,
+        "c": thing(),
+    }
+
+    model = parse(schemas, ())
+    assert {o.name: model.unions_of(o) for o in model.objects} == {"A": ["First", "Second"], "B": ["First"], "C": []}
