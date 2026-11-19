@@ -1,6 +1,4 @@
-import re
-
-from .model import Always, Array, Const, Constrained, Enum, Field, Free, Key, Model, Object, Ref, Tag, Type, Union, Variant, Wire
+from .model import Always, Array, Const, Constrained, Enum, Field, Free, Key, Model, Object, Ref, Tag, Type, Union, Variant, Wire, is_number
 
 HEADER = """// Generated from protocol/schema by protocol/scripts/generate.py. Do not edit.
 #![allow(dead_code, non_snake_case, clippy::all)]
@@ -155,8 +153,7 @@ LENGTHS = {"code point": "text.chars().count() as f64"}
 
 
 def emit(model: Model) -> str:
-    enums = sorted({e.name: e for e in collect_enums(model)}.values(), key=lambda e: e.name)
-    parts = [emit_enum(e) for e in enums]
+    parts = [emit_enum(e) for e in model.enums]
     parts += [emit_object(o) for o in model.objects]
     parts += [emit_union(u) for u in model.unions]
     return HEADER + "\n" + constants(model.wire) + "\n".join(parts)
@@ -167,25 +164,6 @@ def constants(wire: Wire) -> str:
         f"const INTEGER_MINIMUM: i128 = {wire.integer_minimum};\nconst INTEGER_MAXIMUM: i128 = {wire.integer_maximum};\n"
         f"const MAX_DEPTH: usize = {wire.max_depth};\n\npub(crate) fn length(text: &String) -> f64 {{\n    {LENGTHS[wire.length_unit]}\n}}\n"
     )
-
-
-def collect_enums(model: Model) -> list[Enum]:
-    found: list[Enum] = []
-
-    def walk(type_: Type) -> None:
-        if isinstance(type_, Enum):
-            found.append(type_)
-        elif isinstance(type_, Array):
-            walk(type_.item)
-
-    for obj in model.objects:
-        for f in obj.fields:
-            walk(f.type)
-    return found
-
-
-def variant_name(value: str) -> str:
-    return "".join(part[:1].upper() + part[1:] for part in re.split(r"[^0-9A-Za-z]+", value) if part)
 
 
 def field_name(name: str) -> str:
@@ -253,7 +231,7 @@ def dump(type_: Type, ref: str) -> str:
 
 
 def emit_enum(enum: Enum) -> str:
-    names = [variant_name(v) for v in enum.values]
+    names = enum.value_names
     variants = "\n".join(f"    {n}," for n in names)
     reads = "\n".join(f'            Some("{v}") => Ok({enum.name}::{n}),' for v, n in zip(enum.values, names))
     writes = "\n".join(f'            {enum.name}::{n} => Value::from("{v}"),' for v, n in zip(enum.values, names))
@@ -281,39 +259,36 @@ impl {enum.name} {{
 
 
 def emit_object(obj: Object) -> str:
-    consts = [f for f in obj.fields if isinstance(f.type, Const)]
-    typed = [f for f in obj.fields if not isinstance(f.type, Const)]
     fields = "\n".join(
         f"    pub {field_name(f.name)}: {rust_type(f.type) if f.required else f'Option<{rust_type(f.type)}>'},"
-        for f in typed
+        for f in obj.typed
     )
-    checks = "".join(f'        required(obj, "{f.name}", {parser(f.type)})?;\n' for f in consts)
+    checks = "".join(f'        required(obj, "{f.name}", {parser(f.type)})?;\n' for f in obj.consts)
     if obj.exactly_one:
         keys = ", ".join(f'"{k}"' for k in obj.exactly_one)
         checks += f"        exactly_one(obj, &[{keys}])?;\n"
     reads = "\n".join(
         f'            {field_name(f.name)}: {"required" if f.required else "optional"}(obj, "{f.name}", {parser(f.type)})?,'
-        for f in typed
+        for f in obj.typed
     )
     writes = []
-    for f in typed:
+    for f in obj.typed:
         name = f"self.{field_name(f.name)}"
-        is_number = f.type == "number" or (isinstance(f.type, Constrained) and f.type.kind == "number")
         if f.required:
-            if is_number:
+            if is_number(f.type):
                 writes.append(f'        put_number(&mut out, "{f.name}", {name});')
             else:
                 writes.append(f'        out.insert("{f.name}".to_string(), {dump(f.type, f"(&{name})")});')
         else:
             put = (
                 f'put_number(&mut out, "{f.name}", *x);'
-                if is_number
+                if is_number(f.type)
                 else f'out.insert("{f.name}".to_string(), {dump(f.type, "x")});'
             )
             writes.append(
                 f'        if let Some(x) = &{name} {{\n            {put}\n        }} else {{\n            out.remove("{f.name}");\n        }}'
             )
-    writes += [f'        out.insert("{f.name}".to_string(), Value::from("{f.type.value}"));' for f in consts]
+    writes += [f'        out.insert("{f.name}".to_string(), Value::from("{f.type.value}"));' for f in obj.consts]
     return f"""
 #[derive(Debug, Clone, PartialEq)]
 pub struct {obj.name} {{

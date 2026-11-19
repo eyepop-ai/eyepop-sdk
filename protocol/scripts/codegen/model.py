@@ -1,3 +1,4 @@
+import re
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import NoReturn
@@ -12,6 +13,10 @@ class Const:
 class Enum:
     values: tuple[str, ...]
     name: str
+
+    @property
+    def value_names(self) -> tuple[str, ...]:
+        return tuple("".join(part[:1].upper() + part[1:] for part in re.split(r"[^0-9A-Za-z]+", v) if part) for v in self.values)
 
 
 @dataclass(frozen=True)
@@ -41,6 +46,10 @@ class Constrained:
 Type = str | Constrained | Const | Enum | Free | Array | Ref
 
 
+def is_number(type_: Type) -> bool:
+    return type_ == "number" or (isinstance(type_, Constrained) and type_.kind == "number")
+
+
 @dataclass(frozen=True)
 class Field:
     name: str
@@ -55,6 +64,14 @@ class Object:
     fields: tuple[Field, ...]
     exactly_one: tuple[str, ...] = ()
     closed: bool = False
+
+    @property
+    def consts(self) -> tuple[Field, ...]:
+        return tuple(f for f in self.fields if isinstance(f.type, Const))
+
+    @property
+    def typed(self) -> tuple[Field, ...]:
+        return tuple(f for f in self.fields if not isinstance(f.type, Const))
 
 
 @dataclass(frozen=True)
@@ -129,6 +146,24 @@ class Model:
     objects: tuple[Object, ...]
     unions: tuple[Union, ...]
     wire: Wire = WIRE
+
+    @property
+    def enums(self) -> tuple[Enum, ...]:
+        found: list[Enum] = []
+
+        def walk(type_: Type) -> None:
+            if isinstance(type_, Enum):
+                found.append(type_)
+            elif isinstance(type_, Array):
+                walk(type_.item)
+
+        for obj in self.objects:
+            for f in obj.fields:
+                walk(f.type)
+        return tuple(sorted({e.name: e for e in found}.values(), key=lambda e: e.name))
+
+    def unions_of(self, obj: Object) -> list[str]:
+        return [u.name for u in self.unions if any(v.name == obj.name for v in u.variants)]
 
 
 def pascal(name: str) -> str:

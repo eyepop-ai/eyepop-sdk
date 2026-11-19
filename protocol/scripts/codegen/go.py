@@ -1,6 +1,4 @@
-import re
-
-from .model import Always, Array, Const, Constrained, Enum, Field, Free, Key, Model, Object, Ref, Tag, Type, Union, Variant, Wire, pascal
+from .model import Always, Array, Const, Constrained, Enum, Field, Free, Key, Model, Object, Ref, Tag, Type, Union, Variant, Wire, is_number, pascal
 
 HEADER = """// Generated from protocol/schema by protocol/scripts/generate.py. Do not edit.
 
@@ -321,31 +319,10 @@ func length(text string) int {{
 
 
 def emit(model: Model) -> str:
-    enums = sorted({e.name: e for e in collect_enums(model)}.values(), key=lambda e: e.name)
-    memberships = {obj.name: [u.name for u in model.unions if any(v.name == obj.name for v in u.variants)] for obj in model.objects}
-    parts = [emit_enum(e) for e in enums]
-    parts += [emit_object(o, memberships[o.name]) for o in model.objects]
+    parts = [emit_enum(e) for e in model.enums]
+    parts += [emit_object(o, model.unions_of(o)) for o in model.objects]
     parts += [emit_union(u) for u in model.unions]
     return HEADER + constants(model.wire) + "\n" + "\n".join(parts)
-
-
-def collect_enums(model: Model) -> list[Enum]:
-    found: list[Enum] = []
-
-    def walk(type_: Type) -> None:
-        if isinstance(type_, Enum):
-            found.append(type_)
-        elif isinstance(type_, Array):
-            walk(type_.item)
-
-    for obj in model.objects:
-        for f in obj.fields:
-            walk(f.type)
-    return found
-
-
-def variant_name(value: str) -> str:
-    return "".join(part[:1].upper() + part[1:] for part in re.split(r"[^0-9A-Za-z]+", value) if part)
 
 
 def go_type(type_: Type) -> str:
@@ -411,7 +388,7 @@ def dump(type_: Type, expr: str) -> str:
 
 
 def emit_enum(enum: Enum) -> str:
-    names = [enum.name + variant_name(v) for v in enum.values]
+    names = [enum.name + n for n in enum.value_names]
     consts = "\n".join(f'\t{n} {enum.name} = "{v}"' for n, v in zip(names, enum.values))
     cases = ", ".join(names)
     return f"""
@@ -432,15 +409,13 @@ func {enum.name}FromJSON(value any) ({enum.name}, error) {{
 
 
 def emit_object(obj: Object, unions: list[str]) -> str:
-    consts = [f for f in obj.fields if isinstance(f.type, Const)]
-    typed = [f for f in obj.fields if not isinstance(f.type, Const)]
     decls = []
-    for f in typed:
+    for f in obj.typed:
         t = go_type(f.type)
         decls.append(f"\t{pascal(f.name)} {t if f.required or not is_plain(f.type) else '*' + t}")
     reads = []
     inits = []
-    for i, f in enumerate(typed):
+    for i, f in enumerate(obj.typed):
         if f.required:
             call = "required"
         elif is_plain(f.type):
@@ -453,27 +428,26 @@ def emit_object(obj: Object, unions: list[str]) -> str:
         inits.append(f"{pascal(f.name)}: v{i}")
     checks = "".join(
         f'\tif _, err := required(obj, "{f.name}", {parser(f.type)}); err != nil {{\n\t\treturn {obj.name}{{}}, err\n\t}}\n'
-        for f in consts
+        for f in obj.consts
     )
     if obj.exactly_one:
         keys = ", ".join(f'"{k}"' for k in obj.exactly_one)
         checks += f"\tif err := exactlyOne(obj, {keys}); err != nil {{\n\t\treturn {obj.name}{{}}, err\n\t}}\n"
     writes = []
-    for f in typed:
+    for f in obj.typed:
         field = f"v.{pascal(f.name)}"
-        is_number = f.type == "number" or (isinstance(f.type, Constrained) and f.type.kind == "number")
         if f.required:
             writes.append(
-                f'\tputNumber(out, "{f.name}", {field})' if is_number else f'\tout["{f.name}"] = {dump(f.type, field)}'
+                f'\tputNumber(out, "{f.name}", {field})' if is_number(f.type) else f'\tout["{f.name}"] = {dump(f.type, field)}'
             )
         else:
             absent = f'\n\t}} else {{\n\t\tdelete(out, "{f.name}")\n\t}}'
             if is_plain(f.type):
-                put = f'putNumber(out, "{f.name}", *{field})' if is_number else f'out["{f.name}"] = {dump(f.type, "(*" + field + ")")}'
+                put = f'putNumber(out, "{f.name}", *{field})' if is_number(f.type) else f'out["{f.name}"] = {dump(f.type, "(*" + field + ")")}'
             else:
                 put = f'out["{f.name}"] = {dump(f.type, field)}'
             writes.append(f"\tif {field} != nil {{\n\t\t{put}{absent}")
-    writes += [f'\tout["{f.name}"] = "{f.type.value}"' for f in consts]
+    writes += [f'\tout["{f.name}"] = "{f.type.value}"' for f in obj.consts]
     inits.append("Raw: copyMap(obj)")
     markers = "\n".join(f"func ({obj.name}) is{u}() {{}}" for u in unions)
     first = "\n".join(reads)
