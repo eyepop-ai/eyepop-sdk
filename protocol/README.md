@@ -8,12 +8,13 @@ JSON Schema (draft 2020-12) for the messages on the pipeline socket: `GET /api/v
 - Commands and the `Pop`, `SourceDefaults`, `Camera` and `roi` values are closed. Server messages are open, so a field the server adds does not break a client.
 - An `inference` component is typed (one of `ability` or `abilityUuid`, plus `params`). Any other component kind passes through as raw JSON.
 - The `error` code is an open string. Clients accept codes they do not know.
+- An `integer` is an int64 on the wire. A decoder rejects a value outside that range even where the schema alone accepts it, because the schemas say only `integer` and a `maximum` is not modelled.
 
 ## Examples
 
 `examples/valid` must pass and `examples/invalid` must fail. A file name starts with `command-` or `message-`, which picks the union it is checked against. `examples/invalid/expected.json` names where and by which keyword each invalid example fails.
 
-`examples/decoding.json` is the conformance set every Language SDK replays through its generated decoder. It has one case per example file (`file`) plus edge cases written as JSON text (`name` and `text`). Each case names its `union`, the `variant` it decodes to (a `type` tag, or `Unknown`), whether it encodes back `unchanged` (numbers compared by exact value), and optionally a number token the output `keeps`. An invalid example that decoders still accept states the `reason`. `diverges` maps a language (`python`, `rust`, `go`, `csharp`) to why that SDK gets the case wrong today; that SDK's replay fails if the case starts passing, so whoever fixes it removes the marker.
+`examples/decoding.json` is the conformance set every Language SDK replays through its generated decoder. It has one case per example file (`file`) plus edge cases written as JSON text (`name` and `text`). Each case names its `union`, the `variant` it decodes to (a `type` tag, or `Unknown`), whether it encodes back `unchanged` (numbers compared by exact value), and optionally a number token the output `keeps`. A case whose decoder outcome differs from the schema states the `reason`: an invalid example decoders accept, or a schema-valid text case they reject, such as an integer beyond int64. `diverges` maps a language (`python`, `rust`, `go`, `csharp`) to why that SDK gets the case wrong today; that SDK's replay fails if the case starts passing, so whoever fixes it removes the marker.
 
 ```sh
 devbox run -- task protocol:check
