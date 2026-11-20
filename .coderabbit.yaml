@@ -57,8 +57,7 @@ knowledge_base:
   code_guidelines:
     enabled: true
     filePatterns:
-      - "AGENTS.md"
-      - "CLAUDE.md"
+      - "CONTRIBUTING.md"
       - "GLOSSARY.md"
       - "docs/adr/**/*.md"
 
