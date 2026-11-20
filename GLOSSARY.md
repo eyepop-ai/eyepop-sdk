@@ -50,6 +50,14 @@ _Avoid_: job, request, item
 The handle of one Source on a Session: its id, its messages, and its `cancel`.
 _Avoid_: task, stream
 
+**Prediction**:
+What the pipeline reports for one processed frame of a Source, as a typed value with the pipeline's own JSON object kept beside it. Every field is optional. A selected prediction describes an earlier frame than the one before it.
+_Avoid_: result, frame, detection
+
+**Prediction message**:
+The Message that carries one Prediction for a Job. A Job yields a Prediction even when its typed fields cannot be read, with the JSON object alone.
+_Avoid_: result message
+
 **Environment**:
 A named row (`production`, `staging`, `local`) giving a pipeline URL and an auth URL. Chosen by `EYEPOP_ENV`.
 _Avoid_: stage, mode
@@ -57,7 +65,3 @@ _Avoid_: stage, mode
 **Protocol schema**:
 The JSON Schema in `protocol/` that defines every command, message and value of the Pipeline socket. SDK types are generated from it.
 _Avoid_: spec, API definition
-
-**Conformance transcript**:
-A scripted exchange between a fake pipeline API and an SDK, in `conformance/`, that every Language SDK's tests replay.
-_Avoid_: fixture, recording

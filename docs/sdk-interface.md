@@ -1,6 +1,6 @@
 # The Language SDK interface: the pipeline socket
 
-The public interface of every Language SDK, written once and without a language. Decisions and their reasons are in [ADR 0002](adr/0002-one-pipeline-socket-interface-for-every-language-sdk.md). Terms are in [`GLOSSARY.md`](../GLOSSARY.md). The wire contract is the pipeline API's socket contract in `eyepop-instance` (`specs/019-pipeline-socket-commands/contracts/socket.md`); the machine-readable form is `protocol/`.
+The public interface of every Language SDK, written once and without a language. Decisions and their reasons are in [ADR 0002](adr/0002-one-pipeline-socket-interface-for-every-language-sdk.md). Terms are in [`GLOSSARY.md`](../GLOSSARY.md). The wire contract is the pipeline API's socket contract; the machine-readable form is `protocol/`.
 
 A language renders this with its own casing (`setSource`, `SetSource`, `set_source`) and its own failure idiom. It adds no concept, and it omits none.
 
@@ -35,7 +35,7 @@ Construction refuses what cannot work: an `Exchange` without an API key, an API 
 
 **Message**: a tagged union of everything the server sends: `result`, `send`, `credit`, `start`, `prediction`, `dropped`, `usage`, `end`, `done`, `pong`, `error`. A source ending with `end` reason `error` is an ordinary message.
 
-**Prediction**: a typed model, every field optional, with the original JSON kept.
+**Prediction**: what the pipeline reports for one processed frame, built from the `prediction` object of a `prediction` message. The socket always asks for prediction format v4, so the legacy keys of v1 (`classId`, per-object `id`, `traceId`) are not typed. Every field is optional. Nested values are typed: `objects` (which nest), `classes`, `texts`, `keyPoints`, `meshes`, `depth`, `mask`, `track_events`. `tokens`, `raw`, `details` and `features` stay raw JSON, and base64 values (`depth.values`, `depth.world`, `mask.bitmap`, `mask.world`) stay strings. `depth.semantic` is an open string. The original JSON object is kept unchanged beside the typed fields, and the `prediction` message keeps it too. A value the typed fields cannot hold leaves them empty and the JSON object intact. A selected prediction (`selected` is true) describes an earlier frame and arrives after later ones. The schema is `protocol/schema/prediction.json`, shared by every surface that reports a prediction ([ADR 0004](adr/0004-shared-prediction-schema-typed-view-over-raw-object.md)).
 
 **Error**: `kind`, plus `status`, `closeCode`, `error` and `message` where they apply. Kinds: `invalid_config`, `exchange_failed`, `connection_failed`, `upgrade_refused`, `command_rejected`, `closed`. An error never holds the API key or a token.
 
@@ -63,7 +63,7 @@ No IO, no clock, no environment.
 **Job**: the handle of one Source.
 - `id`
 - `messages()`: that source's `start`, `prediction`, `dropped`, `usage` and `end`.
-- `predictions()`: the predictions alone.
+- `predictions()`: every prediction of the source, selected ones included, each as a Prediction. A Prediction whose typed fields could not be read still arrives, with only its JSON object. Skip a selected one when counting frames.
 - `cancel()`: sends `stopSource`; the Job ends with `end` reason `stopped`.
 
 A Job is a pure demux of the Session's stream by source `id`. Results are read with the language's native asynchronous iteration. There is no call that returns one result at a time until it returns nothing.
@@ -80,13 +80,13 @@ A close with `1000` (a `quit`, a client `close`, or `1000 idle`) ends `messages(
 
 ## Naming
 
-Names are the wire names (above). A language changes casing only. Types that carry a discriminator are unions in the language's own way: sealed hierarchy or `JsonPolymorphic` in C#, tagged enum in Rust, interface plus concrete types in Go, discriminated union in TypeScript and Python.
+Names are the wire names (above). A language changes casing only. The one exception is the type of the `prediction` message, which is `PredictionMessage` because `Prediction` names the typed value. Types that carry a discriminator are unions in the language's own way: sealed hierarchy or `JsonPolymorphic` in C#, tagged enum in Rust, interface plus concrete types in Go, discriminated union in TypeScript and Python.
 
-## Protocol schema and conformance
+## Protocol schema and tests
 
 - `protocol/` holds JSON Schema 2020-12 for every command, message, `Source`, `Pop`, `Ability`, `Camera` and `Prediction`, with a `const` discriminator on `type`. Types are generated from it ([ADR 0003](adr/0003-one-in-repo-generator-writes-the-protocol-types.md)).
-- `conformance/` holds scripted transcripts of a fake pipeline API and a fake auth service. Every SDK's integration suite replays them, and CI validates every transcript message against `protocol/`.
-- Unit tests of the pure core use a fake transport. Integration tests run the shell against in-process fakes. The two suites run apart.
+- Unit tests of the pure core use a fake transport and never call a real environment.
+- Integration tests run against real staging through a separate private test repository. Each run validates the pipeline's messages against `protocol/` ([ADR 0005](adr/0005-integration-tests-run-on-real-staging.md)).
 
 ## Open details for the build slices
 
@@ -94,4 +94,3 @@ These were not settled in design and are decided while the slice is built, then 
 - How a Job's `id` is chosen. Ids are client chosen and must be unique among a socket's open sources.
 - Whether `setSource` resolves when the server answers `result`, or earlier.
 - Whether `connect` retries an upgrade refused with `503` and `Retry-After` (both old SDKs waited up to 30 s).
-- The exact name and set of fields of the typed Prediction.
