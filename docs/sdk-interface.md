@@ -31,13 +31,13 @@ Construction refuses what cannot work: an `Exchange` without an API key, an API 
 
 **Pop**: `components`, and optionally `defaults`, `postTransform`, `depthMap`. An inference component holds an Ability. Component kinds not yet typed are raw JSON. `ability(name, params)` builds a Pop of one inference component.
 
-**Source**: one of `Url`, `Asset`, `Upload{contentType, content}`, `Group{members}`, with the options the socket takes: `params`, `roi`, `camera`, `fps`, `live`, `mode` (`queue` or `preempt`). A group member is a `Url` or an `Upload`, in the order the ability sees them. `content` is bytes or a byte stream, with an optional known length.
+**Source**: one of `Url`, `Asset`, `Upload{contentType, content}`, `Group{members}`, with the options the socket takes: `params`, `roi`, `camera`, `fps`, `live`. There is no `mode` option: the SDK never sends one, and the pipeline applies its default (queue). A group member is a `Url` or an `Upload`, in the order the ability sees them. `content` is bytes or a byte stream, with an optional known length.
 
 **Message**: a tagged union of everything the server sends: `result`, `send`, `credit`, `start`, `prediction`, `dropped`, `usage`, `end`, `done`, `pong`, `error`. A source ending with `end` reason `error` is an ordinary message.
 
 **Prediction**: what the pipeline reports for one processed frame, built from the `prediction` object of a `prediction` message. The socket always asks for prediction format v4, so the legacy keys of v1 (`classId`, per-object `id`, `traceId`) are not typed. Every field is optional. Nested values are typed: `objects` (which nest), `classes`, `texts`, `keyPoints`, `meshes`, `depth`, `mask`, `track_events`. `tokens`, `raw`, `details` and `features` stay raw JSON, and base64 values (`depth.values`, `depth.world`, `mask.bitmap`, `mask.world`) stay strings. `depth.semantic` is an open string. The original JSON object is kept unchanged beside the typed fields, and the `prediction` message keeps it too. A value the typed fields cannot hold leaves them empty and the JSON object intact. A selected prediction (`selected` is true) describes an earlier frame and arrives after later ones. The schema is `protocol/schema/prediction.json`, shared by every surface that reports a prediction ([ADR 0004](adr/0004-shared-prediction-schema-typed-view-over-raw-object.md)).
 
-**Error**: `kind`, plus `status`, `closeCode`, `error` and `message` where they apply. Kinds: `invalid_config`, `exchange_failed`, `connection_failed`, `upgrade_refused`, `command_rejected`, `closed`. An error never holds the API key or a token.
+**Error**: `kind`, plus `status`, `closeCode`, `error` and `message` where they apply. Kinds: `invalid_config`, `exchange_failed`, `connection_failed`, `upgrade_refused`, `command_rejected`, `closed`. A command the server refuses is `command_rejected`, with the server's code in `error`, for example `queue_full` or `live_source_open`. An error never holds the API key or a token.
 
 ## Pure core
 
@@ -53,7 +53,7 @@ No IO, no clock, no environment.
 
 **Pipeline**: one open socket and its one pipeline.
 - `setSource(source) → Job`
-- `setPop(pop)`: applies to the whole socket.
+- `setPop(pop)`: sent in order like any command. It changes the pop in place, under the sources already running or queued.
 - `getGraph(format, verbose?)`
 - `ping()`
 - `messages()`: one ordered stream of every Message.
@@ -67,6 +67,15 @@ No IO, no clock, no environment.
 - `cancel()`: sends `stopSource`; the Job ends with `end` reason `stopped`.
 
 A Job is a pure demux of the Pipeline's stream by source `id`. Results are read with the language's native asynchronous iteration. There is no call that returns one result at a time until it returns nothing.
+
+## Sources and ordering
+
+The SDK sends every command as it is called and keeps no queue and no policy of its own. The pipeline owns the source queue.
+- Sources run in the order the pipeline queues them. A second `setSource` does not clear the first: both Jobs run. To end one, call `cancel()` on its Job.
+- A Pipeline holds at most 256 open sources. The 257th is refused with `queue_full`.
+- A live source cannot queue behind another live source of the same socket: it is refused with `live_source_open`. Cancel the first, or open another Pipeline.
+- Each answer and message carries the source `id`, so a Job reads only its own. Across Jobs the SDK promises no order beyond the pipeline's queue order; sorting out results across sources is the caller's job.
+- `setPop` is sent in order. While it applies, the server holds later `setSource` commands in order and sends them once the pop is in. A pop that fails to resolve is a refused command and the pipeline keeps its old pop. A pop that fails to apply closes the socket with `1011 pipeline_stopped`.
 
 ## Uploads
 
