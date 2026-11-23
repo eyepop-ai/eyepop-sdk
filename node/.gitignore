@@ -1,2 +1,6 @@
 node_modules
 dist
+coverage
+*.tsbuildinfo
+.eslintcache
+npm-debug.log*

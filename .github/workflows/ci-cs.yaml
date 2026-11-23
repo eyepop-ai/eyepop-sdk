@@ -32,7 +32,5 @@ jobs:
           persist-credentials: false
       - uses: ./.github/actions/setup-cs
       - run: task check
-      - name: Release dry-run
-        run: |
-          task package TAG=v4.1.2-alpha.0 OUT="$RUNNER_TEMP/out"
-          task publish:dry-run TAG=v4.1.2-alpha.0
+      - name: Release package
+        run: task package TAG=v4.1.2-alpha.0 OUT="$RUNNER_TEMP/out"
