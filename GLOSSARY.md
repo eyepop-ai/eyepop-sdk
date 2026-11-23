@@ -30,12 +30,12 @@ _Avoid_: build output, dist
 The WebSocket at `GET /api/v1/pipeline`, subprotocol `eyepop.v1`. Each one runs a pipeline of its own and takes commands. It is the only thing the Language SDK interface covers.
 _Avoid_: worker, worker endpoint, stream
 
-**Session**:
-One open Pipeline socket and its one pipeline, from `connect` until it closes. Not a compute session of the old SDKs.
-_Avoid_: endpoint, connection, client
+**Pipeline**:
+The SDK object that owns one open Pipeline socket and the one pipeline running on it, from `connect` until it closes. Not a compute session of the old SDKs.
+_Avoid_: session, connection, client, endpoint
 
 **Pop**:
-The description of the pipeline a Session runs: components, where an inference component holds an Ability.
+What a Pipeline runs: components, where an inference component holds an Ability.
 _Avoid_: pipeline definition, graph
 
 **Ability**:
@@ -43,11 +43,11 @@ A named model capability, given as an alias such as `eyepop.person:latest` or a 
 _Avoid_: model, worker
 
 **Source**:
-One input a Session processes: a url, an asset, an upload or a group.
+One input a Pipeline processes: a url, an asset, an upload or a group.
 _Avoid_: job, request, item
 
 **Job**:
-The handle of one Source on a Session: its id, its messages, and its `cancel`.
+The handle of one Source on a Pipeline: its id, its messages, and its `cancel`.
 _Avoid_: task, stream
 
 **Prediction**:
