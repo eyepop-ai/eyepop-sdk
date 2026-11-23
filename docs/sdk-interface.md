@@ -12,7 +12,7 @@ The pipeline API's WebSocket, `GET /api/v1/pipeline`, and the one HTTP call that
 
 All values are immutable. A value that holds a raw JSON field exposes it unchanged.
 
-**Config**: what a Session needs, built once and passed in.
+**Config**: what a Pipeline needs, built once and passed in.
 - `pipelineUrl`, the pipeline API root.
 - `auth`, either `Exchange{authUrl, apiKey}` or `Anonymous`.
 - `accountUuid`, optional, sent on the exchange so the token carries the account claim. A token without it runs the socket unbilled.
@@ -49,9 +49,9 @@ No IO, no clock, no environment.
 
 ## Shell
 
-**`connect(config, pop) → Session`**: exchanges the API key for a token when `auth` is `Exchange`, opens the socket with subprotocol `eyepop.v1` and `Authorization: Bearer <token>`, and sets the pop. The token is a value, `{jwt, expiresAt}`, never cached or shared between Sessions.
+**`connect(config, pop) → Pipeline`**: exchanges the API key for a token when `auth` is `Exchange`, opens the socket with subprotocol `eyepop.v1` and `Authorization: Bearer <token>`, and sets the pop. The token is a value, `{jwt, expiresAt}`, never cached or shared between Pipelines.
 
-**Session**: one open socket and its one pipeline.
+**Pipeline**: one open socket and its one pipeline.
 - `setSource(source) → Job`
 - `setPop(pop)`: applies to the whole socket.
 - `getGraph(format, verbose?)`
@@ -66,7 +66,7 @@ No IO, no clock, no environment.
 - `predictions()`: every prediction of the source, selected ones included, each as a Prediction. A Prediction whose typed fields could not be read still arrives, with only its JSON object. Skip a selected one when counting frames.
 - `cancel()`: sends `stopSource`; the Job ends with `end` reason `stopped`.
 
-A Job is a pure demux of the Session's stream by source `id`. Results are read with the language's native asynchronous iteration. There is no call that returns one result at a time until it returns nothing.
+A Job is a pure demux of the Pipeline's stream by source `id`. Results are read with the language's native asynchronous iteration. There is no call that returns one result at a time until it returns nothing.
 
 ## Uploads
 
@@ -74,7 +74,7 @@ A known length of 8 MiB or less goes as one combined message. Anything else is c
 
 ## Backpressure and closing
 
-The Session reads the socket only while a consumer pulls from a stream. Each Job has a buffer of 256 messages; when one is full the reader waits, so the pressure reaches the server, which drops predictions for live sources and closes with `1008 slow_client` after its write timeout for the others. The SDK drops nothing itself. Consume every Job you open: one stalled Job holds up the others.
+The Pipeline reads the socket only while a consumer pulls from a stream. Each Job has a buffer of 256 messages; when one is full the reader waits, so the pressure reaches the server, which drops predictions for live sources and closes with `1008 slow_client` after its write timeout for the others. The SDK drops nothing itself. Consume every Job you open: one stalled Job holds up the others.
 
 A close with `1000` (a `quit`, a client `close`, or `1000 idle`) ends `messages()` normally. Any other close is an error of kind `closed` with its `closeCode` and reason, and every Job in flight receives it. The SDK never reconnects and never resends a source.
 

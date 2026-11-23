@@ -25,7 +25,7 @@ Tasks are defined in `cs/Taskfile.yaml` and run from the repo root as `task cs:<
 | `devbox run -- task cs:check` | The CI gate: lint, typecheck, test. |
 | `devbox run -- dotnet test cs/EyePop.sln --filter "FullyQualifiedName~Name"` | One test |
 
-- Target framework is `net8.0`; `cs/global.json` pins SDK 8.0.100 with `rollForward: latestFeature`. CI installs the same SDK with `actions/setup-dotnet`, not Devbox.
+- The target framework (`net8.0`) is set once, in `cs/Directory.Build.props`. `cs/global.json` pins SDK 8.0.100 with `rollForward: latestFeature`; CI installs it from that file with `actions/setup-dotnet`, Devbox from `dotnet-sdk@8`. Moving to a new .NET changes `Directory.Build.props`, `global.json` and the `devbox.json` pin together.
 - The version is never in a file. `package`, `publish` and `verify` take `TAG=vX.Y.Z`; do not run them locally except `publish:dry-run`.
 - `bin/`, `obj/` and `artifacts/` are ignored. After a failed restore, delete `cs/**/bin` and `cs/**/obj` and rerun.
 - Unit tests must not call a real environment. Integration tests run against staging through a separate private test repository ([ADR 0005](docs/adr/0005-integration-tests-run-on-real-staging.md)).
