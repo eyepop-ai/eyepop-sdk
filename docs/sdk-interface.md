@@ -44,7 +44,7 @@ Construction refuses what cannot work: an `Exchange` without an API key, an API 
 No IO, no clock, no environment.
 - `encode(Command) → Frame`, for `setPop`, `setSource`, `stopSource`, `getGraph`, `ping`, `quit` and the upload frames.
 - `decode(Frame) → Message | Malformed`. It never throws.
-- `step(State, Input) → (State, Outputs)`, where `State` tracks the current pop, open sources with their Source, upload credit, the current upload and the last frame each Job delivered, and `Input` is a command from the caller, a decoded message or a reconnect.
+- `step(State, Input) → (State, Outputs)`, where `State` tracks the current pop, open sources with their Source, upload credit, the current upload and when reconnecting began, and `Input` is a command from the caller, a decoded message or a reconnect.
 - `backoff(attempt, random) → delay`, the jittered delay before a reconnect (see "Supervision").
 - `configFromEnvironment(map) → Config | invalid_config`. Precedence: explicit argument, then `EYEPOP_URL` and `EYEPOP_AUTH_URL`, then the `EYEPOP_ENV` row, then `production`. `EYEPOP_API_KEY` is the only credential variable; `EYEPOP_ACCOUNT_UUID` supplies `accountUuid`.
 
@@ -77,7 +77,7 @@ The SDK sends every command as it is called and keeps no queue and no ordering p
 - A Pipeline holds at most 256 open sources. The 257th is refused with `queue_full`.
 - A live source cannot queue behind another live source of the same socket: it is refused with `live_source_open`. Cancel the first, or open another Pipeline.
 - Each answer and message carries the source `id`, so a Job reads only its own. Across Jobs the SDK promises no order beyond the pipeline's queue order; sorting out results across sources is the caller's job.
-- `setPop` is sent in order. While it applies, the server holds later `setSource` commands in order and sends them once the pop is in. A pop that fails to resolve is a refused command and the pipeline keeps its old pop. A pop that fails to apply closes the socket with `1011 pipeline_stopped`.
+- `setPop` is sent in order. While it applies, the server holds later `setSource` commands in order and sends them once the pop is in. A pop that fails to resolve is a refused command; a pop that fails to apply closes the socket with `1011 pipeline_stopped`. Either one fails the Pipeline (see "Supervision").
 
 ## Uploads
 
@@ -91,7 +91,7 @@ The Pipeline reads the socket only while a consumer pulls from a stream. Each Jo
 
 ## Supervision
 
-A Pipeline outlives its socket ([ADR 0006](adr/0006-the-pipeline-supervises-its-socket.md)). The pipeline API keeps nothing between sockets, so a reconnect is always a new socket running a new pipeline. The Pipeline reconnects for as long as it is open, with no give-up count. The caller bounds it with cancellation or `close()`.
+A Pipeline outlives its socket ([ADR 0006](adr/0006-the-pipeline-supervises-its-socket.md)). The pipeline API keeps nothing between sockets, so a reconnect is always a new socket running a new pipeline. While a live source is open, the Pipeline reconnects for as long as it is open, and the caller bounds it with cancellation or `close()`. When the Pipeline has failed to reconnect for 15 minutes (a setting), the Job of every finite source ends with the last Error. A Pipeline with no live source left then stops reconnecting and fails. A failed pop is always fatal (see the table).
 
 A reconnect:
 1. closes the old socket fully; no message from it is delivered after this;
@@ -99,7 +99,7 @@ A reconnect:
 3. opens a new socket and sends `setPop` with the current pop;
 4. sends `setSource` again for every source whose `end` has not arrived, in the original order and with the original ids.
 
-Every Job in flight receives `reconnecting` before the attempt and `reconnected` after it. A resent `Url` or `Asset` source starts again at its first frame. Its Job skips any prediction for a frame at or before the last frame it delivered, but never a selected prediction.
+Every Job in flight receives `reconnecting` before the attempt and `reconnected` after it. A resent `Url` or `Asset` source starts again at its first frame, and its Job delivers those frames' predictions again. The SDK does not filter them.
 
 Backoff is exponential with full jitter. It starts at 1 s, is capped at 60 s, and resets after 30 s without a failure. A `Retry-After` is a floor. All three values are settings with these defaults.
 
@@ -110,12 +110,13 @@ Backoff is exponential with full jitter. It starts at 1 s, is capped at 60 s, an
 | The upgrade cannot connect, is reset, or times out | Reconnects with backoff |
 | The upgrade answers `503` (`overloaded`, `pipeline_start_failed`, `shutting_down`) | Waits at least `Retry-After`, then reconnects |
 | The upgrade answers `401` or `403` | Exchanges again and retries once; a second refusal is terminal `upgrade_refused` |
-| Close `1001`; close `1011` with any reason; close `1008` `slow_client` or `client_gone`; a drop with no close frame | Reconnects with backoff |
+| A refused `setPop`, or close `1011 pipeline_stopped` while a `setPop` is pending, including the one a reconnect sends | Terminal: the Pipeline fails with `command_rejected` or `closed`, because every retry would send the same pop |
+| Close `1001`; close `1011` with any other reason or with no `setPop` pending; close `1008` `slow_client` or `client_gone`; a drop with no close frame | Reconnects with backoff |
 | Close `1008 credential_expired` | Exchanges again and reconnects at once |
 | Close `1008` `unexpected_bytes` or `credit_exceeded` | Terminal `closed`: the SDK broke the upload protocol, and a resend would break it again |
 | No message for longer than the liveness window (default 60 s; the server pings every 20 s) | Treats the socket as dead, closes it and reconnects |
 | `error` `overloaded` for a `setSource` | Sends that source again with backoff |
-| Any other `error` for a command, such as `queue_full`, `live_source_open` or a pop that does not resolve | Terminal `command_rejected` for that command; the socket stays open |
+| Any other `error` for a command, such as `queue_full` or `live_source_open` | Terminal `command_rejected` for that command; the socket stays open |
 | `end` with reason `eos` or `error` on a live source | Sends that source again with backoff |
 | `end` on a finite source | The Job ends |
 
