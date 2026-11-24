@@ -43,7 +43,7 @@ Construction refuses what cannot work: an `Exchange` without an API key, an API 
 
 No IO, no clock, no environment.
 - `encode(Command) → Frame`, for `setPop`, `setSource`, `stopSource`, `getGraph`, `ping`, `quit` and the upload frames.
-- `decode(Frame) → Message | Malformed`. It never throws.
+- `decode(Frame) → Message | Malformed`. It never throws. A message whose `type` the SDK does not know decodes as an unknown Message, which the shell ignores, so a newer server does not break an older SDK. `Malformed` (not JSON, or a known `type` missing required fields) is skipped by the shell: it is logged and counted in `status()` with the last one seen, and the socket stays open.
 - `step(State, Input) → (State, Outputs)`, where `State` tracks the current pop, open sources with their Source, upload credit, the current upload and when reconnecting began, and `Input` is a command from the caller, a decoded message or a reconnect.
 - `backoff(attempt, random) → delay`, the jittered delay before a reconnect (see "Supervision").
 - `configFromEnvironment(map) → Config | invalid_config`. Precedence: explicit argument, then `EYEPOP_URL` and `EYEPOP_AUTH_URL`, then the `EYEPOP_ENV` row, then `production`. `EYEPOP_API_KEY` is the only credential variable; `EYEPOP_ACCOUNT_UUID` supplies `accountUuid`.
@@ -54,11 +54,11 @@ No IO, no clock, no environment.
 
 **Pipeline**: one pop and its sources, over one socket at a time.
 - `id`: made by the SDK when the Pipeline opens. It stays the same across reconnects.
-- `setSource(source) → Job`
+- `setSource(source) → Job`: returns the Job at once, without waiting for the server. The server may answer late, behind its queue or a resolving `setPop`. A refusal such as `queue_full` or `live_source_open` arrives as the Job failing with `command_rejected`, so every outcome of a source goes through its Job.
 - `setPop(pop)`: sent in order like any command, and completes when the server answers `result`. It changes the pop in place, under the sources already running or queued. If it fails, the Pipeline keeps the last pop that applied.
 - `getGraph(format, verbose?) → graph`: the server's answer, as raw JSON.
 - `ping()`: completes when the server answers `pong`.
-- `status()`: `state` (`connecting`, `open`, `backingOff`, `idle`, `closed`), the number of reconnects and the last Error.
+- `status()`: `state` (`connecting`, `open`, `backingOff`, `idle`, `closed`), the number of reconnects, the last Error, and the number of malformed frames with the last one.
 - `close()`: sends `quit` and stops reconnecting.
 
 **Job**: the handle of one Source.
@@ -131,8 +131,3 @@ Names are the wire names (above). A language changes casing only. The one except
 - `protocol/` holds JSON Schema 2020-12 for every command, message, `Source`, `Pop`, `Ability`, `Camera` and `Prediction`, with a `const` discriminator on `type`. Types are generated from it ([ADR 0003](adr/0003-one-in-repo-generator-writes-the-protocol-types.md)).
 - Unit tests of the pure core use a fake transport and never call a real environment.
 - Integration tests run against real staging through a separate private test repository. Each run validates the pipeline's messages against `protocol/` ([ADR 0005](adr/0005-integration-tests-run-on-real-staging.md)).
-
-## Open details for the build slices
-
-These were not settled in design and are decided while the slice is built, then written back here:
-- Whether `setSource` resolves when the server answers `result`, or earlier.
