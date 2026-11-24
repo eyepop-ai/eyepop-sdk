@@ -64,7 +64,9 @@ No IO, no clock, no environment.
 **Job**: the handle of one Source.
 - `id`: chosen by the SDK, numbered per Pipeline, and unique for the Pipeline's life. A caller never passes one.
 - `messages()`: that source's `start`, `prediction`, `dropped`, `usage` and `end`, and the Pipeline's `reconnecting` and `reconnected`.
-- `predictions()`: every prediction of the source, selected ones included, each as a Prediction. A Prediction whose typed fields could not be read still arrives, with only its JSON object. Skip a selected one when counting frames.
+- `predictions()`: every prediction of the source, selected ones included, each as a Prediction. A Prediction whose typed fields could not be read still arrives, with only its JSON object. Skip a selected one when counting frames. It is a filtered view of `messages()`: it ends when the Job ends, and fails after the last prediction when the Job ends with an Error or with `end` reason `error`.
+
+A Job has one reader. The first call of `messages()` or `predictions()` takes it, and any later call of either fails, in the language's own way for a misuse rather than as an Error kind. Two readers of one buffer would each see only part of it.
 - `cancel()`: sends `stopSource`; the Job ends with `end` reason `stopped`.
 
 A Job is a pure demux of the socket's messages by source `id`. The Pipeline has no public message stream, so there is no stream a caller can forget to read. A command's answer completes that command, the Pipeline's own events go to `status()` and to every open Job, and an `error` with no `id` goes to `status()`. Results are read with the language's native asynchronous iteration. There is no call that returns one result at a time until it returns nothing.
