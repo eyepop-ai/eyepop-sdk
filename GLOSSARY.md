@@ -31,7 +31,7 @@ The WebSocket at `GET /api/v1/pipeline`, subprotocol `eyepop.v1`. Each one runs 
 _Avoid_: worker, worker endpoint, stream
 
 **Pipeline**:
-The SDK object that owns one open Pipeline socket and the one pipeline running on it, from `connect` until it closes. Not a compute session of the old SDKs.
+The SDK object that runs one pop over a Pipeline socket, from `connect` until `close`. When the socket fails, it opens a new one and resends what was running, so one Pipeline can use many sockets in turn. Not a compute session of the old SDKs.
 _Avoid_: session, connection, client, endpoint
 
 **Pop**:
@@ -47,7 +47,7 @@ One input a Pipeline processes: a url, an asset, an upload or a group.
 _Avoid_: job, request, item
 
 **Job**:
-The handle of one Source on a Pipeline: its id, its messages, and its `cancel`.
+The handle of one Source on a Pipeline: its id (chosen by the SDK), its messages, and its `cancel`.
 _Avoid_: task, stream
 
 **Prediction**:
