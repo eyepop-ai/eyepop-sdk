@@ -44,13 +44,21 @@ Construction refuses what cannot work: an `Exchange` without an API key, an API 
 No IO, no clock, no environment.
 - `encode(Command) → Frame`, for `setPop`, `setSource`, `stopSource`, `getGraph`, `ping`, `quit` and the upload frames.
 - `decode(Frame) → ServerMessage | Malformed`. A `ServerMessage` is any message the server sends. It is internal: the shell passes the ones a Job delivers on as the public `Message`. It never throws. A message whose `type` the SDK does not know decodes as an unknown message, which the shell ignores, so a newer server does not break an older SDK. `Malformed` (not JSON, or a known `type` missing required fields) is skipped by the shell: it is logged and counted in `status()` with the last one seen, and the socket stays open.
-- `step(State, Input) → (State, Outputs)`, where `State` tracks the current pop, open sources with their Source, upload credit, the current upload and when reconnecting began, and `Input` is a command from the caller, a decoded message or a reconnect.
+- `step(State, Input, time, random) → (State, Outputs)`, where `State` tracks the current pop, open sources with their Source, upload credit, the current upload and when reconnecting began. `Input` is a command from the caller, a decoded message, a failure the shell observed (a status, a close, a silent socket), a socket that opened, a resend whose delay ran out, or the bytes the shell read for an upload. `Outputs` are frames to send, the id the state gave a new command or Job, messages and ends for Jobs, answers and failures for commands, errors that belong to no command (for `status()`), a request to close the socket, a request to open one after a delay, a request to send a source again after a delay, a request to read upload bytes, or a request to go idle. Time and random arrive as arguments, so the same inputs always give the same outputs.
+  - The state chooses every id (commands and Jobs share one counter) and reports it in the outputs, so an id cannot repeat.
+  - A command given while no socket is open is kept and sent when one opens: a reconnect sends `setPop`, then the commands that never got an answer, then the sources.
+  - An upload is read by the shell, never by the core. A known length of 8 MiB or less is read whole and sent combined; anything else is read in chunks of at most 64 KiB under the credit the server grants. The `setSource` header of a chunked upload is sent when the source is opened, so sources keep the order they were called in; chunks go one upload at a time (and for a group one member at a time, in member order), because a chunk frame names no upload.
+  - The failure table below is a pure function of the failure and the state. For the exchange and the upgrade, a status other than `429` and `5xx` (and the `401` and `403` rows) is terminal. Any other close, and a drop with no close frame, is retried with backoff. `1000 idle` leaves the Pipeline idle only when nothing is open or pending.
+  - The shell keeps the core's view true. It drops an `Opened`, a failure or a message that belongs to a socket it has already replaced, and it cancels the resend and connect timers when it connects or goes idle. The core ignores a message or an upload answer when no socket is open, and an `Opened` while one is open changes nothing. A read request carries an epoch (which socket) and a token (which upload; a source sent again gets a new one), and the shell echoes both in its answer, so a read that was in flight when the source was sent again is not credited to the new send. When the shell flushes `quit` it does so before it closes the socket.
+  - Every reconnect closes the old socket first (an output of its own), and `close()` closes it, cancels a connect that is waiting and makes every later command fail with `closed`. A socket that opens after `close()` is closed again.
+  - A source the caller cancelled is never sent again: after a reconnect, when the server ends or refuses it for any reason, or when the give-up limit or a terminal failure meets it, its Job ends with `end` reason `stopped` and no error.
+  - A `setPop` that fails or is refused while no pop has ever applied leaves other commands failing until a `setPop` works.
 - `backoff(attempt, random) → delay`, the jittered delay before a reconnect (see "Supervision").
-- `configFromEnvironment(map) → Config | invalid_config`. Precedence: explicit argument, then `EYEPOP_URL` and `EYEPOP_AUTH_URL`, then the `EYEPOP_ENV` row, then `production`. `EYEPOP_API_KEY` is the only credential variable; `EYEPOP_ACCOUNT_UUID` supplies `accountUuid`.
+- `configFromEnvironment(map) → Config | invalid_config`. Precedence: explicit argument, then `EYEPOP_URL` and `EYEPOP_AUTH_URL`, then the `EYEPOP_ENV` row, then `production`. `EYEPOP_API_KEY` is the only credential variable; `EYEPOP_ACCOUNT_UUID` supplies `accountUuid`. A variable or explicit argument that is empty or only whitespace counts as unset. A URL holding user info is refused, and an unknown `EYEPOP_ENV` is refused without echoing its value. An environment with an auth URL and no API key is `invalid_config`: `Anonymous` is only for a row with no auth URL, such as `local`.
 
 ## Shell
 
-**`connect(config, pop) → Pipeline`**: exchanges the API key for a token when `auth` is `Exchange`, opens the socket with subprotocol `eyepop.v1` and `Authorization: Bearer <token>`, and sets the pop. It retries as described in "Supervision", and fails if the pop fails. The token is a value, `{jwt, expiresAt}`, never cached or shared between Pipelines.
+**`connect(config, pop) → Pipeline`**: exchanges the API key for a token when `auth` is `Exchange`, opens the socket with subprotocol `eyepop.v1` and `Authorization: Bearer <token>`, and sets the pop. It retries as described in "Supervision", and fails if the pop fails; the shell then calls `close()`, so the failed attempt leaves no socket or timer behind. The token is a value, `{jwt, expiresAt}`, never cached or shared between Pipelines.
 
 **Pipeline**: one pop and its sources, over one socket at a time.
 - `id`: made by the SDK when the Pipeline opens. It stays the same across reconnects.
@@ -98,11 +106,12 @@ A reconnect:
 1. closes the old socket fully; no message from it is delivered after this;
 2. exchanges the key again if the token has less than 60 s left;
 3. opens a new socket and sends `setPop` with the current pop;
-4. sends `setSource` again for every source whose `end` has not arrived, in the original order and with the original ids.
+4. sends again every command that never got an answer (a `setPop`, `getGraph` or `ping` in flight);
+5. sends `setSource` again for every source whose `end` has not arrived, in the original order and with the original ids.
 
 Every Job in flight receives `reconnecting` before the attempt and `reconnected` after it. A resent `Url` or `Asset` source starts again at its first frame, and its Job delivers those frames' predictions again. The SDK does not filter them.
 
-Backoff is exponential with full jitter. It starts at 1 s, is capped at 60 s, and resets after 30 s without a failure. A `Retry-After` is a floor. All three values are settings with these defaults.
+Backoff is exponential with full jitter. It starts at 1 s, is capped at 60 s, and resets after 30 s without a failure. A `Retry-After` is a floor, capped at the backoff cap so a hostile or mistaken header cannot stall a Pipeline. The series of failures that backoff and the give-up limit count ends only after the socket has stayed healthy for 30 s: a socket that opens and fails again within that time continues it. A reconnect at once (`credential_expired`, the first `401` on an upgrade) is for the first failure of a series; later ones back off. All three values are settings with these defaults.
 
 | Failure | What the Pipeline does |
 |---|---|
@@ -121,10 +130,11 @@ Backoff is exponential with full jitter. It starts at 1 s, is capped at 60 s, an
 | Any other `error` for a command, such as `queue_full` or `live_source_open` | Terminal `command_rejected` for that command; the socket stays open |
 | `end` with reason `eos` or `error` on a live source | Sends that source again with backoff |
 | `end` on a finite source | The Job ends |
+| `error` `overloaded` for a finite source, still refused after the give-up window | The Job ends with `command_rejected` and error `overloaded` |
 
 ## Naming
 
-Names are the wire names (above). A language changes casing only. Two types are renamed: the `prediction` message is `PredictionMessage` because `Prediction` names the typed value, and the `error` message is `ErrorMessage` because Error names the SDK's own failure. In C# that failure is `EyePopException` with a `Kind`. Types that carry a discriminator are unions in the language's own way: sealed hierarchy or `JsonPolymorphic` in C# for the public unions, tagged enum in Rust, interface plus concrete types in Go, discriminated union in TypeScript and Python.
+Names are the wire names (above). A language changes casing only. Two types are renamed: the `prediction` message is `PredictionMessage` because `Prediction` names the typed value, and the `error` message is `ErrorMessage` because Error names the SDK's own failure. In C# that failure is `EyePopException` with a `Kind`. Three more C# names differ: the public Message union is the generated `JobMessage` (C# cannot add `Reconnecting` and `Reconnected` to a generated type's base, so they derive from it by hand), `Environment` is `EyePopEnvironment` (it would hide `System.Environment`), and a Source is `Source(Media, options)` where `Media` is `Url`, `Asset`, `Upload` or `Group`, so a group member has no options of its own. Types that carry a discriminator are unions in the language's own way: sealed hierarchy or `JsonPolymorphic` in C# for the public unions, tagged enum in Rust, interface plus concrete types in Go, discriminated union in TypeScript and Python.
 
 ## Protocol schema and tests
 
