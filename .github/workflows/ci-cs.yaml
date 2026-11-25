@@ -4,6 +4,8 @@ on:
   pull_request:
     paths: &paths
       - 'cs/**'
+      - 'demo/cs/**'
+      - 'demo/media/**'
       - 'protocol/**'
       - 'scripts/**'
       - '.github/workflows/ci-cs.yaml'
@@ -32,5 +34,8 @@ jobs:
           persist-credentials: false
       - uses: ./.github/actions/setup-cs
       - run: task check
+      - name: Demo
+        working-directory: ${{ github.workspace }}
+        run: task demo:cs:check
       - name: Release package
         run: task package TAG=v4.1.2-alpha.0 OUT="$RUNNER_TEMP/out"
