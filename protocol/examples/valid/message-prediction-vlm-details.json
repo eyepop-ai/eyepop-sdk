@@ -1,0 +1,1 @@
+{"type":"prediction","id":"s1","prediction":{"timestamp":0,"compute_units":0.25,"milli_compute_units":250,"objects":[{"classLabel":"car","x":412.5,"y":120.25,"width":310.75,"height":240.5,"details":[{"category":"car","make":"Toyota","model":"Camry","color":"silver"}]}],"tokens":{"text":"a silver car"}}}

@@ -138,6 +138,20 @@ internal static class Wire
             ? array.Select(item).ToList()
             : throw new FormatException($"expected an array, got {Show(value)}");
 
+    // One value that cannot be read must not fail the message that holds it: the fallback keeps the raw JSON.
+    public static Func<JsonNode?, T> Tolerant<T>(Func<JsonNode?, T> parse, Func<JsonNode?, T> empty) =>
+        value =>
+        {
+            try
+            {
+                return parse(value);
+            }
+            catch (FormatException)
+            {
+                return empty(value);
+            }
+        };
+
     public static T Required<T>(JsonObject obj, string key, Func<JsonNode?, T> parse) =>
         obj.TryGetPropertyValue(key, out var value) ? parse(value) : throw new FormatException($"missing {key}");
 
@@ -543,7 +557,10 @@ def emit_object(obj: Object, bases: list[str], interfaces: list[str], access: st
     args = []
     for f in ordered:
         call = "Wire.Required" if f.required else ("Wire.OptionalValue" if is_value_type(f.type) else "Wire.Optional")
-        args.append(f'{call}(obj, "{f.name}", {parser(f.type)})')
+        read = parser(f.type)
+        if f.tolerant:
+            read = f"Wire.Tolerant({read}, value => new {cs_type(f.type)}(Raw: Wire.Snapshot(value)))"
+        args.append(f'{call}(obj, "{f.name}", {read})')
     args.append("obj")
     writes = []
     for f in obj.typed:

@@ -155,6 +155,27 @@ public class ProtocolDecodingTests
         Assert.Equal("original", message.ToJson()["extra"]!["status"]!.GetValue<string>());
     }
 
+    private static PredictionMessage DecodePrediction(string example) =>
+        Assert.IsType<PredictionMessage>(MessageWire.Decode(JsonNode.Parse(File.ReadAllText(Path.Combine(Examples, example)))));
+
+    [Fact]
+    public void A_prediction_with_a_value_that_cannot_be_read_keeps_that_value_in_its_raw_json()
+    {
+        var prediction = DecodePrediction("invalid/message-prediction-objects-not-array.json").Prediction;
+
+        Assert.Null(prediction.Objects);
+        Assert.Equal("person", prediction.Raw!["objects"]!["classLabel"]!.GetValue<string>());
+        Assert.Equal(1, prediction.Raw["futureField"]!.GetValue<int>());
+    }
+
+    [Fact]
+    public void A_prediction_that_can_be_read_has_its_typed_members()
+    {
+        var prediction = DecodePrediction("valid/message-prediction-detector.json").Prediction;
+
+        Assert.Equal("person", prediction.Objects![0].ClassLabel);
+    }
+
     [Fact]
     public void A_nan_double_keeps_every_field()
     {

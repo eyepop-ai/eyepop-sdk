@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.eyepop.ai/pipeline-socket/v1/depth.json",
+  "title": "depth",
+  "description": "`values` and `world` are base64 text. `semantic` is an open string: a generated enum would reject a value a newer pipeline adds.",
+  "type": "object",
+  "properties": {
+    "width": { "type": "integer" },
+    "height": { "type": "integer" },
+    "semantic": { "type": "string" },
+    "values": { "type": "string" },
+    "world": { "type": "string" }
+  }
+}

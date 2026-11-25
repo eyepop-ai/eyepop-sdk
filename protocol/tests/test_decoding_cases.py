@@ -77,4 +77,4 @@ def test_a_text_case_matches_the_schema_unless_it_says_why(case):
     if case["variant"] == "Unknown":
         assert not valid or "reason" in case
     else:
-        assert valid
+        assert valid or "reason" in case

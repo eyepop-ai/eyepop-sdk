@@ -94,5 +94,17 @@
   "message-unknown-type.json": {
     "path": "",
     "keyword": "oneOf"
+  },
+  "message-prediction-objects-not-array.json": {
+    "path": "/prediction/objects",
+    "keyword": "type"
+  },
+  "message-prediction-box-not-number.json": {
+    "path": "/prediction/objects/0/x",
+    "keyword": "type"
+  },
+  "message-prediction-not-object.json": {
+    "path": "/prediction",
+    "keyword": "type"
   }
 }

@@ -532,6 +532,40 @@ impl ComponentParams {
 
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct Contour {
+    pub points: Option<Vec<Point>>,
+    pub cutouts: Option<Vec<Vec<Point>>>,
+    pub raw: Map<String, Value>,
+}
+
+impl Contour {
+    pub fn from_json(value: &Value) -> std::result::Result<Contour, DecodeError> {
+        let obj = parse_object(value)?;
+        Ok(Contour {
+            points: optional(obj, "points", parse_array(Point::from_json))?,
+            cutouts: optional(obj, "cutouts", parse_array(parse_array(Point::from_json)))?,
+            raw: obj.clone(),
+        })
+    }
+
+    pub fn to_json(&self) -> Value {
+        let mut out = self.raw.clone();
+        if let Some(x) = &self.points {
+            out.insert("points".to_string(), Value::Array(x.iter().map(|x| x.to_json()).collect()));
+        } else {
+            out.remove("points");
+        }
+        if let Some(x) = &self.cutouts {
+            out.insert("cutouts".to_string(), Value::Array(x.iter().map(|x| Value::Array(x.iter().map(|x| x.to_json()).collect())).collect()));
+        } else {
+            out.remove("cutouts");
+        }
+        Value::Object(out)
+    }
+}
+
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct Credit {
     pub id: String,
     pub bytes: i64,
@@ -561,6 +595,61 @@ impl Credit {
             out.remove("member");
         }
         out.insert("type".to_string(), Value::from("credit"));
+        Value::Object(out)
+    }
+}
+
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Depth {
+    pub width: Option<i64>,
+    pub height: Option<i64>,
+    pub semantic: Option<String>,
+    pub values: Option<String>,
+    pub world: Option<String>,
+    pub raw: Map<String, Value>,
+}
+
+impl Depth {
+    pub fn from_json(value: &Value) -> std::result::Result<Depth, DecodeError> {
+        let obj = parse_object(value)?;
+        Ok(Depth {
+            width: optional(obj, "width", parse_integer)?,
+            height: optional(obj, "height", parse_integer)?,
+            semantic: optional(obj, "semantic", parse_string)?,
+            values: optional(obj, "values", parse_string)?,
+            world: optional(obj, "world", parse_string)?,
+            raw: obj.clone(),
+        })
+    }
+
+    pub fn to_json(&self) -> Value {
+        let mut out = self.raw.clone();
+        if let Some(x) = &self.width {
+            out.insert("width".to_string(), Value::from(*x));
+        } else {
+            out.remove("width");
+        }
+        if let Some(x) = &self.height {
+            out.insert("height".to_string(), Value::from(*x));
+        } else {
+            out.remove("height");
+        }
+        if let Some(x) = &self.semantic {
+            out.insert("semantic".to_string(), Value::String(x.clone()));
+        } else {
+            out.remove("semantic");
+        }
+        if let Some(x) = &self.values {
+            out.insert("values".to_string(), Value::String(x.clone()));
+        } else {
+            out.remove("values");
+        }
+        if let Some(x) = &self.world {
+            out.insert("world".to_string(), Value::String(x.clone()));
+        } else {
+            out.remove("world");
+        }
         Value::Object(out)
     }
 }
@@ -782,6 +871,61 @@ impl InferenceComponent {
 
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct Mask {
+    pub width: Option<i64>,
+    pub height: Option<i64>,
+    pub stride: Option<i64>,
+    pub bitmap: Option<String>,
+    pub world: Option<String>,
+    pub raw: Map<String, Value>,
+}
+
+impl Mask {
+    pub fn from_json(value: &Value) -> std::result::Result<Mask, DecodeError> {
+        let obj = parse_object(value)?;
+        Ok(Mask {
+            width: optional(obj, "width", parse_integer)?,
+            height: optional(obj, "height", parse_integer)?,
+            stride: optional(obj, "stride", parse_integer)?,
+            bitmap: optional(obj, "bitmap", parse_string)?,
+            world: optional(obj, "world", parse_string)?,
+            raw: obj.clone(),
+        })
+    }
+
+    pub fn to_json(&self) -> Value {
+        let mut out = self.raw.clone();
+        if let Some(x) = &self.width {
+            out.insert("width".to_string(), Value::from(*x));
+        } else {
+            out.remove("width");
+        }
+        if let Some(x) = &self.height {
+            out.insert("height".to_string(), Value::from(*x));
+        } else {
+            out.remove("height");
+        }
+        if let Some(x) = &self.stride {
+            out.insert("stride".to_string(), Value::from(*x));
+        } else {
+            out.remove("stride");
+        }
+        if let Some(x) = &self.bitmap {
+            out.insert("bitmap".to_string(), Value::String(x.clone()));
+        } else {
+            out.remove("bitmap");
+        }
+        if let Some(x) = &self.world {
+            out.insert("world".to_string(), Value::String(x.clone()));
+        } else {
+            out.remove("world");
+        }
+        Value::Object(out)
+    }
+}
+
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct Ping {
     pub id: String,
     pub raw: Map<String, Value>,
@@ -801,6 +945,68 @@ impl Ping {
         let mut out = self.raw.clone();
         out.insert("id".to_string(), Value::String((&self.id).clone()));
         out.insert("type".to_string(), Value::from("ping"));
+        Value::Object(out)
+    }
+}
+
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Point {
+    pub x: Option<f64>,
+    pub y: Option<f64>,
+    pub z: Option<f64>,
+    pub worldX: Option<f64>,
+    pub worldY: Option<f64>,
+    pub worldZ: Option<f64>,
+    pub raw: Map<String, Value>,
+}
+
+impl Point {
+    pub fn from_json(value: &Value) -> std::result::Result<Point, DecodeError> {
+        let obj = parse_object(value)?;
+        Ok(Point {
+            x: optional(obj, "x", parse_number)?,
+            y: optional(obj, "y", parse_number)?,
+            z: optional(obj, "z", parse_number)?,
+            worldX: optional(obj, "worldX", parse_number)?,
+            worldY: optional(obj, "worldY", parse_number)?,
+            worldZ: optional(obj, "worldZ", parse_number)?,
+            raw: obj.clone(),
+        })
+    }
+
+    pub fn to_json(&self) -> Value {
+        let mut out = self.raw.clone();
+        if let Some(x) = &self.x {
+            put_number(&mut out, "x", *x);
+        } else {
+            out.remove("x");
+        }
+        if let Some(x) = &self.y {
+            put_number(&mut out, "y", *x);
+        } else {
+            out.remove("y");
+        }
+        if let Some(x) = &self.z {
+            put_number(&mut out, "z", *x);
+        } else {
+            out.remove("z");
+        }
+        if let Some(x) = &self.worldX {
+            put_number(&mut out, "worldX", *x);
+        } else {
+            out.remove("worldX");
+        }
+        if let Some(x) = &self.worldY {
+            put_number(&mut out, "worldY", *x);
+        } else {
+            out.remove("worldY");
+        }
+        if let Some(x) = &self.worldZ {
+            put_number(&mut out, "worldZ", *x);
+        } else {
+            out.remove("worldZ");
+        }
         Value::Object(out)
     }
 }
@@ -918,9 +1124,576 @@ impl PopDepthMap {
 
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct PredictedClass {
+    pub classLabel: Option<String>,
+    pub confidence: Option<f64>,
+    pub category: Option<String>,
+    pub raw: Map<String, Value>,
+}
+
+impl PredictedClass {
+    pub fn from_json(value: &Value) -> std::result::Result<PredictedClass, DecodeError> {
+        let obj = parse_object(value)?;
+        Ok(PredictedClass {
+            classLabel: optional(obj, "classLabel", parse_string)?,
+            confidence: optional(obj, "confidence", parse_number)?,
+            category: optional(obj, "category", parse_string)?,
+            raw: obj.clone(),
+        })
+    }
+
+    pub fn to_json(&self) -> Value {
+        let mut out = self.raw.clone();
+        if let Some(x) = &self.classLabel {
+            out.insert("classLabel".to_string(), Value::String(x.clone()));
+        } else {
+            out.remove("classLabel");
+        }
+        if let Some(x) = &self.confidence {
+            put_number(&mut out, "confidence", *x);
+        } else {
+            out.remove("confidence");
+        }
+        if let Some(x) = &self.category {
+            out.insert("category".to_string(), Value::String(x.clone()));
+        } else {
+            out.remove("category");
+        }
+        Value::Object(out)
+    }
+}
+
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct PredictedKeyPoint {
+    pub x: Option<f64>,
+    pub y: Option<f64>,
+    pub z: Option<f64>,
+    pub worldX: Option<f64>,
+    pub worldY: Option<f64>,
+    pub worldZ: Option<f64>,
+    pub classLabel: Option<String>,
+    pub confidence: Option<f64>,
+    pub category: Option<String>,
+    pub visible: Option<bool>,
+    pub raw: Map<String, Value>,
+}
+
+impl PredictedKeyPoint {
+    pub fn from_json(value: &Value) -> std::result::Result<PredictedKeyPoint, DecodeError> {
+        let obj = parse_object(value)?;
+        Ok(PredictedKeyPoint {
+            x: optional(obj, "x", parse_number)?,
+            y: optional(obj, "y", parse_number)?,
+            z: optional(obj, "z", parse_number)?,
+            worldX: optional(obj, "worldX", parse_number)?,
+            worldY: optional(obj, "worldY", parse_number)?,
+            worldZ: optional(obj, "worldZ", parse_number)?,
+            classLabel: optional(obj, "classLabel", parse_string)?,
+            confidence: optional(obj, "confidence", parse_number)?,
+            category: optional(obj, "category", parse_string)?,
+            visible: optional(obj, "visible", parse_boolean)?,
+            raw: obj.clone(),
+        })
+    }
+
+    pub fn to_json(&self) -> Value {
+        let mut out = self.raw.clone();
+        if let Some(x) = &self.x {
+            put_number(&mut out, "x", *x);
+        } else {
+            out.remove("x");
+        }
+        if let Some(x) = &self.y {
+            put_number(&mut out, "y", *x);
+        } else {
+            out.remove("y");
+        }
+        if let Some(x) = &self.z {
+            put_number(&mut out, "z", *x);
+        } else {
+            out.remove("z");
+        }
+        if let Some(x) = &self.worldX {
+            put_number(&mut out, "worldX", *x);
+        } else {
+            out.remove("worldX");
+        }
+        if let Some(x) = &self.worldY {
+            put_number(&mut out, "worldY", *x);
+        } else {
+            out.remove("worldY");
+        }
+        if let Some(x) = &self.worldZ {
+            put_number(&mut out, "worldZ", *x);
+        } else {
+            out.remove("worldZ");
+        }
+        if let Some(x) = &self.classLabel {
+            out.insert("classLabel".to_string(), Value::String(x.clone()));
+        } else {
+            out.remove("classLabel");
+        }
+        if let Some(x) = &self.confidence {
+            put_number(&mut out, "confidence", *x);
+        } else {
+            out.remove("confidence");
+        }
+        if let Some(x) = &self.category {
+            out.insert("category".to_string(), Value::String(x.clone()));
+        } else {
+            out.remove("category");
+        }
+        if let Some(x) = &self.visible {
+            out.insert("visible".to_string(), Value::Bool(*x));
+        } else {
+            out.remove("visible");
+        }
+        Value::Object(out)
+    }
+}
+
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct PredictedKeyPoints {
+    pub confidence: Option<f64>,
+    pub category: Option<String>,
+    pub points: Option<Vec<PredictedKeyPoint>>,
+    pub raw: Map<String, Value>,
+}
+
+impl PredictedKeyPoints {
+    pub fn from_json(value: &Value) -> std::result::Result<PredictedKeyPoints, DecodeError> {
+        let obj = parse_object(value)?;
+        Ok(PredictedKeyPoints {
+            confidence: optional(obj, "confidence", parse_number)?,
+            category: optional(obj, "category", parse_string)?,
+            points: optional(obj, "points", parse_array(PredictedKeyPoint::from_json))?,
+            raw: obj.clone(),
+        })
+    }
+
+    pub fn to_json(&self) -> Value {
+        let mut out = self.raw.clone();
+        if let Some(x) = &self.confidence {
+            put_number(&mut out, "confidence", *x);
+        } else {
+            out.remove("confidence");
+        }
+        if let Some(x) = &self.category {
+            out.insert("category".to_string(), Value::String(x.clone()));
+        } else {
+            out.remove("category");
+        }
+        if let Some(x) = &self.points {
+            out.insert("points".to_string(), Value::Array(x.iter().map(|x| x.to_json()).collect()));
+        } else {
+            out.remove("points");
+        }
+        Value::Object(out)
+    }
+}
+
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct PredictedMesh {
+    pub confidence: Option<f64>,
+    pub category: Option<String>,
+    pub points: Option<Vec<Point>>,
+    pub raw: Map<String, Value>,
+}
+
+impl PredictedMesh {
+    pub fn from_json(value: &Value) -> std::result::Result<PredictedMesh, DecodeError> {
+        let obj = parse_object(value)?;
+        Ok(PredictedMesh {
+            confidence: optional(obj, "confidence", parse_number)?,
+            category: optional(obj, "category", parse_string)?,
+            points: optional(obj, "points", parse_array(Point::from_json))?,
+            raw: obj.clone(),
+        })
+    }
+
+    pub fn to_json(&self) -> Value {
+        let mut out = self.raw.clone();
+        if let Some(x) = &self.confidence {
+            put_number(&mut out, "confidence", *x);
+        } else {
+            out.remove("confidence");
+        }
+        if let Some(x) = &self.category {
+            out.insert("category".to_string(), Value::String(x.clone()));
+        } else {
+            out.remove("category");
+        }
+        if let Some(x) = &self.points {
+            out.insert("points".to_string(), Value::Array(x.iter().map(|x| x.to_json()).collect()));
+        } else {
+            out.remove("points");
+        }
+        Value::Object(out)
+    }
+}
+
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct PredictedObject {
+    pub classLabel: Option<String>,
+    pub confidence: Option<f64>,
+    pub category: Option<String>,
+    pub x: Option<f64>,
+    pub y: Option<f64>,
+    pub width: Option<f64>,
+    pub height: Option<f64>,
+    pub orientation: Option<f64>,
+    pub trackId: Option<i64>,
+    pub globalObjectId: Option<i64>,
+    pub outline: Option<Vec<Point>>,
+    pub contours: Option<Vec<Contour>>,
+    pub mask: Option<Mask>,
+    pub objects: Option<Vec<PredictedObject>>,
+    pub classes: Option<Vec<PredictedClass>>,
+    pub texts: Option<Vec<PredictedText>>,
+    pub keyPoints: Option<Vec<PredictedKeyPoints>>,
+    pub meshes: Option<Vec<PredictedMesh>>,
+    pub details: Option<Vec<Map<String, Value>>>,
+    pub raw: Map<String, Value>,
+}
+
+impl PredictedObject {
+    pub fn from_json(value: &Value) -> std::result::Result<PredictedObject, DecodeError> {
+        let obj = parse_object(value)?;
+        Ok(PredictedObject {
+            classLabel: optional(obj, "classLabel", parse_string)?,
+            confidence: optional(obj, "confidence", parse_number)?,
+            category: optional(obj, "category", parse_string)?,
+            x: optional(obj, "x", parse_number)?,
+            y: optional(obj, "y", parse_number)?,
+            width: optional(obj, "width", parse_number)?,
+            height: optional(obj, "height", parse_number)?,
+            orientation: optional(obj, "orientation", parse_number)?,
+            trackId: optional(obj, "trackId", parse_integer)?,
+            globalObjectId: optional(obj, "globalObjectId", parse_integer)?,
+            outline: optional(obj, "outline", parse_array(Point::from_json))?,
+            contours: optional(obj, "contours", parse_array(Contour::from_json))?,
+            mask: optional(obj, "mask", Mask::from_json)?,
+            objects: optional(obj, "objects", parse_array(PredictedObject::from_json))?,
+            classes: optional(obj, "classes", parse_array(PredictedClass::from_json))?,
+            texts: optional(obj, "texts", parse_array(PredictedText::from_json))?,
+            keyPoints: optional(obj, "keyPoints", parse_array(PredictedKeyPoints::from_json))?,
+            meshes: optional(obj, "meshes", parse_array(PredictedMesh::from_json))?,
+            details: optional(obj, "details", parse_array(parse_free))?,
+            raw: obj.clone(),
+        })
+    }
+
+    pub fn to_json(&self) -> Value {
+        let mut out = self.raw.clone();
+        if let Some(x) = &self.classLabel {
+            out.insert("classLabel".to_string(), Value::String(x.clone()));
+        } else {
+            out.remove("classLabel");
+        }
+        if let Some(x) = &self.confidence {
+            put_number(&mut out, "confidence", *x);
+        } else {
+            out.remove("confidence");
+        }
+        if let Some(x) = &self.category {
+            out.insert("category".to_string(), Value::String(x.clone()));
+        } else {
+            out.remove("category");
+        }
+        if let Some(x) = &self.x {
+            put_number(&mut out, "x", *x);
+        } else {
+            out.remove("x");
+        }
+        if let Some(x) = &self.y {
+            put_number(&mut out, "y", *x);
+        } else {
+            out.remove("y");
+        }
+        if let Some(x) = &self.width {
+            put_number(&mut out, "width", *x);
+        } else {
+            out.remove("width");
+        }
+        if let Some(x) = &self.height {
+            put_number(&mut out, "height", *x);
+        } else {
+            out.remove("height");
+        }
+        if let Some(x) = &self.orientation {
+            put_number(&mut out, "orientation", *x);
+        } else {
+            out.remove("orientation");
+        }
+        if let Some(x) = &self.trackId {
+            out.insert("trackId".to_string(), Value::from(*x));
+        } else {
+            out.remove("trackId");
+        }
+        if let Some(x) = &self.globalObjectId {
+            out.insert("globalObjectId".to_string(), Value::from(*x));
+        } else {
+            out.remove("globalObjectId");
+        }
+        if let Some(x) = &self.outline {
+            out.insert("outline".to_string(), Value::Array(x.iter().map(|x| x.to_json()).collect()));
+        } else {
+            out.remove("outline");
+        }
+        if let Some(x) = &self.contours {
+            out.insert("contours".to_string(), Value::Array(x.iter().map(|x| x.to_json()).collect()));
+        } else {
+            out.remove("contours");
+        }
+        if let Some(x) = &self.mask {
+            out.insert("mask".to_string(), x.to_json());
+        } else {
+            out.remove("mask");
+        }
+        if let Some(x) = &self.objects {
+            out.insert("objects".to_string(), Value::Array(x.iter().map(|x| x.to_json()).collect()));
+        } else {
+            out.remove("objects");
+        }
+        if let Some(x) = &self.classes {
+            out.insert("classes".to_string(), Value::Array(x.iter().map(|x| x.to_json()).collect()));
+        } else {
+            out.remove("classes");
+        }
+        if let Some(x) = &self.texts {
+            out.insert("texts".to_string(), Value::Array(x.iter().map(|x| x.to_json()).collect()));
+        } else {
+            out.remove("texts");
+        }
+        if let Some(x) = &self.keyPoints {
+            out.insert("keyPoints".to_string(), Value::Array(x.iter().map(|x| x.to_json()).collect()));
+        } else {
+            out.remove("keyPoints");
+        }
+        if let Some(x) = &self.meshes {
+            out.insert("meshes".to_string(), Value::Array(x.iter().map(|x| x.to_json()).collect()));
+        } else {
+            out.remove("meshes");
+        }
+        if let Some(x) = &self.details {
+            out.insert("details".to_string(), Value::Array(x.iter().map(|x| Value::Object(x.clone())).collect()));
+        } else {
+            out.remove("details");
+        }
+        Value::Object(out)
+    }
+}
+
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct PredictedText {
+    pub text: Option<String>,
+    pub confidence: Option<f64>,
+    pub category: Option<String>,
+    pub raw: Map<String, Value>,
+}
+
+impl PredictedText {
+    pub fn from_json(value: &Value) -> std::result::Result<PredictedText, DecodeError> {
+        let obj = parse_object(value)?;
+        Ok(PredictedText {
+            text: optional(obj, "text", parse_string)?,
+            confidence: optional(obj, "confidence", parse_number)?,
+            category: optional(obj, "category", parse_string)?,
+            raw: obj.clone(),
+        })
+    }
+
+    pub fn to_json(&self) -> Value {
+        let mut out = self.raw.clone();
+        if let Some(x) = &self.text {
+            out.insert("text".to_string(), Value::String(x.clone()));
+        } else {
+            out.remove("text");
+        }
+        if let Some(x) = &self.confidence {
+            put_number(&mut out, "confidence", *x);
+        } else {
+            out.remove("confidence");
+        }
+        if let Some(x) = &self.category {
+            out.insert("category".to_string(), Value::String(x.clone()));
+        } else {
+            out.remove("category");
+        }
+        Value::Object(out)
+    }
+}
+
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Prediction {
+    pub timestamp: Option<i64>,
+    pub seconds: Option<f64>,
+    pub offset: Option<i64>,
+    pub duration: Option<i64>,
+    pub captured_at: Option<i64>,
+    pub source_id: Option<String>,
+    pub source_width: Option<i64>,
+    pub source_height: Option<i64>,
+    pub compute_units: Option<f64>,
+    pub milli_compute_units: Option<i64>,
+    pub selected: Option<bool>,
+    pub objects: Option<Vec<PredictedObject>>,
+    pub classes: Option<Vec<PredictedClass>>,
+    pub texts: Option<Vec<PredictedText>>,
+    pub keyPoints: Option<Vec<PredictedKeyPoints>>,
+    pub meshes: Option<Vec<PredictedMesh>>,
+    pub depth: Option<Depth>,
+    pub tokens: Option<Map<String, Value>>,
+    pub details: Option<Vec<Map<String, Value>>>,
+    pub track_events: Option<Vec<TrackEvent>>,
+    pub raw: Map<String, Value>,
+}
+
+impl Prediction {
+    pub fn from_json(value: &Value) -> std::result::Result<Prediction, DecodeError> {
+        let obj = parse_object(value)?;
+        Ok(Prediction {
+            timestamp: optional(obj, "timestamp", parse_integer)?,
+            seconds: optional(obj, "seconds", parse_number)?,
+            offset: optional(obj, "offset", parse_integer)?,
+            duration: optional(obj, "duration", parse_integer)?,
+            captured_at: optional(obj, "captured_at", parse_integer)?,
+            source_id: optional(obj, "source_id", parse_string)?,
+            source_width: optional(obj, "source_width", parse_integer)?,
+            source_height: optional(obj, "source_height", parse_integer)?,
+            compute_units: optional(obj, "compute_units", parse_number)?,
+            milli_compute_units: optional(obj, "milli_compute_units", parse_integer)?,
+            selected: optional(obj, "selected", parse_boolean)?,
+            objects: optional(obj, "objects", parse_array(PredictedObject::from_json))?,
+            classes: optional(obj, "classes", parse_array(PredictedClass::from_json))?,
+            texts: optional(obj, "texts", parse_array(PredictedText::from_json))?,
+            keyPoints: optional(obj, "keyPoints", parse_array(PredictedKeyPoints::from_json))?,
+            meshes: optional(obj, "meshes", parse_array(PredictedMesh::from_json))?,
+            depth: optional(obj, "depth", Depth::from_json)?,
+            tokens: optional(obj, "tokens", parse_free)?,
+            details: optional(obj, "details", parse_array(parse_free))?,
+            track_events: optional(obj, "track_events", parse_array(TrackEvent::from_json))?,
+            raw: obj.clone(),
+        })
+    }
+
+    pub fn to_json(&self) -> Value {
+        let mut out = self.raw.clone();
+        if let Some(x) = &self.timestamp {
+            out.insert("timestamp".to_string(), Value::from(*x));
+        } else {
+            out.remove("timestamp");
+        }
+        if let Some(x) = &self.seconds {
+            put_number(&mut out, "seconds", *x);
+        } else {
+            out.remove("seconds");
+        }
+        if let Some(x) = &self.offset {
+            out.insert("offset".to_string(), Value::from(*x));
+        } else {
+            out.remove("offset");
+        }
+        if let Some(x) = &self.duration {
+            out.insert("duration".to_string(), Value::from(*x));
+        } else {
+            out.remove("duration");
+        }
+        if let Some(x) = &self.captured_at {
+            out.insert("captured_at".to_string(), Value::from(*x));
+        } else {
+            out.remove("captured_at");
+        }
+        if let Some(x) = &self.source_id {
+            out.insert("source_id".to_string(), Value::String(x.clone()));
+        } else {
+            out.remove("source_id");
+        }
+        if let Some(x) = &self.source_width {
+            out.insert("source_width".to_string(), Value::from(*x));
+        } else {
+            out.remove("source_width");
+        }
+        if let Some(x) = &self.source_height {
+            out.insert("source_height".to_string(), Value::from(*x));
+        } else {
+            out.remove("source_height");
+        }
+        if let Some(x) = &self.compute_units {
+            put_number(&mut out, "compute_units", *x);
+        } else {
+            out.remove("compute_units");
+        }
+        if let Some(x) = &self.milli_compute_units {
+            out.insert("milli_compute_units".to_string(), Value::from(*x));
+        } else {
+            out.remove("milli_compute_units");
+        }
+        if let Some(x) = &self.selected {
+            out.insert("selected".to_string(), Value::Bool(*x));
+        } else {
+            out.remove("selected");
+        }
+        if let Some(x) = &self.objects {
+            out.insert("objects".to_string(), Value::Array(x.iter().map(|x| x.to_json()).collect()));
+        } else {
+            out.remove("objects");
+        }
+        if let Some(x) = &self.classes {
+            out.insert("classes".to_string(), Value::Array(x.iter().map(|x| x.to_json()).collect()));
+        } else {
+            out.remove("classes");
+        }
+        if let Some(x) = &self.texts {
+            out.insert("texts".to_string(), Value::Array(x.iter().map(|x| x.to_json()).collect()));
+        } else {
+            out.remove("texts");
+        }
+        if let Some(x) = &self.keyPoints {
+            out.insert("keyPoints".to_string(), Value::Array(x.iter().map(|x| x.to_json()).collect()));
+        } else {
+            out.remove("keyPoints");
+        }
+        if let Some(x) = &self.meshes {
+            out.insert("meshes".to_string(), Value::Array(x.iter().map(|x| x.to_json()).collect()));
+        } else {
+            out.remove("meshes");
+        }
+        if let Some(x) = &self.depth {
+            out.insert("depth".to_string(), x.to_json());
+        } else {
+            out.remove("depth");
+        }
+        if let Some(x) = &self.tokens {
+            out.insert("tokens".to_string(), Value::Object(x.clone()));
+        } else {
+            out.remove("tokens");
+        }
+        if let Some(x) = &self.details {
+            out.insert("details".to_string(), Value::Array(x.iter().map(|x| Value::Object(x.clone())).collect()));
+        } else {
+            out.remove("details");
+        }
+        if let Some(x) = &self.track_events {
+            out.insert("track_events".to_string(), Value::Array(x.iter().map(|x| x.to_json()).collect()));
+        } else {
+            out.remove("track_events");
+        }
+        Value::Object(out)
+    }
+}
+
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct PredictionMessage {
     pub id: String,
-    pub prediction: Map<String, Value>,
+    pub prediction: Prediction,
     pub raw: Map<String, Value>,
 }
 
@@ -930,7 +1703,7 @@ impl PredictionMessage {
         required(obj, "type", parse_const("prediction"))?;
         Ok(PredictionMessage {
             id: required(obj, "id", limit(parse_string, length, Some(1.0), None, None))?,
-            prediction: required(obj, "prediction", parse_free)?,
+            prediction: required(obj, "prediction", Prediction::from_json)?,
             raw: obj.clone(),
         })
     }
@@ -938,7 +1711,7 @@ impl PredictionMessage {
     pub fn to_json(&self) -> Value {
         let mut out = self.raw.clone();
         out.insert("id".to_string(), Value::String((&self.id).clone()));
-        out.insert("prediction".to_string(), Value::Object((&self.prediction).clone()));
+        out.insert("prediction".to_string(), (&self.prediction).to_json());
         out.insert("type".to_string(), Value::from("prediction"));
         Value::Object(out)
     }
@@ -1328,6 +2101,54 @@ impl StopSource {
         let mut out = self.raw.clone();
         out.insert("id".to_string(), Value::String((&self.id).clone()));
         out.insert("type".to_string(), Value::from("stopSource"));
+        Value::Object(out)
+    }
+}
+
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct TrackEvent {
+    pub track_id: Option<i64>,
+    pub is_ended: Option<bool>,
+    pub started_at: Option<i64>,
+    pub ended_at: Option<i64>,
+    pub raw: Map<String, Value>,
+}
+
+impl TrackEvent {
+    pub fn from_json(value: &Value) -> std::result::Result<TrackEvent, DecodeError> {
+        let obj = parse_object(value)?;
+        Ok(TrackEvent {
+            track_id: optional(obj, "track_id", parse_integer)?,
+            is_ended: optional(obj, "is_ended", parse_boolean)?,
+            started_at: optional(obj, "started_at", parse_integer)?,
+            ended_at: optional(obj, "ended_at", parse_integer)?,
+            raw: obj.clone(),
+        })
+    }
+
+    pub fn to_json(&self) -> Value {
+        let mut out = self.raw.clone();
+        if let Some(x) = &self.track_id {
+            out.insert("track_id".to_string(), Value::from(*x));
+        } else {
+            out.remove("track_id");
+        }
+        if let Some(x) = &self.is_ended {
+            out.insert("is_ended".to_string(), Value::Bool(*x));
+        } else {
+            out.remove("is_ended");
+        }
+        if let Some(x) = &self.started_at {
+            out.insert("started_at".to_string(), Value::from(*x));
+        } else {
+            out.remove("started_at");
+        }
+        if let Some(x) = &self.ended_at {
+            out.insert("ended_at".to_string(), Value::from(*x));
+        } else {
+            out.remove("ended_at");
+        }
         Value::Object(out)
     }
 }

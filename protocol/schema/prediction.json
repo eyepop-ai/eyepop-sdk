@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.eyepop.ai/pipeline-socket/v1/prediction.json",
+  "title": "prediction",
+  "description": "One processed frame, prediction format v4. Every member is optional and unknown members are kept. `raw`, `features` and `embeddings` are not named here: they stay in the original JSON.",
+  "type": "object",
+  "properties": {
+    "timestamp": { "type": "integer" },
+    "seconds": { "type": "number" },
+    "offset": { "type": "integer" },
+    "duration": { "type": "integer" },
+    "captured_at": { "type": "integer" },
+    "source_id": { "type": "string" },
+    "source_width": { "type": "integer" },
+    "source_height": { "type": "integer" },
+    "compute_units": { "type": "number" },
+    "milli_compute_units": { "type": "integer" },
+    "selected": { "type": "boolean" },
+    "objects": { "type": "array", "items": { "$ref": "predictedObject.json" } },
+    "classes": { "type": "array", "items": { "$ref": "predictedClass.json" } },
+    "texts": { "type": "array", "items": { "$ref": "predictedText.json" } },
+    "keyPoints": { "type": "array", "items": { "$ref": "predictedKeyPoints.json" } },
+    "meshes": { "type": "array", "items": { "$ref": "predictedMesh.json" } },
+    "depth": { "$ref": "depth.json" },
+    "tokens": { "type": "object" },
+    "details": { "type": "array", "items": { "type": "object" } },
+    "track_events": { "type": "array", "items": { "$ref": "trackEvent.json" } }
+  }
+}

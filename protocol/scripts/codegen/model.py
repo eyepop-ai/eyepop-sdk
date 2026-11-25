@@ -64,6 +64,9 @@ class Field:
     type: Type
     required: bool
     excluded: str | None = None
+    # Set by `x-tolerant` on a `$ref` to an object with no required member: a value that cannot be read leaves that object
+    # empty with only its raw JSON, so one bad nested value does not fail the whole message.
+    tolerant: bool = False
 
 
 @dataclass(frozen=True)
@@ -285,6 +288,12 @@ def bases(schemas: Mapping[str, dict], body: dict) -> list[str]:
     return refs(schemas, [part for part in body.get("allOf", ()) if isinstance(part, dict) and set(part) == {"$ref"}])
 
 
+def required_names(schemas: Mapping[str, dict], body: dict) -> set[str]:
+    # The `oneOf` entries are one-key `required` selectors, which make a key required as well.
+    own = set(body.get("required", ())) | {key for entry in body.get("oneOf", ()) for key in entry.get("required", ())}
+    return own.union(*(required_names(schemas, schemas[base]) for base in bases(schemas, body)))
+
+
 def property_names(schemas: Mapping[str, dict], body: dict) -> set[str]:
     return set(body.get("properties", {})).union(*(property_names(schemas, schemas[base]) for base in bases(schemas, body)))
 
@@ -321,7 +330,7 @@ def check(schemas: Mapping[str, dict], name: str) -> None:
 
     def target(node: object, path: list[str]) -> dict:
         a_schema(node, path)
-        allow(node, path, {"$ref"})
+        allow(node, path, {"$ref", "x-tolerant"})
         ref = node.get("$ref")
         if not isinstance(ref, str) or not ref.endswith(".json") or not isinstance(schemas.get(ref_name(node)), dict):
             fail(path, f"`$ref` {ref!r} does not name a schema file")
@@ -352,6 +361,12 @@ def check(schemas: Mapping[str, dict], name: str) -> None:
     def value(node: object, path: list[str]) -> None:
         a_schema(node, path)
         if "$ref" in node:
+            if "x-tolerant" in node:
+                tolerated = target(node, path)
+                if node["x-tolerant"] is not True or kind(tolerated) != "object":
+                    fail(path, "`x-tolerant` must be true and beside a `$ref` to an object schema")
+                if required_names(schemas, tolerated):
+                    fail(path, "`x-tolerant` needs an object with no required member, because the fallback is that object built empty")
             if kind(target(node, path)) == "scalar":
                 acyclic(ref_name(node), path, "$ref", lambda n: [r for r in refs(schemas, schemas[n]) if kind(schemas[r]) == "scalar"])
         elif "const" in node:
@@ -469,7 +484,7 @@ def parse(
     def add_object(name: str, body: dict, where: str) -> str:
         properties, required, exactly_one, places = flatten(body, where)
         fields = tuple(
-            Field(key, type_of(prop, name + pascal(key), places[key]), key in required, prop.get("not", {}).get("const"))
+            Field(key, type_of(prop, name + pascal(key), places[key]), key in required, prop.get("not", {}).get("const"), prop.get("x-tolerant") is True)
             for key, prop in properties.items()
         )
         for f in fields:

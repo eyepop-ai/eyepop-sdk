@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.eyepop.ai/pipeline-socket/v1/predictedText.json",
+  "title": "predictedText",
+  "type": "object",
+  "properties": {
+    "text": { "type": "string" },
+    "confidence": { "type": "number" },
+    "category": { "type": "string" }
+  }
+}

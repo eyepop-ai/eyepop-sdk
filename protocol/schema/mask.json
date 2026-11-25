@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.eyepop.ai/pipeline-socket/v1/mask.json",
+  "title": "mask",
+  "description": "`bitmap` and `world` are base64 text; `world` is three little-endian float32 per mask pixel.",
+  "type": "object",
+  "properties": {
+    "width": { "type": "integer" },
+    "height": { "type": "integer" },
+    "stride": { "type": "integer" },
+    "bitmap": { "type": "string" },
+    "world": { "type": "string" }
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.eyepop.ai/pipeline-socket/v1/trackEvent.json",
+  "title": "trackEvent",
+  "type": "object",
+  "properties": {
+    "track_id": { "type": "integer" },
+    "is_ended": { "type": "boolean" },
+    "started_at": { "type": "integer" },
+    "ended_at": { "type": "integer" }
+  }
+}

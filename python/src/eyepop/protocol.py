@@ -416,6 +416,31 @@ class ComponentParams:
 
 
 @dataclass(frozen=True)
+class Contour:
+    points: list[Point] | None = None
+    cutouts: list[list[Point]] | None = None
+    raw: Mapping[str, Any] = field(default_factory=dict[str, Any], compare=False, repr=False)
+
+    @staticmethod
+    def from_json(value: Any) -> Contour:
+        obj = _object(value)
+        return Contour(points=_optional(obj, 'points', _array(Point.from_json)), cutouts=_optional(obj, 'cutouts', _array(_array(Point.from_json))), raw=copy.deepcopy(obj))
+
+    def to_json(self) -> dict[str, Any]:
+        out = copy.deepcopy(dict(self.raw))
+        if self.points is not None:
+            out['points'] = _dump(self.points)
+        else:
+            out.pop('points', None)
+        if self.cutouts is not None:
+            out['cutouts'] = _dump(self.cutouts)
+        else:
+            out.pop('cutouts', None)
+        return out
+
+
+
+@dataclass(frozen=True)
 class Credit:
     id: str
     bytes: int
@@ -437,6 +462,46 @@ class Credit:
         else:
             out.pop('member', None)
         out['type'] = 'credit'
+        return out
+
+
+
+@dataclass(frozen=True)
+class Depth:
+    width: int | None = None
+    height: int | None = None
+    semantic: str | None = None
+    values: str | None = None
+    world: str | None = None
+    raw: Mapping[str, Any] = field(default_factory=dict[str, Any], compare=False, repr=False)
+
+    @staticmethod
+    def from_json(value: Any) -> Depth:
+        obj = _object(value)
+        return Depth(width=_optional(obj, 'width', _integer), height=_optional(obj, 'height', _integer), semantic=_optional(obj, 'semantic', _string), values=_optional(obj, 'values', _string), world=_optional(obj, 'world', _string), raw=copy.deepcopy(obj))
+
+    def to_json(self) -> dict[str, Any]:
+        out = copy.deepcopy(dict(self.raw))
+        if self.width is not None:
+            out['width'] = _dump(self.width)
+        else:
+            out.pop('width', None)
+        if self.height is not None:
+            out['height'] = _dump(self.height)
+        else:
+            out.pop('height', None)
+        if self.semantic is not None:
+            out['semantic'] = _dump(self.semantic)
+        else:
+            out.pop('semantic', None)
+        if self.values is not None:
+            out['values'] = _dump(self.values)
+        else:
+            out.pop('values', None)
+        if self.world is not None:
+            out['world'] = _dump(self.world)
+        else:
+            out.pop('world', None)
         return out
 
 
@@ -602,6 +667,46 @@ class InferenceComponent:
 
 
 @dataclass(frozen=True)
+class Mask:
+    width: int | None = None
+    height: int | None = None
+    stride: int | None = None
+    bitmap: str | None = None
+    world: str | None = None
+    raw: Mapping[str, Any] = field(default_factory=dict[str, Any], compare=False, repr=False)
+
+    @staticmethod
+    def from_json(value: Any) -> Mask:
+        obj = _object(value)
+        return Mask(width=_optional(obj, 'width', _integer), height=_optional(obj, 'height', _integer), stride=_optional(obj, 'stride', _integer), bitmap=_optional(obj, 'bitmap', _string), world=_optional(obj, 'world', _string), raw=copy.deepcopy(obj))
+
+    def to_json(self) -> dict[str, Any]:
+        out = copy.deepcopy(dict(self.raw))
+        if self.width is not None:
+            out['width'] = _dump(self.width)
+        else:
+            out.pop('width', None)
+        if self.height is not None:
+            out['height'] = _dump(self.height)
+        else:
+            out.pop('height', None)
+        if self.stride is not None:
+            out['stride'] = _dump(self.stride)
+        else:
+            out.pop('stride', None)
+        if self.bitmap is not None:
+            out['bitmap'] = _dump(self.bitmap)
+        else:
+            out.pop('bitmap', None)
+        if self.world is not None:
+            out['world'] = _dump(self.world)
+        else:
+            out.pop('world', None)
+        return out
+
+
+
+@dataclass(frozen=True)
 class Ping:
     id: str
     raw: Mapping[str, Any] = field(default_factory=dict[str, Any], compare=False, repr=False)
@@ -616,6 +721,51 @@ class Ping:
         out = copy.deepcopy(dict(self.raw))
         out['id'] = _dump(self.id)
         out['type'] = 'ping'
+        return out
+
+
+
+@dataclass(frozen=True)
+class Point:
+    x: float | None = None
+    y: float | None = None
+    z: float | None = None
+    worldX: float | None = None
+    worldY: float | None = None
+    worldZ: float | None = None
+    raw: Mapping[str, Any] = field(default_factory=dict[str, Any], compare=False, repr=False)
+
+    @staticmethod
+    def from_json(value: Any) -> Point:
+        obj = _object(value)
+        return Point(x=_optional(obj, 'x', _number), y=_optional(obj, 'y', _number), z=_optional(obj, 'z', _number), worldX=_optional(obj, 'worldX', _number), worldY=_optional(obj, 'worldY', _number), worldZ=_optional(obj, 'worldZ', _number), raw=copy.deepcopy(obj))
+
+    def to_json(self) -> dict[str, Any]:
+        out = copy.deepcopy(dict(self.raw))
+        if self.x is not None:
+            _put_number(out, 'x', self.x)
+        else:
+            out.pop('x', None)
+        if self.y is not None:
+            _put_number(out, 'y', self.y)
+        else:
+            out.pop('y', None)
+        if self.z is not None:
+            _put_number(out, 'z', self.z)
+        else:
+            out.pop('z', None)
+        if self.worldX is not None:
+            _put_number(out, 'worldX', self.worldX)
+        else:
+            out.pop('worldX', None)
+        if self.worldY is not None:
+            _put_number(out, 'worldY', self.worldY)
+        else:
+            out.pop('worldY', None)
+        if self.worldZ is not None:
+            _put_number(out, 'worldZ', self.worldZ)
+        else:
+            out.pop('worldZ', None)
         return out
 
 
@@ -703,16 +853,426 @@ class PopDepthMap:
 
 
 @dataclass(frozen=True)
+class PredictedClass:
+    classLabel: str | None = None
+    confidence: float | None = None
+    category: str | None = None
+    raw: Mapping[str, Any] = field(default_factory=dict[str, Any], compare=False, repr=False)
+
+    @staticmethod
+    def from_json(value: Any) -> PredictedClass:
+        obj = _object(value)
+        return PredictedClass(classLabel=_optional(obj, 'classLabel', _string), confidence=_optional(obj, 'confidence', _number), category=_optional(obj, 'category', _string), raw=copy.deepcopy(obj))
+
+    def to_json(self) -> dict[str, Any]:
+        out = copy.deepcopy(dict(self.raw))
+        if self.classLabel is not None:
+            out['classLabel'] = _dump(self.classLabel)
+        else:
+            out.pop('classLabel', None)
+        if self.confidence is not None:
+            _put_number(out, 'confidence', self.confidence)
+        else:
+            out.pop('confidence', None)
+        if self.category is not None:
+            out['category'] = _dump(self.category)
+        else:
+            out.pop('category', None)
+        return out
+
+
+
+@dataclass(frozen=True)
+class PredictedKeyPoint:
+    x: float | None = None
+    y: float | None = None
+    z: float | None = None
+    worldX: float | None = None
+    worldY: float | None = None
+    worldZ: float | None = None
+    classLabel: str | None = None
+    confidence: float | None = None
+    category: str | None = None
+    visible: bool | None = None
+    raw: Mapping[str, Any] = field(default_factory=dict[str, Any], compare=False, repr=False)
+
+    @staticmethod
+    def from_json(value: Any) -> PredictedKeyPoint:
+        obj = _object(value)
+        return PredictedKeyPoint(x=_optional(obj, 'x', _number), y=_optional(obj, 'y', _number), z=_optional(obj, 'z', _number), worldX=_optional(obj, 'worldX', _number), worldY=_optional(obj, 'worldY', _number), worldZ=_optional(obj, 'worldZ', _number), classLabel=_optional(obj, 'classLabel', _string), confidence=_optional(obj, 'confidence', _number), category=_optional(obj, 'category', _string), visible=_optional(obj, 'visible', _boolean), raw=copy.deepcopy(obj))
+
+    def to_json(self) -> dict[str, Any]:
+        out = copy.deepcopy(dict(self.raw))
+        if self.x is not None:
+            _put_number(out, 'x', self.x)
+        else:
+            out.pop('x', None)
+        if self.y is not None:
+            _put_number(out, 'y', self.y)
+        else:
+            out.pop('y', None)
+        if self.z is not None:
+            _put_number(out, 'z', self.z)
+        else:
+            out.pop('z', None)
+        if self.worldX is not None:
+            _put_number(out, 'worldX', self.worldX)
+        else:
+            out.pop('worldX', None)
+        if self.worldY is not None:
+            _put_number(out, 'worldY', self.worldY)
+        else:
+            out.pop('worldY', None)
+        if self.worldZ is not None:
+            _put_number(out, 'worldZ', self.worldZ)
+        else:
+            out.pop('worldZ', None)
+        if self.classLabel is not None:
+            out['classLabel'] = _dump(self.classLabel)
+        else:
+            out.pop('classLabel', None)
+        if self.confidence is not None:
+            _put_number(out, 'confidence', self.confidence)
+        else:
+            out.pop('confidence', None)
+        if self.category is not None:
+            out['category'] = _dump(self.category)
+        else:
+            out.pop('category', None)
+        if self.visible is not None:
+            out['visible'] = _dump(self.visible)
+        else:
+            out.pop('visible', None)
+        return out
+
+
+
+@dataclass(frozen=True)
+class PredictedKeyPoints:
+    confidence: float | None = None
+    category: str | None = None
+    points: list[PredictedKeyPoint] | None = None
+    raw: Mapping[str, Any] = field(default_factory=dict[str, Any], compare=False, repr=False)
+
+    @staticmethod
+    def from_json(value: Any) -> PredictedKeyPoints:
+        obj = _object(value)
+        return PredictedKeyPoints(confidence=_optional(obj, 'confidence', _number), category=_optional(obj, 'category', _string), points=_optional(obj, 'points', _array(PredictedKeyPoint.from_json)), raw=copy.deepcopy(obj))
+
+    def to_json(self) -> dict[str, Any]:
+        out = copy.deepcopy(dict(self.raw))
+        if self.confidence is not None:
+            _put_number(out, 'confidence', self.confidence)
+        else:
+            out.pop('confidence', None)
+        if self.category is not None:
+            out['category'] = _dump(self.category)
+        else:
+            out.pop('category', None)
+        if self.points is not None:
+            out['points'] = _dump(self.points)
+        else:
+            out.pop('points', None)
+        return out
+
+
+
+@dataclass(frozen=True)
+class PredictedMesh:
+    confidence: float | None = None
+    category: str | None = None
+    points: list[Point] | None = None
+    raw: Mapping[str, Any] = field(default_factory=dict[str, Any], compare=False, repr=False)
+
+    @staticmethod
+    def from_json(value: Any) -> PredictedMesh:
+        obj = _object(value)
+        return PredictedMesh(confidence=_optional(obj, 'confidence', _number), category=_optional(obj, 'category', _string), points=_optional(obj, 'points', _array(Point.from_json)), raw=copy.deepcopy(obj))
+
+    def to_json(self) -> dict[str, Any]:
+        out = copy.deepcopy(dict(self.raw))
+        if self.confidence is not None:
+            _put_number(out, 'confidence', self.confidence)
+        else:
+            out.pop('confidence', None)
+        if self.category is not None:
+            out['category'] = _dump(self.category)
+        else:
+            out.pop('category', None)
+        if self.points is not None:
+            out['points'] = _dump(self.points)
+        else:
+            out.pop('points', None)
+        return out
+
+
+
+@dataclass(frozen=True)
+class PredictedObject:
+    classLabel: str | None = None
+    confidence: float | None = None
+    category: str | None = None
+    x: float | None = None
+    y: float | None = None
+    width: float | None = None
+    height: float | None = None
+    orientation: float | None = None
+    trackId: int | None = None
+    globalObjectId: int | None = None
+    outline: list[Point] | None = None
+    contours: list[Contour] | None = None
+    mask: Mask | None = None
+    objects: list[PredictedObject] | None = None
+    classes: list[PredictedClass] | None = None
+    texts: list[PredictedText] | None = None
+    keyPoints: list[PredictedKeyPoints] | None = None
+    meshes: list[PredictedMesh] | None = None
+    details: list[Mapping[str, Any]] | None = None
+    raw: Mapping[str, Any] = field(default_factory=dict[str, Any], compare=False, repr=False)
+
+    @staticmethod
+    def from_json(value: Any) -> PredictedObject:
+        obj = _object(value)
+        return PredictedObject(classLabel=_optional(obj, 'classLabel', _string), confidence=_optional(obj, 'confidence', _number), category=_optional(obj, 'category', _string), x=_optional(obj, 'x', _number), y=_optional(obj, 'y', _number), width=_optional(obj, 'width', _number), height=_optional(obj, 'height', _number), orientation=_optional(obj, 'orientation', _number), trackId=_optional(obj, 'trackId', _integer), globalObjectId=_optional(obj, 'globalObjectId', _integer), outline=_optional(obj, 'outline', _array(Point.from_json)), contours=_optional(obj, 'contours', _array(Contour.from_json)), mask=_optional(obj, 'mask', Mask.from_json), objects=_optional(obj, 'objects', _array(PredictedObject.from_json)), classes=_optional(obj, 'classes', _array(PredictedClass.from_json)), texts=_optional(obj, 'texts', _array(PredictedText.from_json)), keyPoints=_optional(obj, 'keyPoints', _array(PredictedKeyPoints.from_json)), meshes=_optional(obj, 'meshes', _array(PredictedMesh.from_json)), details=_optional(obj, 'details', _array(_free)), raw=copy.deepcopy(obj))
+
+    def to_json(self) -> dict[str, Any]:
+        out = copy.deepcopy(dict(self.raw))
+        if self.classLabel is not None:
+            out['classLabel'] = _dump(self.classLabel)
+        else:
+            out.pop('classLabel', None)
+        if self.confidence is not None:
+            _put_number(out, 'confidence', self.confidence)
+        else:
+            out.pop('confidence', None)
+        if self.category is not None:
+            out['category'] = _dump(self.category)
+        else:
+            out.pop('category', None)
+        if self.x is not None:
+            _put_number(out, 'x', self.x)
+        else:
+            out.pop('x', None)
+        if self.y is not None:
+            _put_number(out, 'y', self.y)
+        else:
+            out.pop('y', None)
+        if self.width is not None:
+            _put_number(out, 'width', self.width)
+        else:
+            out.pop('width', None)
+        if self.height is not None:
+            _put_number(out, 'height', self.height)
+        else:
+            out.pop('height', None)
+        if self.orientation is not None:
+            _put_number(out, 'orientation', self.orientation)
+        else:
+            out.pop('orientation', None)
+        if self.trackId is not None:
+            out['trackId'] = _dump(self.trackId)
+        else:
+            out.pop('trackId', None)
+        if self.globalObjectId is not None:
+            out['globalObjectId'] = _dump(self.globalObjectId)
+        else:
+            out.pop('globalObjectId', None)
+        if self.outline is not None:
+            out['outline'] = _dump(self.outline)
+        else:
+            out.pop('outline', None)
+        if self.contours is not None:
+            out['contours'] = _dump(self.contours)
+        else:
+            out.pop('contours', None)
+        if self.mask is not None:
+            out['mask'] = _dump(self.mask)
+        else:
+            out.pop('mask', None)
+        if self.objects is not None:
+            out['objects'] = _dump(self.objects)
+        else:
+            out.pop('objects', None)
+        if self.classes is not None:
+            out['classes'] = _dump(self.classes)
+        else:
+            out.pop('classes', None)
+        if self.texts is not None:
+            out['texts'] = _dump(self.texts)
+        else:
+            out.pop('texts', None)
+        if self.keyPoints is not None:
+            out['keyPoints'] = _dump(self.keyPoints)
+        else:
+            out.pop('keyPoints', None)
+        if self.meshes is not None:
+            out['meshes'] = _dump(self.meshes)
+        else:
+            out.pop('meshes', None)
+        if self.details is not None:
+            out['details'] = _dump(self.details)
+        else:
+            out.pop('details', None)
+        return out
+
+
+
+@dataclass(frozen=True)
+class PredictedText:
+    text: str | None = None
+    confidence: float | None = None
+    category: str | None = None
+    raw: Mapping[str, Any] = field(default_factory=dict[str, Any], compare=False, repr=False)
+
+    @staticmethod
+    def from_json(value: Any) -> PredictedText:
+        obj = _object(value)
+        return PredictedText(text=_optional(obj, 'text', _string), confidence=_optional(obj, 'confidence', _number), category=_optional(obj, 'category', _string), raw=copy.deepcopy(obj))
+
+    def to_json(self) -> dict[str, Any]:
+        out = copy.deepcopy(dict(self.raw))
+        if self.text is not None:
+            out['text'] = _dump(self.text)
+        else:
+            out.pop('text', None)
+        if self.confidence is not None:
+            _put_number(out, 'confidence', self.confidence)
+        else:
+            out.pop('confidence', None)
+        if self.category is not None:
+            out['category'] = _dump(self.category)
+        else:
+            out.pop('category', None)
+        return out
+
+
+
+@dataclass(frozen=True)
+class Prediction:
+    timestamp: int | None = None
+    seconds: float | None = None
+    offset: int | None = None
+    duration: int | None = None
+    captured_at: int | None = None
+    source_id: str | None = None
+    source_width: int | None = None
+    source_height: int | None = None
+    compute_units: float | None = None
+    milli_compute_units: int | None = None
+    selected: bool | None = None
+    objects: list[PredictedObject] | None = None
+    classes: list[PredictedClass] | None = None
+    texts: list[PredictedText] | None = None
+    keyPoints: list[PredictedKeyPoints] | None = None
+    meshes: list[PredictedMesh] | None = None
+    depth: Depth | None = None
+    tokens: Mapping[str, Any] | None = None
+    details: list[Mapping[str, Any]] | None = None
+    track_events: list[TrackEvent] | None = None
+    raw: Mapping[str, Any] = field(default_factory=dict[str, Any], compare=False, repr=False)
+
+    @staticmethod
+    def from_json(value: Any) -> Prediction:
+        obj = _object(value)
+        return Prediction(timestamp=_optional(obj, 'timestamp', _integer), seconds=_optional(obj, 'seconds', _number), offset=_optional(obj, 'offset', _integer), duration=_optional(obj, 'duration', _integer), captured_at=_optional(obj, 'captured_at', _integer), source_id=_optional(obj, 'source_id', _string), source_width=_optional(obj, 'source_width', _integer), source_height=_optional(obj, 'source_height', _integer), compute_units=_optional(obj, 'compute_units', _number), milli_compute_units=_optional(obj, 'milli_compute_units', _integer), selected=_optional(obj, 'selected', _boolean), objects=_optional(obj, 'objects', _array(PredictedObject.from_json)), classes=_optional(obj, 'classes', _array(PredictedClass.from_json)), texts=_optional(obj, 'texts', _array(PredictedText.from_json)), keyPoints=_optional(obj, 'keyPoints', _array(PredictedKeyPoints.from_json)), meshes=_optional(obj, 'meshes', _array(PredictedMesh.from_json)), depth=_optional(obj, 'depth', Depth.from_json), tokens=_optional(obj, 'tokens', _free), details=_optional(obj, 'details', _array(_free)), track_events=_optional(obj, 'track_events', _array(TrackEvent.from_json)), raw=copy.deepcopy(obj))
+
+    def to_json(self) -> dict[str, Any]:
+        out = copy.deepcopy(dict(self.raw))
+        if self.timestamp is not None:
+            out['timestamp'] = _dump(self.timestamp)
+        else:
+            out.pop('timestamp', None)
+        if self.seconds is not None:
+            _put_number(out, 'seconds', self.seconds)
+        else:
+            out.pop('seconds', None)
+        if self.offset is not None:
+            out['offset'] = _dump(self.offset)
+        else:
+            out.pop('offset', None)
+        if self.duration is not None:
+            out['duration'] = _dump(self.duration)
+        else:
+            out.pop('duration', None)
+        if self.captured_at is not None:
+            out['captured_at'] = _dump(self.captured_at)
+        else:
+            out.pop('captured_at', None)
+        if self.source_id is not None:
+            out['source_id'] = _dump(self.source_id)
+        else:
+            out.pop('source_id', None)
+        if self.source_width is not None:
+            out['source_width'] = _dump(self.source_width)
+        else:
+            out.pop('source_width', None)
+        if self.source_height is not None:
+            out['source_height'] = _dump(self.source_height)
+        else:
+            out.pop('source_height', None)
+        if self.compute_units is not None:
+            _put_number(out, 'compute_units', self.compute_units)
+        else:
+            out.pop('compute_units', None)
+        if self.milli_compute_units is not None:
+            out['milli_compute_units'] = _dump(self.milli_compute_units)
+        else:
+            out.pop('milli_compute_units', None)
+        if self.selected is not None:
+            out['selected'] = _dump(self.selected)
+        else:
+            out.pop('selected', None)
+        if self.objects is not None:
+            out['objects'] = _dump(self.objects)
+        else:
+            out.pop('objects', None)
+        if self.classes is not None:
+            out['classes'] = _dump(self.classes)
+        else:
+            out.pop('classes', None)
+        if self.texts is not None:
+            out['texts'] = _dump(self.texts)
+        else:
+            out.pop('texts', None)
+        if self.keyPoints is not None:
+            out['keyPoints'] = _dump(self.keyPoints)
+        else:
+            out.pop('keyPoints', None)
+        if self.meshes is not None:
+            out['meshes'] = _dump(self.meshes)
+        else:
+            out.pop('meshes', None)
+        if self.depth is not None:
+            out['depth'] = _dump(self.depth)
+        else:
+            out.pop('depth', None)
+        if self.tokens is not None:
+            out['tokens'] = _dump(self.tokens)
+        else:
+            out.pop('tokens', None)
+        if self.details is not None:
+            out['details'] = _dump(self.details)
+        else:
+            out.pop('details', None)
+        if self.track_events is not None:
+            out['track_events'] = _dump(self.track_events)
+        else:
+            out.pop('track_events', None)
+        return out
+
+
+
+@dataclass(frozen=True)
 class PredictionMessage:
     id: str
-    prediction: Mapping[str, Any]
+    prediction: Prediction
     raw: Mapping[str, Any] = field(default_factory=dict[str, Any], compare=False, repr=False)
 
     @staticmethod
     def from_json(value: Any) -> PredictionMessage:
         obj = _object(value)
         _required(obj, 'type', _const('prediction'))
-        return PredictionMessage(id=_required(obj, 'id', _limit(_string, min_length=1)), prediction=_required(obj, 'prediction', _free), raw=copy.deepcopy(obj))
+        return PredictionMessage(id=_required(obj, 'id', _limit(_string, min_length=1)), prediction=_required(obj, 'prediction', Prediction.from_json), raw=copy.deepcopy(obj))
 
     def to_json(self) -> dict[str, Any]:
         out = copy.deepcopy(dict(self.raw))
@@ -1006,6 +1566,41 @@ class StopSource:
         out = copy.deepcopy(dict(self.raw))
         out['id'] = _dump(self.id)
         out['type'] = 'stopSource'
+        return out
+
+
+
+@dataclass(frozen=True)
+class TrackEvent:
+    track_id: int | None = None
+    is_ended: bool | None = None
+    started_at: int | None = None
+    ended_at: int | None = None
+    raw: Mapping[str, Any] = field(default_factory=dict[str, Any], compare=False, repr=False)
+
+    @staticmethod
+    def from_json(value: Any) -> TrackEvent:
+        obj = _object(value)
+        return TrackEvent(track_id=_optional(obj, 'track_id', _integer), is_ended=_optional(obj, 'is_ended', _boolean), started_at=_optional(obj, 'started_at', _integer), ended_at=_optional(obj, 'ended_at', _integer), raw=copy.deepcopy(obj))
+
+    def to_json(self) -> dict[str, Any]:
+        out = copy.deepcopy(dict(self.raw))
+        if self.track_id is not None:
+            out['track_id'] = _dump(self.track_id)
+        else:
+            out.pop('track_id', None)
+        if self.is_ended is not None:
+            out['is_ended'] = _dump(self.is_ended)
+        else:
+            out.pop('is_ended', None)
+        if self.started_at is not None:
+            out['started_at'] = _dump(self.started_at)
+        else:
+            out.pop('started_at', None)
+        if self.ended_at is not None:
+            out['ended_at'] = _dump(self.ended_at)
+        else:
+            out.pop('ended_at', None)
         return out
 
 

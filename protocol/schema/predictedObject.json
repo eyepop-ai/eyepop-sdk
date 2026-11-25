@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.eyepop.ai/pipeline-socket/v1/predictedObject.json",
+  "title": "predictedObject",
+  "type": "object",
+  "properties": {
+    "classLabel": { "type": "string" },
+    "confidence": { "type": "number" },
+    "category": { "type": "string" },
+    "x": { "type": "number" },
+    "y": { "type": "number" },
+    "width": { "type": "number" },
+    "height": { "type": "number" },
+    "orientation": { "type": "number" },
+    "trackId": { "type": "integer" },
+    "globalObjectId": { "type": "integer" },
+    "outline": { "type": "array", "items": { "$ref": "point.json" } },
+    "contours": { "type": "array", "items": { "$ref": "contour.json" } },
+    "mask": { "$ref": "mask.json" },
+    "objects": { "type": "array", "items": { "$ref": "predictedObject.json" } },
+    "classes": { "type": "array", "items": { "$ref": "predictedClass.json" } },
+    "texts": { "type": "array", "items": { "$ref": "predictedText.json" } },
+    "keyPoints": { "type": "array", "items": { "$ref": "predictedKeyPoints.json" } },
+    "meshes": { "type": "array", "items": { "$ref": "predictedMesh.json" } },
+    "details": { "type": "array", "items": { "type": "object" } }
+  }
+}
