@@ -396,9 +396,12 @@ internal static class WireRules
 
 
 def emit(model: Model) -> str:
-    parts = [emit_enum(e) for e in model.enums]
-    parts += [emit_object(o, model.unions_of(o)) for o in model.objects]
-    parts += [emit_union(u) for u in model.unions]
+    def access(name: str) -> str:
+        return "public" if model.is_public(name) else "internal"
+
+    parts = [emit_enum(e, access(e.name)) for e in model.enums]
+    parts += [emit_object(o, model.unions_of(o), access(o.name)) for o in model.objects]
+    parts += [emit_union(u, access(u.name)) for u in model.unions]
     return HEADER + constants(model.wire) + "\n" + "\n".join(parts)
 
 
@@ -495,17 +498,17 @@ def reserved(field: Field, fields: Sequence[Field]) -> set[str]:
 NAMING = Naming(field=prop_name, reserved=reserved, value=value_name)
 
 
-def emit_enum(enum: Enum) -> str:
+def emit_enum(enum: Enum, access: str) -> str:
     names = enum.value_names
     reads = "\n".join(f'            "{v}" => {enum.name}.{n},' for v, n in zip(enum.values, names))
     writes = "\n".join(f'            {enum.name}.{n} => "{v}",' for v, n in zip(enum.values, names))
     return f"""
-public enum {enum.name}
+{access} enum {enum.name}
 {{
     {", ".join(names)},
 }}
 
-public static class {enum.name}Wire
+{access} static class {enum.name}Wire
 {{
     public static {enum.name} FromJson(JsonNode? value) =>
         Wire.String(value) switch
@@ -524,7 +527,7 @@ public static class {enum.name}Wire
 """
 
 
-def emit_object(obj: Object, unions: list[str]) -> str:
+def emit_object(obj: Object, unions: list[str], access: str) -> str:
     ordered = sorted(obj.typed, key=lambda f: not f.required)
     params = [
         f"{cs_type(f.type)} {prop_name(obj.name, f.name)}" if f.required else f"{cs_type(f.type)}? {prop_name(obj.name, f.name)} = null"
@@ -556,7 +559,7 @@ def emit_object(obj: Object, unions: list[str]) -> str:
     hide = "new " if unions else ""
     override = "override " if unions else ""
     return f"""
-public sealed record {obj.name}({", ".join(params)}){base}
+{access} sealed record {obj.name}({", ".join(params)}){base}
 {{
     public static {hide}{obj.name} FromJson(JsonNode? value)
     {{
@@ -584,7 +587,7 @@ def condition(variant: Variant) -> str | None:
             return None
 
 
-def emit_union(union: Union) -> str:
+def emit_union(union: Union, access: str) -> str:
     name = union.name
     branches = []
     for v in union.variants:
@@ -599,7 +602,7 @@ def emit_union(union: Union) -> str:
     decode = ""
     if union.open:
         unknown = f"""
-public sealed record Unknown{name}(JsonObject Raw) : {name}
+{access} sealed record Unknown{name}(JsonObject Raw) : {name}
 {{
     public override JsonNode ToJson() => Raw.DeepClone();
 }}
@@ -620,7 +623,7 @@ public sealed record Unknown{name}(JsonObject Raw) : {name}
     }}
 """
     return f"""
-public abstract record {name}
+{access} abstract record {name}
 {{
     public abstract JsonNode ToJson();
 

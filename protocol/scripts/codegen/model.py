@@ -154,6 +154,12 @@ class Model:
     objects: tuple[Object, ...]
     unions: tuple[Union, ...]
     wire: Wire = WIRE
+    # Type names callers may see; None means the schemas set no visibility and every type is public.
+    # Each emitter turns "not public" into its own language's marker.
+    public: frozenset[str] | None = None
+
+    def is_public(self, name: str) -> bool:
+        return self.public is None or name in self.public
 
     @property
     def enums(self) -> tuple[Enum, ...]:
@@ -394,9 +400,44 @@ def check(schemas: Mapping[str, dict], name: str) -> None:
     {"object": object_, "union": union, "scalar": value}[kind(body)](body, [])
 
 
-def parse(schemas: Mapping[str, dict], roots: Sequence[str], namings: Mapping[str, Naming] = {}) -> Model:
+def public_types(objects: Mapping[str, Object], unions: Sequence[Union], named: set[str]) -> frozenset[str]:
+    """The named types plus every type a language needs public for them to be usable.
+
+    A public type cannot expose a hidden one in a field, and a public variant cannot sit under a hidden union.
+    """
+    found: set[str] = set()
+
+    def reach(type_: Type) -> None:
+        match type_:
+            case Ref(name) | Enum(_, name):
+                add(name)
+            case Array(item):
+                reach(item)
+
+    def add(name: str) -> None:
+        if name in found:
+            return
+        found.add(name)
+        if name in objects:
+            for f in objects[name].fields:
+                reach(f.type)
+            for union in unions:
+                if any(v.name == name for v in union.variants):
+                    add(union.name)
+
+    for name in sorted(named):
+        add(name)
+    return frozenset(found)
+
+
+def parse(
+    schemas: Mapping[str, dict], roots: Sequence[str], namings: Mapping[str, Naming] = {}, public: Sequence[str] | None = None
+) -> Model:
     for name in schemas:
         check(schemas, name)
+    for name in public or ():
+        if name not in schemas:
+            raise SchemaError(f"the public list names {name!r}, which is not a schema")
     objects: dict[str, Object] = {}
     sources: dict[str, str] = {}
     origin = ""
@@ -488,7 +529,8 @@ def parse(schemas: Mapping[str, dict], roots: Sequence[str], namings: Mapping[st
     missing = [root for root in roots if pascal(root) not in {u.name for u in unions}]
     if missing:
         raise SchemaError(f"requested roots that are not unions: {', '.join(missing)}")
-    return Model(tuple(objects.values()), unions)
+    visible = None if public is None else public_types(objects, unions, {pascal(name) for name in public})
+    return Model(tuple(objects.values()), unions, public=visible)
 
 
 def variant_suffix(item: dict) -> str:

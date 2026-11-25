@@ -22,7 +22,7 @@ def test_a_schema_file_that_is_not_json_is_named_in_the_error(tmp_path):
 
 
 def test_an_error_that_is_not_about_a_schema_keeps_its_traceback(monkeypatch):
-    def fail(schemas, roots):
+    def fail(schemas, roots, public):
         raise ValueError("emitter bug")
 
     monkeypatch.setattr(generate, "generate", fail)

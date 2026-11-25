@@ -1,6 +1,7 @@
 # /// script
 # requires-python = ">=3.12"
 # ///
+import json
 import subprocess
 import sys
 from pathlib import Path
@@ -25,7 +26,7 @@ def render(language: str, source: str) -> str:
 
 def main(argv: list[str]) -> int:
     try:
-        generated = generate(load_schemas(ROOT / "schema"), ROOTS)
+        generated = generate(load_schemas(ROOT / "schema"), ROOTS, json.loads((ROOT / "public.json").read_text()))
     except SchemaError as error:
         print(f"error: {error}", file=sys.stderr)
         return 1

@@ -16,7 +16,7 @@
       "$ref": "start.json"
     },
     {
-      "$ref": "prediction.json"
+      "$ref": "predictionMessage.json"
     },
     {
       "$ref": "dropped.json"
@@ -34,7 +34,7 @@
       "$ref": "pong.json"
     },
     {
-      "$ref": "error.json"
+      "$ref": "errorMessage.json"
     }
   ]
 }

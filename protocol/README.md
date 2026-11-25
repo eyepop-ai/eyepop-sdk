@@ -16,6 +16,9 @@ JSON Schema (draft 2020-12) for the messages on the pipeline socket: `GET /api/v
   - When an object repeats a key, the last value wins.
   - A string or key holding a lone surrogate is not valid text. A union decoder returns `Unknown` keeping every field.
 
+- `public.json` lists, by schema file name, the types a caller of an SDK may see. Every other type is internal in a language that has the notion; today only the C# generator applies it (`internal`), and the other languages emit everything public. A listed type also makes public the types it holds and the union it belongs to, so a public type never exposes an internal one. A name that is not a schema fails generation. `reconnecting` and `reconnected` are not here: they exist only in the SDKs.
+- A variant's schema file need not be named for its `type` tag: `predictionMessage.json` and `errorMessage.json` hold the `prediction` and `error` messages, named so that `Prediction` and `Error` stay free for other types.
+
 ## Examples
 
 `examples/valid` must pass and `examples/invalid` must fail. A file name starts with `command-` or `message-`, which picks the union it is checked against. `examples/invalid/expected.json` names where and by which keyword each invalid example fails.

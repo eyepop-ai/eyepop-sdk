@@ -2,7 +2,7 @@
 
 The pipeline sends one prediction format: prediction format v4 on the socket, with the same keys the Data API stores, and the Pipeline API passes the object through unchanged. `protocol/schema/prediction.json` types that object once, v4 only and with every field optional, so a later Data API or agent-runtime SDK can reuse it. A `prediction` message keeps the raw object. The typed `Prediction` is built from it, and when its typed fields cannot be read a Job still yields the `Prediction` with the raw object alone.
 
-Not built yet: `protocol/schema/prediction.json` today is the `prediction` message schema, which becomes `predictionMessage.json` when the typed object lands as `prediction.json`.
+Not built yet: `protocol/schema/predictionMessage.json` is the `prediction` message schema, and the typed object will land as `prediction.json`. `Prediction` joins the public list in `protocol/public.json` with it.
 
 ## Considered options
 

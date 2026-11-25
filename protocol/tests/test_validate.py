@@ -41,16 +41,19 @@ def test_an_expected_rule_for_a_missing_example_fails(make_root):
     assert check(root) == [Failure("invalid/command-ping-gone.json", "stale_expectation")]
 
 
-def test_a_variant_whose_type_const_differs_from_its_file_name_fails(make_root):
+def test_an_invalid_example_is_checked_against_the_variant_its_tag_names_whatever_the_file_is_called(make_root):
     root = make_root(
         schemas={
-            "pong": schema("pong", {"type": "object", "properties": {"type": {"const": "pang"}}, "required": ["type"]}),
-            "command": schema("command", {"oneOf": [{"$ref": "ping.json"}, {"$ref": "pong.json"}]}),
+            "ping": schema("ping", {"type": "object"}),
+            "pingMessage": schema("pingMessage", {"type": "object", "properties": {"type": {"const": "ping"}, "id": {"type": "string"}}, "required": ["type", "id"]}),
+            "command": schema("command", {"oneOf": [{"$ref": "pingMessage.json"}]}),
         },
         valid=valid_ping(),
+        invalid=missing_id(),
+        expected={"command-ping-missing-id.json": {"path": "", "keyword": "required"}},
     )
 
-    assert check(root) == [Failure("schema/pong.json", "type_mismatch")]
+    assert check(root) == []
 
 
 def test_a_variant_missing_from_its_union_fails(make_root):
