@@ -17,6 +17,8 @@ from codegen import ROOTS
 
 ROOT = Path(__file__).resolve().parent.parent
 UNIONS = MappingProxyType({root: f"{root}.json" for root in ROOTS})
+# A public union lists only variants of the union it is a view of.
+SUBSETS = MappingProxyType({"jobMessage": "message"})
 EXPECTED = "expected.json"
 
 
@@ -100,7 +102,7 @@ def is_schema(path: Path) -> bool:
     return True
 
 
-def check(root: Path, unions: Mapping[str, str] = UNIONS) -> list[Failure]:
+def check(root: Path, unions: Mapping[str, str] = UNIONS, subsets: Mapping[str, str] = SUBSETS) -> list[Failure]:
     listed = [name for union in unions.values() for name in members(root, union)]
     missing = [name for name in listed if not (root / "schema" / f"{name}.json").exists()]
     if missing:
@@ -108,6 +110,15 @@ def check(root: Path, unions: Mapping[str, str] = UNIONS) -> list[Failure]:
     broken = [path.stem for path in sorted((root / "schema").glob("*.json")) if not is_schema(path)]
     if broken:
         return [Failure(f"schema/{name}.json", "invalid_schema") for name in broken]
+    outside = [
+        (name, whole)
+        for sub, whole in subsets.items()
+        if (root / "schema" / f"{sub}.json").exists()
+        for name in members(root, f"{sub}.json")
+        if name not in members(root, f"{whole}.json")
+    ]
+    if outside:
+        return [Failure(f"schema/{name}.json", f"not_in_{whole}") for name, whole in outside]
     registry = load_registry(root)
     manifest = root / "examples" / "invalid" / EXPECTED
     expected = json.loads(manifest.read_text()) if manifest.exists() else {}

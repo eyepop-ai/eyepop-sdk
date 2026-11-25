@@ -13,7 +13,7 @@ EXAMPLES = sorted((ROOT / "examples" / "valid").glob("*.json"))
 @pytest.fixture(scope="module")
 def protocol():
     schemas = load_schemas(ROOT / "schema")
-    return load_python(generate(schemas, ROOTS)["python"])
+    return load_python(generate(schemas, ROOTS, None)["python"])
 
 
 @pytest.mark.parametrize("example", EXAMPLES, ids=lambda p: p.stem)

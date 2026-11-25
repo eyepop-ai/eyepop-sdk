@@ -18,7 +18,7 @@ def union(name: str, *variants: str) -> dict:
 SCHEMAS = {
     "shown": obj("shown", level={"enum": ["low", "high"]}, part={"$ref": "part.json"}),
     "part": obj("part"),
-    "hidden": obj("hidden"),
+    "hidden": obj("hidden", mode={"enum": ["a", "b"]}),
     "start": obj("start", "start"),
     "pong": obj("pong", "pong"),
     "setPop": obj("setPop", "setPop"),
@@ -67,17 +67,45 @@ def test_a_variant_of_a_public_union_and_of_an_internal_one_sits_under_the_publi
     source = csharp(["start", "jobMessage"])
 
     assert "public abstract record JobMessage" in source
-    assert "public sealed record Start(string Id, JsonObject? Raw = null) : JobMessage" in source
+    assert "public sealed record Start(string Id, JsonObject? Raw = null) : JobMessage, IMessage" in source
 
 
-def test_an_internal_union_that_holds_public_variants_is_not_their_base_type():
+def test_an_internal_union_that_holds_public_variants_is_an_interface_not_their_base_type():
     source = csharp(["start", "jobMessage"])
 
-    assert "internal static class Message" in source
-    assert "public static object Decode(JsonNode? value)" in source
-    assert "internal sealed record UnknownMessage(" in source
-    assert "internal sealed record Pong(string Id, JsonObject? Raw = null)\n{" in source
+    assert "internal interface IMessage\n{\n    JsonNode ToJson();\n}" in source
+    assert "internal static class MessageWire" in source
+    assert "public static IMessage Decode(JsonNode? value)" in source
+    assert "internal sealed record UnknownMessage(JsonObject Raw) : IMessage" in source
+    assert "internal sealed record Pong(string Id, JsonObject? Raw = null) : IMessage" in source
+    assert "ToJson(object" not in source
+
+
+def test_an_enum_of_an_unlisted_schema_is_internal():
+    source = csharp(["start", "jobMessage"])
+
+    assert "internal enum HiddenMode" in source
+    assert "internal static class HiddenModeWire" in source
+
+
+def test_a_public_type_holding_a_list_of_an_internal_one_fails():
+    bag = obj("bag", parts={"type": "array", "items": {"$ref": "hidden.json"}})
+
+    with pytest.raises(ValueError, match="public type Bag holds Hidden, which is not on the public list"):
+        generate({**SCHEMAS, "bag": bag}, ROOTS, ["bag"])
 
 
 def test_without_a_list_every_type_stays_public():
     assert "internal sealed record" not in csharp(None)
+
+
+def test_an_empty_public_list_fails():
+    with pytest.raises(ValueError, match="the public list is empty"):
+        csharp([])
+
+
+def test_a_listed_schema_that_defines_no_type_fails():
+    scalar = schema("code", {"type": "string"})
+
+    with pytest.raises(ValueError, match="public list names 'code', which defines no type"):
+        generate({**SCHEMAS, "code": scalar}, ROOTS, ["start", "jobMessage", "code"])

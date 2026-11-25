@@ -8,7 +8,7 @@ from . import csharp, go, python, rust
 ROOTS = ("command", "message")
 
 
-def generate(schemas: Mapping[str, dict], roots: Sequence[str], public: Sequence[str] | None = None) -> dict[str, str]:
+def generate(schemas: Mapping[str, dict], roots: Sequence[str], public: Sequence[str] | None) -> dict[str, str]:
     emitters = {"python": python, "rust": rust, "go": go, "csharp": csharp}
     model = parse(schemas, roots, {language: emitter.NAMING for language, emitter in emitters.items()}, public)
     return {language: emitter.emit(model) for language, emitter in emitters.items()}

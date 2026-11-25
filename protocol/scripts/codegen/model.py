@@ -407,6 +407,9 @@ def public_types(objects: Mapping[str, Object], unions: Sequence[Union], sources
     instead of leaking it.
     """
     public = frozenset(name for name, origin in sources.items() if origin.split(".json#")[0] in listed)
+    for file in listed:
+        if not any(origin.split(".json#")[0] == file for origin in sources.values()):
+            raise SchemaError(f"the public list names {file!r}, which defines no type")
 
     def holds(type_: Type) -> list[str]:
         match type_:
@@ -433,6 +436,8 @@ def parse(
 ) -> Model:
     for name in schemas:
         check(schemas, name)
+    if public is not None and not public:
+        raise SchemaError("the public list is empty")
     for name in public or ():
         if name not in schemas:
             raise SchemaError(f"the public list names {name!r}, which is not a schema")

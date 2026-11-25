@@ -634,7 +634,7 @@ public sealed record ComponentParams(long ComponentId, JsonObject Values, JsonOb
 }
 
 
-internal sealed record Credit(string Id, long Bytes, long? Member = null, JsonObject? Raw = null)
+internal sealed record Credit(string Id, long Bytes, long? Member = null, JsonObject? Raw = null) : IMessage
 {
     public static Credit FromJson(JsonNode? value)
     {
@@ -656,7 +656,7 @@ internal sealed record Credit(string Id, long Bytes, long? Member = null, JsonOb
 }
 
 
-internal sealed record Done(JsonObject? Raw = null)
+internal sealed record Done(JsonObject? Raw = null) : IMessage
 {
     public static Done FromJson(JsonNode? value)
     {
@@ -674,7 +674,7 @@ internal sealed record Done(JsonObject? Raw = null)
 }
 
 
-public sealed record Dropped(string Id, long Count, JsonObject? Raw = null) : JobMessage
+public sealed record Dropped(string Id, long Count, JsonObject? Raw = null) : JobMessage, IMessage
 {
     public static new Dropped FromJson(JsonNode? value)
     {
@@ -694,7 +694,7 @@ public sealed record Dropped(string Id, long Count, JsonObject? Raw = null) : Jo
 }
 
 
-public sealed record End(string Id, EndReason Reason, string? Message = null, long? MilliComputeUnits = null, JsonObject? Raw = null) : JobMessage
+public sealed record End(string Id, EndReason Reason, string? Message = null, long? MilliComputeUnits = null, JsonObject? Raw = null) : JobMessage, IMessage
 {
     public static new End FromJson(JsonNode? value)
     {
@@ -718,7 +718,7 @@ public sealed record End(string Id, EndReason Reason, string? Message = null, lo
 }
 
 
-internal sealed record ErrorMessage(string Error, string Message, string? Id = null, JsonObject? Raw = null)
+internal sealed record ErrorMessage(string Error, string Message, string? Id = null, JsonObject? Raw = null) : IMessage
 {
     public static ErrorMessage FromJson(JsonNode? value)
     {
@@ -808,7 +808,7 @@ internal sealed record Ping(string Id, JsonObject? Raw = null) : Command
 }
 
 
-internal sealed record Pong(string Id, JsonObject? Raw = null)
+internal sealed record Pong(string Id, JsonObject? Raw = null) : IMessage
 {
     public static Pong FromJson(JsonNode? value)
     {
@@ -873,7 +873,7 @@ public sealed record PopDepthMap(string? Ability = null, string? AbilityUuid = n
 }
 
 
-public sealed record PredictionMessage(string Id, JsonObject Prediction, JsonObject? Raw = null) : JobMessage
+public sealed record PredictionMessage(string Id, JsonObject Prediction, JsonObject? Raw = null) : JobMessage, IMessage
 {
     public static new PredictionMessage FromJson(JsonNode? value)
     {
@@ -929,7 +929,7 @@ public sealed record RawComponent(string Type, JsonObject? Raw = null) : PopComp
 }
 
 
-internal sealed record Result(string Id, JsonObject? Raw = null)
+internal sealed record Result(string Id, JsonObject? Raw = null) : IMessage
 {
     public static Result FromJson(JsonNode? value)
     {
@@ -948,7 +948,7 @@ internal sealed record Result(string Id, JsonObject? Raw = null)
 }
 
 
-internal sealed record Send(string Id, long Credit, long? Member = null, JsonObject? Raw = null)
+internal sealed record Send(string Id, long Credit, long? Member = null, JsonObject? Raw = null) : IMessage
 {
     public static Send FromJson(JsonNode? value)
     {
@@ -1081,7 +1081,7 @@ public sealed record SourceDefaults(Camera? Camera = null, string? Fps = null, R
 }
 
 
-public sealed record Start(string Id, JsonObject? Raw = null) : JobMessage
+public sealed record Start(string Id, JsonObject? Raw = null) : JobMessage, IMessage
 {
     public static new Start FromJson(JsonNode? value)
     {
@@ -1140,7 +1140,7 @@ internal sealed record Uploaded(string Id, long? Member = null, JsonObject? Raw 
 }
 
 
-public sealed record Usage(string Id, long MilliComputeUnits, JsonObject? Raw = null) : JobMessage
+public sealed record Usage(string Id, long MilliComputeUnits, JsonObject? Raw = null) : JobMessage, IMessage
 {
     public static new Usage FromJson(JsonNode? value)
     {
@@ -1349,27 +1349,14 @@ public abstract record JobMessage
 }
 
 
-internal static class Message
+internal interface IMessage
 {
-    public static JsonNode ToJson(object value) =>
-        value switch
-        {
-        Result v => v.ToJson(),
-        Send v => v.ToJson(),
-        Credit v => v.ToJson(),
-        Start v => v.ToJson(),
-        PredictionMessage v => v.ToJson(),
-        Dropped v => v.ToJson(),
-        Usage v => v.ToJson(),
-        End v => v.ToJson(),
-        Done v => v.ToJson(),
-        Pong v => v.ToJson(),
-        ErrorMessage v => v.ToJson(),
-        UnknownMessage v => v.ToJson(),
-            _ => throw new ArgumentException("not a Message", nameof(value)),
-        };
+    JsonNode ToJson();
+}
 
-    public static object FromJson(JsonNode? value)
+internal static class MessageWire
+{
+    public static IMessage FromJson(JsonNode? value)
     {
         var obj = Wire.Object(value);
         if (Wire.TagIs(obj, "result")) return Result.FromJson(value);
@@ -1386,7 +1373,7 @@ internal static class Message
         throw new FormatException("no variant matches");
     }
 
-    public static object Decode(JsonNode? value)
+    public static IMessage Decode(JsonNode? value)
     {
         var tree = Wire.Tree(value, out var unicode);
         try
@@ -1401,7 +1388,7 @@ internal static class Message
     }
 }
 
-internal sealed record UnknownMessage(JsonObject Raw)
+internal sealed record UnknownMessage(JsonObject Raw) : IMessage
 {
     public JsonNode ToJson() => Raw.DeepClone();
 }
