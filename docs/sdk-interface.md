@@ -66,13 +66,13 @@ No IO, no clock, no environment.
 - `setPop(pop)`: sent in order like any command, and completes when the server answers `result`. It changes the pop in place, under the sources already running or queued. If it fails, the Pipeline keeps the last pop that applied.
 - `getGraph(format, verbose?) → graph`: the server's answer, as raw JSON.
 - `ping()`: completes when the server answers `pong`.
-- `status()`: `state` (`connecting`, `open`, `backingOff`, `idle`, `closed`), the number of reconnects, the last Error, and the number of malformed frames with the last one.
+- `status()`: the Pipeline `id`, `state` (`connecting`, `open`, `backingOff`, `idle`, `closed`), the number of reconnects (every attempt that followed a failure, failed attempts included), the last Error, and the number of malformed frames with the last one.
 - `close()`: sends `quit` and stops reconnecting.
 
 **Job**: the handle of one Source.
 - `id`: chosen by the SDK, numbered per Pipeline, and unique for the Pipeline's life. A caller never passes one.
 - `messages()`: that source's `start`, `prediction`, `dropped`, `usage` and `end`, and the Pipeline's `reconnecting` and `reconnected`.
-- `predictions()`: every prediction of the source, selected ones included, each as a Prediction. A Prediction whose typed fields could not be read still arrives, with only its JSON object. Skip a selected one when counting frames. It is a filtered view of `messages()`: it ends when the Job ends, and fails after the last prediction when the Job ends with an Error or with `end` reason `error`.
+- `predictions()`: every prediction of the source, selected ones included, each as a Prediction. A Prediction whose typed fields could not be read still arrives, with only its JSON object. Skip a selected one when counting frames. It is a filtered view of `messages()`: it ends when the Job ends, and fails after the last prediction when the Job ends with an Error or with `end` reason `error`. For `end` reason `error` the failure is `command_rejected` with the `end` message's text and the error `end_error`.
 
 A Job has one reader. The first call of `messages()` or `predictions()` takes it, and any later call of either fails, in the language's own way for a misuse rather than as an Error kind. Two readers of one buffer would each see only part of it.
 - `cancel()`: sends `stopSource`; the Job ends with `end` reason `stopped`.
@@ -90,13 +90,13 @@ The SDK sends every command as it is called and keeps no queue and no ordering p
 
 ## Uploads
 
-A known length of 8 MiB or less goes as one combined message. Anything else is chunked under the server's credit in 64 KiB frames, one upload at a time, and the SDK sends `uploaded` after the last chunk. The caller never sees `send`, `credit` or `uploaded`. A file path is a per-language helper that builds the stream, not part of this contract.
+A known length of 8 MiB or less goes as one combined message. Anything else is chunked under the server's credit in 64 KiB frames, one upload at a time, and the SDK sends `uploaded` after the last chunk. The caller never sees `send`, `credit` or `uploaded`. Credit arrives through the reader, so an upload moves only while its Job (or a command) is being pulled. The SDK closes a source's stream when its Job ends, when its socket is replaced and when the Pipeline closes. If the caller's own stream fails to open or read, the SDK stops that source and its Job ends with that failure, not with an Error kind: the failure is the caller's, and a retry would hit it again. A file path is a per-language helper that builds the stream, not part of this contract.
 
 ## Backpressure and closing
 
-The Pipeline reads the socket only while a consumer pulls from a Job or a command waits for its answer. Each Job has a buffer of 256 messages; when one is full the reader waits, so the pressure reaches the server, which drops predictions for live sources and closes with `1008 slow_client` after its write timeout for the others. The SDK drops nothing itself. Consume every Job you open: one stalled Job holds up the others.
+The Pipeline reads the socket only while a consumer pulls from a Job (from its first read until it ends) or a command waits for its answer. Each Job has a buffer of 256 messages; when one is full the reader waits, even if another Job is being read, so the pressure reaches the server, which drops predictions for live sources and closes with `1008 slow_client` after its write timeout for the others. The SDK drops nothing itself. The limit is on what the reader adds: the Pipeline's own `reconnecting` and `reconnected` messages can take a buffer a few past it. A Job whose reader has stopped (the enumeration ended early, or the Job was disposed) is abandoned: it buffers nothing more, so it no longer holds up the others. A Job that was only cancelled is still read to its end. Consume every Job you open: one stalled Job holds up the others. A Pipeline nobody reads does not notice its socket closing until the next read or command.
 
-`close()` ends every Job's `messages()` normally, and only `close()` ends a Pipeline. A `1000 idle` close leaves the Pipeline idle: the next command opens a new socket. Every other close goes through "Supervision". A close it cannot retry is an error of kind `closed` with its `closeCode` and reason, and every Job in flight receives it.
+`close()` ends every Job's `messages()` normally, and only `close()` ends a Pipeline. It flushes `quit` before it closes the socket, for at most 5 s, so a server that stopped reading cannot hold `close()` forever. A `1000 idle` close leaves the Pipeline idle: the next command opens a new socket. Every other close goes through "Supervision". A close it cannot retry is an error of kind `closed` with its `closeCode` and reason, and every Job in flight receives it.
 
 ## Supervision
 
@@ -125,16 +125,21 @@ Backoff is exponential with full jitter. It starts at 1 s, is capped at 60 s, an
 | Close `1001`; close `1011` with any other reason or with no `setPop` pending; close `1008` `slow_client` or `client_gone`; a drop with no close frame | Reconnects with backoff |
 | Close `1008 credential_expired` | Exchanges again and reconnects at once |
 | Close `1008` `unexpected_bytes` or `credit_exceeded` | Terminal `closed`: the SDK broke the upload protocol, and a resend would break it again |
-| No message for longer than the liveness window (default 60 s; the server pings every 20 s) | Treats the socket as dead, closes it and reconnects |
+| No message for longer than the liveness window (default 60 s) | Treats the socket as dead, closes it and reconnects. Half-way through the window the SDK sends a `ping` of its own, because a client socket answers the server's pings inside the transport and never shows them; any message after it, the `pong` included, counts. Only time spent reading counts |
 | `error` `overloaded` for a `setSource` | Sends that source again with backoff |
 | Any other `error` for a command, such as `queue_full` or `live_source_open` | Terminal `command_rejected` for that command; the socket stays open |
 | `end` with reason `eos` or `error` on a live source | Sends that source again with backoff |
 | `end` on a finite source | The Job ends |
 | `error` `overloaded` for a finite source, still refused after the give-up window | The Job ends with `command_rejected` and error `overloaded` |
 
+## Known limits
+
+- One inbound frame has no size limit.
+- A socket that does not open within 30 s counts as failed and is retried with backoff.
+
 ## Naming
 
-Names are the wire names (above). A language changes casing only. Two types are renamed: the `prediction` message is `PredictionMessage` because `Prediction` names the typed value, and the `error` message is `ErrorMessage` because Error names the SDK's own failure. In C# that failure is `EyePopException` with a `Kind`. Three more C# names differ: the public Message union is the generated `JobMessage` (C# cannot add `Reconnecting` and `Reconnected` to a generated type's base, so they derive from it by hand), `Environment` is `EyePopEnvironment` (it would hide `System.Environment`), and a Source is `Source(Media, options)` where `Media` is `Url`, `Asset`, `Upload` or `Group`, so a group member has no options of its own. Types that carry a discriminator are unions in the language's own way: sealed hierarchy or `JsonPolymorphic` in C# for the public unions, tagged enum in Rust, interface plus concrete types in Go, discriminated union in TypeScript and Python.
+Names are the wire names (above). A language changes casing only. Two types are renamed: the `prediction` message is `PredictionMessage` because `Prediction` names the typed value, and the `error` message is `ErrorMessage` because Error names the SDK's own failure. In C# that failure is `EyePopException` with a `Kind`. The C# shell is `Pipeline.ConnectAsync(config, pop, ct)`; `SetSource` returns the `Job` without awaiting; `SetPopAsync`, `GetGraphAsync`, `PingAsync` and `CloseAsync` take a `CancellationToken`; `Status()` returns a `PipelineStatus`; `Job.Messages()` and `Job.Predictions()` are `IAsyncEnumerable` and a second call throws `InvalidOperationException`; `Job.Cancel()` is synchronous. `Pipeline` and `Job` are `IAsyncDisposable`: disposing a Pipeline is `close()`, disposing a Job is `cancel()`. Three more C# names differ: the public Message union is the generated `JobMessage` (C# cannot add `Reconnecting` and `Reconnected` to a generated type's base, so they derive from it by hand), `Environment` is `EyePopEnvironment` (it would hide `System.Environment`), and a Source is `Source(Media, options)` where `Media` is `Url`, `Asset`, `Upload` or `Group`, so a group member has no options of its own. Types that carry a discriminator are unions in the language's own way: sealed hierarchy or `JsonPolymorphic` in C# for the public unions, tagged enum in Rust, interface plus concrete types in Go, discriminated union in TypeScript and Python.
 
 ## Protocol schema and tests
 
