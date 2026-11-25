@@ -16,7 +16,7 @@ internal sealed record PendingCommand(string Id, Command Command, bool SentByRec
 /// One upload being sent in chunks, or, with a Header, one combined upload waiting for its bytes. The content
 /// stays in the Source: the core never reads a stream.
 /// </summary>
-internal sealed record UploadTask(string Id, int? Member, UploadContent Content, long Credit = 0, bool Requested = false, SetSource? Header = null, long Sent = 0);
+internal sealed record UploadTask(string Id, int Token, int? Member, UploadContent Content, long Credit = 0, bool Requested = false, SetSource? Header = null, long Sent = 0);
 
 internal sealed record State
 {
@@ -75,7 +75,7 @@ internal abstract record Input
     public sealed record ResendDue(string Id) : Input;
 
     /// <summary>The answer to <see cref="Output.ReadUpload"/>: the bytes read, and whether the content ended.</summary>
-    public sealed record UploadRead(int Epoch, string Id, int? Member, ReadOnlyMemory<byte> Data, bool Last) : Input;
+    public sealed record UploadRead(int Epoch, string Id, int Token, int? Member, ReadOnlyMemory<byte> Data, bool Last) : Input;
 }
 
 internal abstract record Output
@@ -84,8 +84,11 @@ internal abstract record Output
 
     public sealed record Send(Frame Frame) : Output;
 
-    /// <summary>Read up to Count bytes of an upload's content (all of it when Whole) and answer with <see cref="Input.UploadRead"/>.</summary>
-    public sealed record ReadUpload(int Epoch, string Id, int? Member, UploadContent Content, long Count, bool Whole) : Output;
+    /// <summary>
+    /// Read up to Count bytes of an upload's content (all of it when Whole) and answer with <see cref="Input.UploadRead"/>,
+    /// echoing Epoch (which socket) and Token (which upload: a source sent again gets a new one).
+    /// </summary>
+    public sealed record ReadUpload(int Epoch, string Id, int Token, int? Member, UploadContent Content, long Count, bool Whole) : Output;
 
     public sealed record Deliver(string JobId, JobMessage Message) : Output;
 
@@ -101,7 +104,10 @@ internal abstract record Output
     /// <summary>Open a socket after the delay, exchanging the key first if ForceExchange or the token is short-lived.</summary>
     public sealed record Connect(TimeSpan Delay, bool ForceExchange) : Output;
 
-    /// <summary>Close the socket if one is open and stay without one until the next command.</summary>
+    /// <summary>
+    /// Close the socket if one is open, cancel a connect or resend timer that is waiting, and stay without a socket until the
+    /// next command. After a <c>quit</c> frame the shell must flush it before closing.
+    /// </summary>
     public sealed record GoIdle : Output;
 
     /// <summary>Close the socket if one is open. The Pipeline keeps going: a Connect follows or the input says why not.</summary>

@@ -46,6 +46,10 @@ internal sealed class Session
     public IEnumerable<JsonNode> Sent() =>
         Of<Output.Send>().Select(s => s.Frame).OfType<TextFrame>().Select(f => JsonNode.Parse(f.Text)!);
 
+    /// <summary>The shell's answer to a read request: it echoes the epoch and the token.</summary>
+    public static Input.UploadRead Reply(Output.ReadUpload read, ReadOnlyMemory<byte> data, bool last) =>
+        new(read.Epoch, read.Id, read.Token, read.Member, data, last);
+
     public string Issued() => Of<Output.Issued>().Single().Id;
 
     public string SetSource(Source source)

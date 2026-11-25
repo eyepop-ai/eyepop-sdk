@@ -466,4 +466,27 @@ public class MachineTests
         Assert.Equal(EndReason.Stopped, ((End)session.Of<Output.Deliver>().Single().Message).Reason);
         Assert.Single(session.Of<Output.CloseJob>());
     }
+
+    [Fact]
+    public void A_cancelled_source_the_server_refuses_for_any_code_ends_stopped_without_an_error()
+    {
+        var session = Session.Opened();
+        var id = session.SetSource(Session.Url());
+        session.Feed(new Input.StopSource(id));
+
+        session.Feed(new ErrorMessage("queue_full", "no", id));
+
+        Assert.Equal(EndReason.Stopped, ((End)Assert.Single(session.Of<Output.Deliver>()).Message).Reason);
+        Assert.Null(Assert.Single(session.Of<Output.CloseJob>()).Error);
+    }
+
+    [Fact]
+    public void An_open_for_a_socket_that_is_already_open_changes_nothing()
+    {
+        var session = Session.Opened();
+
+        session.Feed(new Input.Opened());
+
+        Assert.Empty(session.Out);
+    }
 }

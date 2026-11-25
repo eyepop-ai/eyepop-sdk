@@ -513,4 +513,103 @@ public class SupervisionTests
 
         Assert.Empty(session.Of<Output.CloseJob>());
     }
+
+    [Fact]
+    public void Cancelling_a_source_that_waits_to_be_sent_again_does_not_leave_the_healthy_clock_stopped()
+    {
+        var session = Session.Opened();
+        var cancelled = session.SetSource(Session.Url());
+        var other = session.SetSource(Session.Url());
+        session.Feed(new ErrorMessage("overloaded", "busy", cancelled), advanceSeconds: 1, random: 1.0);
+        session.Feed(new Input.StopSource(cancelled));
+
+        session.Feed(new Failure.SocketClosed(1001, null), advanceSeconds: 16 * 60, random: 1.0);
+
+        Assert.DoesNotContain(session.Of<Output.CloseJob>(), c => c.JobId == other);
+        Assert.Equal(TimeSpan.FromSeconds(1), session.Of<Output.Connect>().Single().Delay);
+    }
+
+    [Fact]
+    public void A_resend_that_went_out_starts_the_healthy_time()
+    {
+        var session = Session.Opened();
+        var id = session.SetSource(Session.Url());
+        session.Feed(new ErrorMessage("overloaded", "busy", id), advanceSeconds: 1, random: 1.0);
+        session.Feed(new Input.ResendDue(id), advanceSeconds: 1);
+
+        session.Feed(new Failure.SocketClosed(1001, null), advanceSeconds: 31, random: 1.0);
+
+        Assert.Equal(TimeSpan.FromSeconds(1), session.Of<Output.Connect>().Single().Delay);
+    }
+
+    [Fact]
+    public void The_wait_for_a_resend_is_not_healthy_time()
+    {
+        var session = Session.Opened();
+        var a = session.SetSource(Session.Url());
+        var b = session.SetSource(Session.Url());
+        session.Feed(new ErrorMessage("overloaded", "busy", a), advanceSeconds: 40, random: 1.0);
+        Assert.Equal(TimeSpan.FromSeconds(1), session.Of<Output.ScheduleResend>().Single().Delay);
+
+        session.Feed(new ErrorMessage("overloaded", "busy", b), advanceSeconds: 1, random: 1.0);
+
+        Assert.Equal(TimeSpan.FromSeconds(2), session.Of<Output.ScheduleResend>().Single().Delay);
+    }
+
+    [Fact]
+    public void A_cancelled_finite_source_met_by_the_give_up_limit_ends_stopped_not_with_the_error()
+    {
+        var session = Session.Opened();
+        var cancelled = session.SetSource(Session.Url());
+        session.SetSource(Session.Url(live: true));
+        session.Feed(new Input.StopSource(cancelled));
+        session.Feed(new Failure.SocketClosed(1001, null));
+
+        session.Feed(new Failure.Upgrade(null), advanceSeconds: 15 * 60);
+
+        Assert.Equal(EndReason.Stopped, ((End)session.Of<Output.Deliver>().Single(d => d.Message is End).Message).Reason);
+        var closed = Assert.Single(session.Of<Output.CloseJob>());
+        Assert.Equal(cancelled, closed.JobId);
+        Assert.Null(closed.Error);
+    }
+
+    [Fact]
+    public void A_cancelled_finite_source_met_by_a_terminal_failure_ends_stopped_too()
+    {
+        var session = Session.Opened();
+        var cancelled = session.SetSource(Session.Url());
+        session.Feed(new Input.StopSource(cancelled));
+
+        session.Feed(new Failure.Exchange(401));
+
+        Assert.Null(Assert.Single(session.Of<Output.CloseJob>()).Error);
+    }
+
+    [Fact]
+    public void A_refused_first_setPop_keeps_other_commands_failing_until_a_pop_works()
+    {
+        var session = new Session();
+        session.Feed(new Input.SetPop(new Pop(new PopComponent[] { new RawComponent("source") })));
+        var pop = session.Issued();
+        session.Feed(new Input.Opened());
+
+        session.Feed(new ErrorMessage("pop_invalid", "no such ability", pop));
+        session.Feed(new Input.SetSource(Session.Url()));
+
+        Assert.Equal(ErrorKind.CommandRejected, Assert.Single(session.Of<Output.CloseJob>()).Error!.Kind);
+        Assert.Empty(session.Of<Output.Send>());
+    }
+
+    [Fact]
+    public void A_first_setPop_that_fails_with_1011_keeps_other_commands_failing_until_a_pop_works()
+    {
+        var session = new Session();
+        session.Feed(new Input.SetPop(new Pop(new PopComponent[] { new RawComponent("source") })));
+        session.Feed(new Input.Opened());
+        session.Feed(new Failure.SocketClosed(1011, "pipeline_stopped"));
+
+        session.Feed(new Input.Ping());
+
+        Assert.Equal(ErrorKind.Closed, Assert.Single(session.Of<Output.CommandFailed>()).Error.Kind);
+    }
 }

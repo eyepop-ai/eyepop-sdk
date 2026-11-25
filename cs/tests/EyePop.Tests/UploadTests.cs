@@ -47,7 +47,7 @@ public class UploadTests
         Assert.Equal(10, read.Count);
         Assert.True(read.Whole);
 
-        session.Feed(new Input.UploadRead(read.Epoch, id, null, new byte[10], true));
+        session.Feed(Session.Reply(read, new byte[10], true));
         Assert.Equal(0x02, Kind(Assert.Single(session.Of<Output.Send>())));
     }
 
@@ -78,12 +78,12 @@ public class UploadTests
         var first = Assert.Single(session.Of<Output.ReadUpload>());
         Assert.Equal(65_536, first.Count);
 
-        session.Feed(new Input.UploadRead(first.Epoch, id, null, new byte[65_536], false));
+        session.Feed(Session.Reply(first, new byte[65_536], false));
         Assert.Equal(1, Kind(Assert.Single(session.Of<Output.Send>())));
         var second = Assert.Single(session.Of<Output.ReadUpload>());
         Assert.Equal(34_464, second.Count);
 
-        session.Feed(new Input.UploadRead(first.Epoch, id, null, new byte[100], true));
+        session.Feed(Session.Reply(first, new byte[100], true));
         Assert.Equal(1, Kind(session.Of<Output.Send>().First()));
         var uploaded = session.Sent().Single();
         Assert.Equal("uploaded", uploaded["type"]!.GetValue<string>());
@@ -98,7 +98,7 @@ public class UploadTests
         session.Feed(new Send(id, 10));
         var read = Assert.Single(session.Of<Output.ReadUpload>());
 
-        session.Feed(new Input.UploadRead(read.Epoch, id, null, new byte[10], false));
+        session.Feed(Session.Reply(read, new byte[10], false));
         Assert.Empty(session.Of<Output.ReadUpload>());
 
         session.Feed(new Credit(id, 20));
@@ -112,7 +112,7 @@ public class UploadTests
         session.Feed(new Send(id, 10));
         var read = Assert.Single(session.Of<Output.ReadUpload>());
 
-        session.Feed(new Input.UploadRead(read.Epoch, id, null, Array.Empty<byte>(), true));
+        session.Feed(Session.Reply(read, Array.Empty<byte>(), true));
 
         Assert.DoesNotContain(session.Of<Output.Send>(), s => s.Frame is BinaryFrame);
         Assert.Equal("uploaded", session.Sent().Single()["type"]!.GetValue<string>());
@@ -132,7 +132,7 @@ public class UploadTests
         var read = Assert.Single(session.Of<Output.ReadUpload>());
         Assert.Equal(first, read.Id);
 
-        session.Feed(new Input.UploadRead(read.Epoch, first, null, new byte[5], true));
+        session.Feed(Session.Reply(read, new byte[5], true));
         var next = Assert.Single(session.Of<Output.ReadUpload>());
         Assert.Equal(second, next.Id);
     }
@@ -162,7 +162,7 @@ public class UploadTests
         var first = Assert.Single(session.Of<Output.ReadUpload>());
         Assert.Equal(0, first.Member);
 
-        session.Feed(new Input.UploadRead(first.Epoch, id, 0, new byte[2048], true));
+        session.Feed(Session.Reply(first, new byte[2048], true));
         Assert.Equal(0, session.Sent().Single()["member"]!.GetValue<int>());
         var next = Assert.Single(session.Of<Output.ReadUpload>());
         Assert.Equal(2, next.Member);
@@ -177,7 +177,7 @@ public class UploadTests
         var read = Assert.Single(session.Of<Output.ReadUpload>());
         session.Feed(new End(id, EndReason.Error));
 
-        session.Feed(new Input.UploadRead(read.Epoch, id, null, new byte[5], false));
+        session.Feed(Session.Reply(read, new byte[5], false));
 
         Assert.Empty(session.Out);
     }
@@ -195,7 +195,7 @@ public class UploadTests
         Assert.Equal("image/jpeg", resent["upload"]!["contentType"]!.GetValue<string>());
         Assert.Empty(session.Of<Output.ReadUpload>());
 
-        session.Feed(new Input.UploadRead(stale.Epoch, id, null, new byte[5], false));
+        session.Feed(Session.Reply(stale, new byte[5], false));
         Assert.Empty(session.Out);
     }
 
@@ -214,7 +214,7 @@ public class UploadTests
         var read = Assert.Single(session.Of<Output.ReadUpload>());
         Assert.Equal(10, read.Count);
 
-        session.Feed(new Input.UploadRead(read.Epoch, id, 0, new byte[10], false));
+        session.Feed(Session.Reply(read, new byte[10], false));
 
         Assert.Equal("uploaded", session.Sent().Single()["type"]!.GetValue<string>());
         Assert.Empty(session.Of<Output.ReadUpload>());
@@ -257,5 +257,25 @@ public class UploadTests
         }
 
         Assert.Equal(b, Assert.Single(session.Of<Output.ReadUpload>()).Id);
+    }
+
+    [Fact]
+    public void An_answer_to_a_read_of_an_earlier_send_of_the_source_is_not_credited_to_the_new_send()
+    {
+        var (session, id) = Chunked();
+        session.Feed(new Send(id, 100));
+        var stale = Assert.Single(session.Of<Output.ReadUpload>());
+        session.Feed(new ErrorMessage("overloaded", "busy", id));
+        session.Feed(new Input.ResendDue(id));
+        session.Feed(new Send(id, 100));
+        var fresh = Assert.Single(session.Of<Output.ReadUpload>());
+        Assert.NotEqual(stale.Token, fresh.Token);
+        Assert.Equal(stale.Epoch, fresh.Epoch);
+
+        session.Feed(Session.Reply(stale, new byte[5], false));
+        Assert.Empty(session.Out);
+
+        session.Feed(Session.Reply(fresh, new byte[5], false));
+        Assert.Single(session.Of<Output.Send>());
     }
 }
