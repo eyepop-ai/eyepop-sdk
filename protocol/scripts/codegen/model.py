@@ -288,6 +288,12 @@ def bases(schemas: Mapping[str, dict], body: dict) -> list[str]:
     return refs(schemas, [part for part in body.get("allOf", ()) if isinstance(part, dict) and set(part) == {"$ref"}])
 
 
+def required_names(schemas: Mapping[str, dict], body: dict) -> set[str]:
+    # The `oneOf` entries are one-key `required` selectors, which make a key required as well.
+    own = set(body.get("required", ())) | {key for entry in body.get("oneOf", ()) for key in entry.get("required", ())}
+    return own.union(*(required_names(schemas, schemas[base]) for base in bases(schemas, body)))
+
+
 def property_names(schemas: Mapping[str, dict], body: dict) -> set[str]:
     return set(body.get("properties", {})).union(*(property_names(schemas, schemas[base]) for base in bases(schemas, body)))
 
@@ -355,8 +361,12 @@ def check(schemas: Mapping[str, dict], name: str) -> None:
     def value(node: object, path: list[str]) -> None:
         a_schema(node, path)
         if "$ref" in node:
-            if "x-tolerant" in node and (node["x-tolerant"] is not True or kind(target(node, path)) != "object"):
-                fail(path, "`x-tolerant` must be true and beside a `$ref` to an object schema")
+            if "x-tolerant" in node:
+                tolerated = target(node, path)
+                if node["x-tolerant"] is not True or kind(tolerated) != "object":
+                    fail(path, "`x-tolerant` must be true and beside a `$ref` to an object schema")
+                if required_names(schemas, tolerated):
+                    fail(path, "`x-tolerant` needs an object with no required member, because the fallback is that object built empty")
             if kind(target(node, path)) == "scalar":
                 acyclic(ref_name(node), path, "$ref", lambda n: [r for r in refs(schemas, schemas[n]) if kind(schemas[r]) == "scalar"])
         elif "const" in node:

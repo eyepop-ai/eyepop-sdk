@@ -138,6 +138,7 @@ internal static class Wire
             ? array.Select(item).ToList()
             : throw new FormatException($"expected an array, got {Show(value)}");
 
+    // One value that cannot be read must not fail the message that holds it: the fallback keeps the raw JSON.
     public static Func<JsonNode?, T> Tolerant<T>(Func<JsonNode?, T> parse, Func<JsonNode?, T> empty) =>
         value =>
         {

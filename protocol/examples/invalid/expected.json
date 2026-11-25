@@ -102,5 +102,9 @@
   "message-prediction-box-not-number.json": {
     "path": "/prediction/objects/0/x",
     "keyword": "type"
+  },
+  "message-prediction-not-object.json": {
+    "path": "/prediction",
+    "keyword": "type"
   }
 }

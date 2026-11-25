@@ -1,1 +1,1 @@
-{"type":"prediction","id":"s1","prediction":{"objects":{"classLabel":"person"}}}
+{"type":"prediction","id":"s1","prediction":{"objects":{"classLabel":"person"},"futureField":1}}
