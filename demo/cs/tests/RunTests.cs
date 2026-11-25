@@ -111,4 +111,21 @@ public class RunTests
         Assert.Equal(
             new Media.Url("https://example.com/a.jpg"),
             Run.SourceFor(Plain with { Url = "https://example.com/a.jpg" }).Media);
+
+    [Fact]
+    public void The_bundled_sample_is_found_from_any_working_directory()
+    {
+        var before = Environment.CurrentDirectory;
+        Environment.CurrentDirectory = Path.GetTempPath();
+        try
+        {
+            var upload = Assert.IsType<Media.Upload>(Run.SourceFor(Plain).Media);
+
+            Assert.Equal("image/jpeg", upload.ContentType);
+        }
+        finally
+        {
+            Environment.CurrentDirectory = before;
+        }
+    }
 }
