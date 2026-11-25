@@ -605,7 +605,7 @@ public sealed class Pipeline : IAsyncDisposable
                     _uploads.Remove((read.Id, read.Member));
                     reader.Dispose();
                 }
-                Apply(new Input.UploadRead(read.Epoch, read.Id, read.Member, data, last || read.Whole));
+                Apply(new Input.UploadRead(read.Epoch, read.Id, read.Token, read.Member, data, last || read.Whole));
             }
         }
         catch (OperationCanceledException)
