@@ -19,8 +19,8 @@ public class PublicSurfaceTests
             new[]
             {
                 "Auth", "Auth+AnonymousAuth", "Auth+Exchange", "Client", "Config", "ConfigArgs", "ErrorKind",
-                "EyePopEnvironment", "EyePopException", "Media", "Media+Asset", "Media+Group", "Media+Member",
-                "Media+Upload", "Media+Url", "Reconnected", "Reconnecting", "Source", "SourceOptions", "UploadContent",
+                "EyePopEnvironment", "EyePopException", "GraphFormat", "Job", "Media", "Media+Asset", "Media+Group", "Media+Member", "Media+Upload",
+                "Media+Url", "Pipeline", "PipelineState", "PipelineStatus", "Reconnected", "Reconnecting", "Source", "SourceOptions", "UploadContent",
             },
             exported);
     }
