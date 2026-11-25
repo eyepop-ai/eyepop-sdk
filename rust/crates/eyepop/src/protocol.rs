@@ -1646,6 +1646,48 @@ impl GroupMember {
 
 
 #[derive(Debug, Clone, PartialEq)]
+pub enum JobMessage {
+    Start(Start),
+    PredictionMessage(PredictionMessage),
+    Dropped(Dropped),
+    Usage(Usage),
+    End(End),
+}
+
+impl JobMessage {
+    pub fn from_json(value: &Value) -> std::result::Result<JobMessage, DecodeError> {
+        let obj = parse_object(value)?;
+        if obj.get("type").and_then(Value::as_str) == Some("start") {
+            return Ok(JobMessage::Start(Start::from_json(value)?));
+        }
+        if obj.get("type").and_then(Value::as_str) == Some("prediction") {
+            return Ok(JobMessage::PredictionMessage(PredictionMessage::from_json(value)?));
+        }
+        if obj.get("type").and_then(Value::as_str) == Some("dropped") {
+            return Ok(JobMessage::Dropped(Dropped::from_json(value)?));
+        }
+        if obj.get("type").and_then(Value::as_str) == Some("usage") {
+            return Ok(JobMessage::Usage(Usage::from_json(value)?));
+        }
+        if obj.get("type").and_then(Value::as_str) == Some("end") {
+            return Ok(JobMessage::End(End::from_json(value)?));
+        }
+        fail("no variant matches".to_string())
+    }
+
+    pub fn to_json(&self) -> Value {
+        match self {
+            JobMessage::Start(v) => v.to_json(),
+            JobMessage::PredictionMessage(v) => v.to_json(),
+            JobMessage::Dropped(v) => v.to_json(),
+            JobMessage::Usage(v) => v.to_json(),
+            JobMessage::End(v) => v.to_json(),
+        }
+    }
+}
+
+
+#[derive(Debug, Clone, PartialEq)]
 pub enum Message {
     Result(Result),
     Send(Send),

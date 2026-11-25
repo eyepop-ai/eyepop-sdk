@@ -399,9 +399,11 @@ def emit(model: Model) -> str:
     def access(name: str) -> str:
         return "public" if model.is_public(name) else "internal"
 
+    based = {u.name for u in model.unions if all(access(v.name) == access(u.name) for v in u.variants)}
+
     parts = [emit_enum(e, access(e.name)) for e in model.enums]
-    parts += [emit_object(o, model.unions_of(o), access(o.name)) for o in model.objects]
-    parts += [emit_union(u, access(u.name)) for u in model.unions]
+    parts += [emit_object(o, [u for u in model.unions_of(o) if u in based][:1], access(o.name)) for o in model.objects]
+    parts += [emit_union(u, access(u.name), u.name in based) for u in model.unions]
     return HEADER + constants(model.wire) + "\n" + "\n".join(parts)
 
 
@@ -587,8 +589,12 @@ def condition(variant: Variant) -> str | None:
             return None
 
 
-def emit_union(union: Union, access: str) -> str:
+def emit_union(union: Union, access: str, base: bool) -> str:
+    # A record cannot sit under a base type less accessible than itself, so a union that holds a public variant
+    # while being internal (the socket's messages, of which a few are public) is a static class that returns
+    # `object`, not a base type.
     name = union.name
+    result = name if base else "object"
     branches = []
     for v in union.variants:
         cond = condition(v)
@@ -602,13 +608,13 @@ def emit_union(union: Union, access: str) -> str:
     decode = ""
     if union.open:
         unknown = f"""
-{access} sealed record Unknown{name}(JsonObject Raw) : {name}
+{access} sealed record Unknown{name}(JsonObject Raw){" : " + name if base else ""}
 {{
-    public override JsonNode ToJson() => Raw.DeepClone();
+    public {"override " if base else ""}JsonNode ToJson() => Raw.DeepClone();
 }}
 """
         decode = f"""
-    public static {name} Decode(JsonNode? value)
+    public static {result} Decode(JsonNode? value)
     {{
         var tree = Wire.Tree(value, out var unicode);
         try
@@ -622,12 +628,23 @@ def emit_union(union: Union, access: str) -> str:
         }}
     }}
 """
-    return f"""
-{access} abstract record {name}
-{{
-    public abstract JsonNode ToJson();
+    if base:
+        shape, to_json = "abstract record", "    public abstract JsonNode ToJson();\n\n"
+    else:
+        arms = [f"        {v.name} v => v.ToJson()," for v in union.variants] + ([f"        Unknown{name} v => v.ToJson(),"] if union.open else [])
+        shape = "static class"
+        to_json = f"""    public static JsonNode ToJson(object value) =>
+        value switch
+        {{
+{chr(10).join(arms)}
+            _ => throw new ArgumentException("not a {name}", nameof(value)),
+        }};
 
-    public static {name} FromJson(JsonNode? value)
+"""
+    return f"""
+{access} {shape} {name}
+{{
+{to_json}    public static {result} FromJson(JsonNode? value)
     {{
         var obj = Wire.Object(value);
 {chr(10).join(branches)}

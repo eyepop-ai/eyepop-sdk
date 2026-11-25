@@ -16,7 +16,8 @@ JSON Schema (draft 2020-12) for the messages on the pipeline socket: `GET /api/v
   - When an object repeats a key, the last value wins.
   - A string or key holding a lone surrogate is not valid text. A union decoder returns `Unknown` keeping every field.
 
-- `public.json` lists, by schema file name, the types a caller of an SDK may see. Every other type is internal in a language that has the notion; today only the C# generator applies it (`internal`), and the other languages emit everything public. A listed type also makes public the types it holds and the union it belongs to, so a public type never exposes an internal one. A name that is not a schema fails generation. `reconnecting` and `reconnected` are not here: they exist only in the SDKs.
+- `public.json` lists, by schema file name, the files whose types a caller of an SDK may see: the file's own type, its inline variants and the enums it declares. Every other type is internal in a language that has the notion; today only the C# generator applies it (`internal`), and the other languages emit everything public. Nothing is added for you: a public type that holds, or has as a variant, a type from an unlisted file fails generation. A name that is not a schema fails too.
+- `message` is the union the decoder reads, with every message the server sends. `jobMessage` is the public one: `start`, `prediction`, `dropped`, `usage` and `end`. A variant may sit in both. In C#, where a public record cannot derive from an internal type, `message` is then an internal static class whose `Decode` returns `object`. `reconnecting` and `reconnected` are in neither: they exist only in the SDKs.
 - A variant's schema file need not be named for its `type` tag: `predictionMessage.json` and `errorMessage.json` hold the `prediction` and `error` messages, named so that `Prediction` and `Error` stay free for other types.
 
 ## Examples

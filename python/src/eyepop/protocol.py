@@ -1220,6 +1220,22 @@ def decode_groupmember(value: Any) -> GroupMember:
 
 
 
+_JOBMESSAGE_VARIANTS: _Variants = [
+    (_tag('start'), Start.from_json),
+    (_tag('prediction'), PredictionMessage.from_json),
+    (_tag('dropped'), Dropped.from_json),
+    (_tag('usage'), Usage.from_json),
+    (_tag('end'), End.from_json),
+]
+
+JobMessage = Start | PredictionMessage | Dropped | Usage | End
+
+
+def decode_jobmessage(value: Any) -> JobMessage:
+    return _dispatch(value, _JOBMESSAGE_VARIANTS)
+
+
+
 @dataclass(frozen=True)
 class UnknownMessage:
     raw: Mapping[str, Any]

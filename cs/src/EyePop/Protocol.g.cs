@@ -634,16 +634,16 @@ public sealed record ComponentParams(long ComponentId, JsonObject Values, JsonOb
 }
 
 
-internal sealed record Credit(string Id, long Bytes, long? Member = null, JsonObject? Raw = null) : Message
+internal sealed record Credit(string Id, long Bytes, long? Member = null, JsonObject? Raw = null)
 {
-    public static new Credit FromJson(JsonNode? value)
+    public static Credit FromJson(JsonNode? value)
     {
         var obj = Wire.Snapshot(value);
         Wire.Required(obj, "type", Wire.Const("credit"));
         return new Credit(Wire.Required(obj, "id", Wire.Limit(Wire.String, minLength: 1)), Wire.Required(obj, "bytes", Wire.Limit(Wire.Integer, minimum: 0.0)), Wire.OptionalValue(obj, "member", Wire.Limit(Wire.Integer, minimum: 0.0)), obj);
     }
 
-    public override JsonNode ToJson()
+    public JsonNode ToJson()
     {
         var result = Wire.Copy(Raw);
         result["id"] = JsonValue.Create(Id);
@@ -656,16 +656,16 @@ internal sealed record Credit(string Id, long Bytes, long? Member = null, JsonOb
 }
 
 
-internal sealed record Done(JsonObject? Raw = null) : Message
+internal sealed record Done(JsonObject? Raw = null)
 {
-    public static new Done FromJson(JsonNode? value)
+    public static Done FromJson(JsonNode? value)
     {
         var obj = Wire.Snapshot(value);
         Wire.Required(obj, "type", Wire.Const("done"));
         return new Done(obj);
     }
 
-    public override JsonNode ToJson()
+    public JsonNode ToJson()
     {
         var result = Wire.Copy(Raw);
         result["type"] = "done";
@@ -674,7 +674,7 @@ internal sealed record Done(JsonObject? Raw = null) : Message
 }
 
 
-public sealed record Dropped(string Id, long Count, JsonObject? Raw = null) : Message
+public sealed record Dropped(string Id, long Count, JsonObject? Raw = null) : JobMessage
 {
     public static new Dropped FromJson(JsonNode? value)
     {
@@ -694,7 +694,7 @@ public sealed record Dropped(string Id, long Count, JsonObject? Raw = null) : Me
 }
 
 
-public sealed record End(string Id, EndReason Reason, string? Message = null, long? MilliComputeUnits = null, JsonObject? Raw = null) : Message
+public sealed record End(string Id, EndReason Reason, string? Message = null, long? MilliComputeUnits = null, JsonObject? Raw = null) : JobMessage
 {
     public static new End FromJson(JsonNode? value)
     {
@@ -718,16 +718,16 @@ public sealed record End(string Id, EndReason Reason, string? Message = null, lo
 }
 
 
-internal sealed record ErrorMessage(string Error, string Message, string? Id = null, JsonObject? Raw = null) : Message
+internal sealed record ErrorMessage(string Error, string Message, string? Id = null, JsonObject? Raw = null)
 {
-    public static new ErrorMessage FromJson(JsonNode? value)
+    public static ErrorMessage FromJson(JsonNode? value)
     {
         var obj = Wire.Snapshot(value);
         Wire.Required(obj, "type", Wire.Const("error"));
         return new ErrorMessage(Wire.Required(obj, "error", Wire.Limit(Wire.String, minLength: 1)), Wire.Required(obj, "message", Wire.String), Wire.Optional(obj, "id", Wire.Limit(Wire.String, minLength: 1)), obj);
     }
 
-    public override JsonNode ToJson()
+    public JsonNode ToJson()
     {
         var result = Wire.Copy(Raw);
         if (Id is not null) result["id"] = JsonValue.Create(Id!);
@@ -762,7 +762,7 @@ internal sealed record GetGraph(string Id, GetGraphFormat Format, bool? Verbose 
 }
 
 
-internal sealed record InferenceComponent(string? Ability = null, string? AbilityUuid = null, JsonObject? Params = null, long? Id = null, JsonObject? Raw = null) : PopComponent
+public sealed record InferenceComponent(string? Ability = null, string? AbilityUuid = null, JsonObject? Params = null, long? Id = null, JsonObject? Raw = null) : PopComponent
 {
     public static new InferenceComponent FromJson(JsonNode? value)
     {
@@ -808,16 +808,16 @@ internal sealed record Ping(string Id, JsonObject? Raw = null) : Command
 }
 
 
-internal sealed record Pong(string Id, JsonObject? Raw = null) : Message
+internal sealed record Pong(string Id, JsonObject? Raw = null)
 {
-    public static new Pong FromJson(JsonNode? value)
+    public static Pong FromJson(JsonNode? value)
     {
         var obj = Wire.Snapshot(value);
         Wire.Required(obj, "type", Wire.Const("pong"));
         return new Pong(Wire.Required(obj, "id", Wire.Limit(Wire.String, minLength: 1)), obj);
     }
 
-    public override JsonNode ToJson()
+    public JsonNode ToJson()
     {
         var result = Wire.Copy(Raw);
         result["id"] = JsonValue.Create(Id);
@@ -873,7 +873,7 @@ public sealed record PopDepthMap(string? Ability = null, string? AbilityUuid = n
 }
 
 
-public sealed record PredictionMessage(string Id, JsonObject Prediction, JsonObject? Raw = null) : Message
+public sealed record PredictionMessage(string Id, JsonObject Prediction, JsonObject? Raw = null) : JobMessage
 {
     public static new PredictionMessage FromJson(JsonNode? value)
     {
@@ -912,7 +912,7 @@ internal sealed record Quit(string Id, JsonObject? Raw = null) : Command
 }
 
 
-internal sealed record RawComponent(string Type, JsonObject? Raw = null) : PopComponent
+public sealed record RawComponent(string Type, JsonObject? Raw = null) : PopComponent
 {
     public static new RawComponent FromJson(JsonNode? value)
     {
@@ -929,16 +929,16 @@ internal sealed record RawComponent(string Type, JsonObject? Raw = null) : PopCo
 }
 
 
-internal sealed record Result(string Id, JsonObject? Raw = null) : Message
+internal sealed record Result(string Id, JsonObject? Raw = null)
 {
-    public static new Result FromJson(JsonNode? value)
+    public static Result FromJson(JsonNode? value)
     {
         var obj = Wire.Snapshot(value);
         Wire.Required(obj, "type", Wire.Const("result"));
         return new Result(Wire.Required(obj, "id", Wire.Limit(Wire.String, minLength: 1)), obj);
     }
 
-    public override JsonNode ToJson()
+    public JsonNode ToJson()
     {
         var result = Wire.Copy(Raw);
         result["id"] = JsonValue.Create(Id);
@@ -948,16 +948,16 @@ internal sealed record Result(string Id, JsonObject? Raw = null) : Message
 }
 
 
-internal sealed record Send(string Id, long Credit, long? Member = null, JsonObject? Raw = null) : Message
+internal sealed record Send(string Id, long Credit, long? Member = null, JsonObject? Raw = null)
 {
-    public static new Send FromJson(JsonNode? value)
+    public static Send FromJson(JsonNode? value)
     {
         var obj = Wire.Snapshot(value);
         Wire.Required(obj, "type", Wire.Const("send"));
         return new Send(Wire.Required(obj, "id", Wire.Limit(Wire.String, minLength: 1)), Wire.Required(obj, "credit", Wire.Limit(Wire.Integer, minimum: 0.0)), Wire.OptionalValue(obj, "member", Wire.Limit(Wire.Integer, minimum: 0.0)), obj);
     }
 
-    public override JsonNode ToJson()
+    public JsonNode ToJson()
     {
         var result = Wire.Copy(Raw);
         result["id"] = JsonValue.Create(Id);
@@ -1081,7 +1081,7 @@ public sealed record SourceDefaults(Camera? Camera = null, string? Fps = null, R
 }
 
 
-public sealed record Start(string Id, JsonObject? Raw = null) : Message
+public sealed record Start(string Id, JsonObject? Raw = null) : JobMessage
 {
     public static new Start FromJson(JsonNode? value)
     {
@@ -1140,7 +1140,7 @@ internal sealed record Uploaded(string Id, long? Member = null, JsonObject? Raw 
 }
 
 
-public sealed record Usage(string Id, long MilliComputeUnits, JsonObject? Raw = null) : Message
+public sealed record Usage(string Id, long MilliComputeUnits, JsonObject? Raw = null) : JobMessage
 {
     public static new Usage FromJson(JsonNode? value)
     {
@@ -1213,7 +1213,7 @@ internal sealed record GroupMemberUpload(GroupMemberUploadUpload Upload, JsonObj
 }
 
 
-internal sealed record RoiRectangle(double X, double Y, double Width, double Height, JsonObject? Raw = null) : Roi
+public sealed record RoiRectangle(double X, double Y, double Width, double Height, JsonObject? Raw = null) : Roi
 {
     public static new RoiRectangle FromJson(JsonNode? value)
     {
@@ -1235,7 +1235,7 @@ internal sealed record RoiRectangle(double X, double Y, double Width, double Hei
 }
 
 
-internal sealed record RoiContourPoint(double X, double Y, JsonObject? Raw = null)
+public sealed record RoiContourPoint(double X, double Y, JsonObject? Raw = null)
 {
     public static RoiContourPoint FromJson(JsonNode? value)
     {
@@ -1253,7 +1253,7 @@ internal sealed record RoiContourPoint(double X, double Y, JsonObject? Raw = nul
 }
 
 
-internal sealed record RoiContour(IReadOnlyList<RoiContourPoint> Points, JsonObject? Raw = null) : Roi
+public sealed record RoiContour(IReadOnlyList<RoiContourPoint> Points, JsonObject? Raw = null) : Roi
 {
     public static new RoiContour FromJson(JsonNode? value)
     {
@@ -1332,11 +1332,44 @@ internal abstract record GroupMember
 }
 
 
-public abstract record Message
+public abstract record JobMessage
 {
     public abstract JsonNode ToJson();
 
-    public static Message FromJson(JsonNode? value)
+    public static JobMessage FromJson(JsonNode? value)
+    {
+        var obj = Wire.Object(value);
+        if (Wire.TagIs(obj, "start")) return Start.FromJson(value);
+        if (Wire.TagIs(obj, "prediction")) return PredictionMessage.FromJson(value);
+        if (Wire.TagIs(obj, "dropped")) return Dropped.FromJson(value);
+        if (Wire.TagIs(obj, "usage")) return Usage.FromJson(value);
+        if (Wire.TagIs(obj, "end")) return End.FromJson(value);
+        throw new FormatException("no variant matches");
+    }
+}
+
+
+internal static class Message
+{
+    public static JsonNode ToJson(object value) =>
+        value switch
+        {
+        Result v => v.ToJson(),
+        Send v => v.ToJson(),
+        Credit v => v.ToJson(),
+        Start v => v.ToJson(),
+        PredictionMessage v => v.ToJson(),
+        Dropped v => v.ToJson(),
+        Usage v => v.ToJson(),
+        End v => v.ToJson(),
+        Done v => v.ToJson(),
+        Pong v => v.ToJson(),
+        ErrorMessage v => v.ToJson(),
+        UnknownMessage v => v.ToJson(),
+            _ => throw new ArgumentException("not a Message", nameof(value)),
+        };
+
+    public static object FromJson(JsonNode? value)
     {
         var obj = Wire.Object(value);
         if (Wire.TagIs(obj, "result")) return Result.FromJson(value);
@@ -1353,7 +1386,7 @@ public abstract record Message
         throw new FormatException("no variant matches");
     }
 
-    public static Message Decode(JsonNode? value)
+    public static object Decode(JsonNode? value)
     {
         var tree = Wire.Tree(value, out var unicode);
         try
@@ -1368,9 +1401,9 @@ public abstract record Message
     }
 }
 
-public sealed record UnknownMessage(JsonObject Raw) : Message
+internal sealed record UnknownMessage(JsonObject Raw)
 {
-    public override JsonNode ToJson() => Raw.DeepClone();
+    public JsonNode ToJson() => Raw.DeepClone();
 }
 
 

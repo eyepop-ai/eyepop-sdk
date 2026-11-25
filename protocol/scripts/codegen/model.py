@@ -400,34 +400,32 @@ def check(schemas: Mapping[str, dict], name: str) -> None:
     {"object": object_, "union": union, "scalar": value}[kind(body)](body, [])
 
 
-def public_types(objects: Mapping[str, Object], unions: Sequence[Union], named: set[str]) -> frozenset[str]:
-    """The named types plus every type a language needs public for them to be usable.
+def public_types(objects: Mapping[str, Object], unions: Sequence[Union], sources: Mapping[str, str], listed: Sequence[str]) -> frozenset[str]:
+    """Every type defined in a listed schema file: the file's own type, its inline variants and the enums it declares.
 
-    A public type cannot expose a hidden one in a field, and a public variant cannot sit under a hidden union.
+    Nothing is added for the caller, so a public type that holds or contains a type from an unlisted file fails here
+    instead of leaking it.
     """
-    found: set[str] = set()
+    public = frozenset(name for name, origin in sources.items() if origin.split(".json#")[0] in listed)
 
-    def reach(type_: Type) -> None:
+    def holds(type_: Type) -> list[str]:
         match type_:
-            case Ref(name) | Enum(_, name):
-                add(name)
+            case Ref(name):
+                return [name]
             case Array(item):
-                reach(item)
+                return holds(item)
+            case _:
+                return []
 
-    def add(name: str) -> None:
-        if name in found:
-            return
-        found.add(name)
-        if name in objects:
-            for f in objects[name].fields:
-                reach(f.type)
-            for union in unions:
-                if any(v.name == name for v in union.variants):
-                    add(union.name)
-
-    for name in sorted(named):
-        add(name)
-    return frozenset(found)
+    for obj in objects.values():
+        for name in (n for f in obj.fields for n in holds(f.type)) if obj.name in public else ():
+            if name not in public:
+                raise SchemaError(f"public type {obj.name} holds {name}, which is not on the public list")
+    for union in unions:
+        for variant in union.variants if union.name in public else ():
+            if variant.name not in public:
+                raise SchemaError(f"public type {union.name} has the variant {variant.name}, which is not on the public list")
+    return public
 
 
 def parse(
@@ -529,7 +527,7 @@ def parse(
     missing = [root for root in roots if pascal(root) not in {u.name for u in unions}]
     if missing:
         raise SchemaError(f"requested roots that are not unions: {', '.join(missing)}")
-    visible = None if public is None else public_types(objects, unions, {pascal(name) for name in public})
+    visible = None if public is None else public_types(objects, unions, sources, public)
     return Model(tuple(objects.values()), unions, public=visible)
 
 

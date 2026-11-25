@@ -71,7 +71,7 @@ public class ProtocolDecodingTests
 
     private static (bool, JsonNode) Result(Command command) => (command is UnknownCommand, command.ToJson());
 
-    private static (bool, JsonNode) Result(Message message) => (message is UnknownMessage, message.ToJson());
+    private static (bool, JsonNode) Result(object message) => (message is UnknownMessage, Message.ToJson(message));
 
     private static bool Unchanged(JsonNode encoded, JsonElement input, string text)
     {
@@ -152,7 +152,7 @@ public class ProtocolDecodingTests
 
         input["extra"]!["status"] = "changed";
 
-        Assert.Equal("original", message.ToJson()["extra"]!["status"]!.GetValue<string>());
+        Assert.Equal("original", Message.ToJson(message)["extra"]!["status"]!.GetValue<string>());
     }
 
     [Fact]

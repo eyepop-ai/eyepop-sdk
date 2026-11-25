@@ -816,7 +816,8 @@ func (v Dropped) ToJSON() any {
 	return out
 }
 
-func (Dropped) isMessage() {}
+func (Dropped) isJobMessage() {}
+func (Dropped) isMessage()    {}
 
 type End struct {
 	Id                string
@@ -871,7 +872,8 @@ func (v End) ToJSON() any {
 	return out
 }
 
-func (End) isMessage() {}
+func (End) isJobMessage() {}
+func (End) isMessage()    {}
 
 type ErrorMessage struct {
 	Id      *string
@@ -1223,7 +1225,8 @@ func (v PredictionMessage) ToJSON() any {
 	return out
 }
 
-func (PredictionMessage) isMessage() {}
+func (PredictionMessage) isJobMessage() {}
+func (PredictionMessage) isMessage()    {}
 
 type Quit struct {
 	Id  string
@@ -1677,7 +1680,8 @@ func (v Start) ToJSON() any {
 	return out
 }
 
-func (Start) isMessage() {}
+func (Start) isJobMessage() {}
+func (Start) isMessage()    {}
 
 type StopSource struct {
 	Id  string
@@ -1780,7 +1784,8 @@ func (v Usage) ToJSON() any {
 	return out
 }
 
-func (Usage) isMessage() {}
+func (Usage) isJobMessage() {}
+func (Usage) isMessage()    {}
 
 type GroupMemberUrl struct {
 	Url string
@@ -2079,6 +2084,54 @@ func GroupMemberFromJSON(value any) (GroupMember, error) {
 			return nil, err
 		}
 		parsed, err := GroupMemberUploadFromJSON(value)
+		if err != nil {
+			return nil, err
+		}
+		return parsed, nil
+	}
+	return nil, fmt.Errorf("no variant matches")
+}
+
+type JobMessage interface {
+	ToJSON() any
+	isJobMessage()
+}
+
+func JobMessageFromJSON(value any) (JobMessage, error) {
+	obj, err := parseObject(value)
+	if err != nil {
+		return nil, err
+	}
+	if obj["type"] == "start" {
+		parsed, err := StartFromJSON(value)
+		if err != nil {
+			return nil, err
+		}
+		return parsed, nil
+	}
+	if obj["type"] == "prediction" {
+		parsed, err := PredictionMessageFromJSON(value)
+		if err != nil {
+			return nil, err
+		}
+		return parsed, nil
+	}
+	if obj["type"] == "dropped" {
+		parsed, err := DroppedFromJSON(value)
+		if err != nil {
+			return nil, err
+		}
+		return parsed, nil
+	}
+	if obj["type"] == "usage" {
+		parsed, err := UsageFromJSON(value)
+		if err != nil {
+			return nil, err
+		}
+		return parsed, nil
+	}
+	if obj["type"] == "end" {
+		parsed, err := EndFromJSON(value)
 		if err != nil {
 			return nil, err
 		}
