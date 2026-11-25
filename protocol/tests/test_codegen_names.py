@@ -24,7 +24,7 @@ def text() -> dict:
 
 def rejects(schemas: dict, *parts: str) -> None:
     with pytest.raises(ValueError, match=".*".join(re.escape(part) for part in parts)):
-        generate(schemas, ())
+        generate(schemas, (), None)
 
 
 @pytest.mark.parametrize("name", ["foo-bar", "foo bar", "1st", "_id", "café"])
@@ -77,11 +77,11 @@ def test_a_csharp_variant_property_named_like_the_open_union_decoder_is_rejected
     }
 
     with pytest.raises(ValueError, match=re.escape("other.json#/properties/decode: property 'decode' of Other becomes the csharp name Decode")):
-        generate(schemas, ("command",))
+        generate(schemas, ("command",), None)
 
 
 def test_a_csharp_property_named_like_the_owner_gets_a_value_suffix():
-    assert "string? ThingValue = null" in generate(thing(thing=text()), ())["csharp"]
+    assert "string? ThingValue = null" in generate(thing(thing=text()), (), None)["csharp"]
 
 
 def test_a_csharp_property_named_like_a_type_another_field_reads_is_rejected():
@@ -117,7 +117,7 @@ def test_a_csharp_property_named_like_its_own_type_is_accepted():
     schemas = {"camera": schema("camera", {"type": "object", "properties": {"x": text()}})}
     schemas |= thing(camera={"$ref": "camera.json"}, cameras={"type": "array", "items": {"$ref": "camera.json"}})
 
-    assert "csharp" in generate(schemas, ())
+    assert "csharp" in generate(schemas, (), None)
 
 
 @pytest.mark.parametrize("value", ["1x", "-", ""])
@@ -153,7 +153,7 @@ def test_a_const_property_key_a_string_literal_cannot_hold_is_rejected(key):
 
 
 def test_const_property_keys_need_not_be_identifiers():
-    generated = generate(thing(**{"x-kind": {"const": "v"}, "_tag": {"const": "w"}, "1st": {"const": "z"}}), ())
+    generated = generate(thing(**{"x-kind": {"const": "v"}, "_tag": {"const": "w"}, "1st": {"const": "z"}}), (), None)
 
     assert 'out["x-kind"] = "v"' in generated["go"]
 
@@ -169,7 +169,7 @@ def test_an_enum_value_that_becomes_a_generated_name_is_rejected():
 
 
 def test_a_python_keyword_property_is_renamed_and_keeps_its_wire_key():
-    protocol = load_python(generate(thing(**{"from": text(), "class": text(), "None": text()}), ())["python"])
+    protocol = load_python(generate(thing(**{"from": text(), "class": text(), "None": text()}), (), None)["python"])
     wire = {"from": "a", "class": "b", "None": "c", "extra": 1}
 
     value = protocol.Thing.from_json(wire)
@@ -180,7 +180,7 @@ def test_a_python_keyword_property_is_renamed_and_keeps_its_wire_key():
 
 @pytest.mark.parametrize("keyword", RUST_KEYWORDS)
 def test_a_rust_keyword_property_is_escaped_and_keeps_its_wire_key(keyword):
-    rust = generate(thing(**{keyword: text()}), ())["rust"]
+    rust = generate(thing(**{keyword: text()}), (), None)["rust"]
 
     escaped = f"{keyword}_" if keyword in ("crate", "self", "Self", "super") else f"r#{keyword}"
     assert f"    pub {escaped}: Option<String>," in rust
@@ -188,6 +188,6 @@ def test_a_rust_keyword_property_is_escaped_and_keeps_its_wire_key(keyword):
 
 
 def test_a_rust_enum_value_named_self_is_escaped():
-    rust = generate(thing(mode={"enum": ["self"]}), ())["rust"]
+    rust = generate(thing(mode={"enum": ["self"]}), (), None)["rust"]
 
     assert '            Some("self") => Ok(ThingMode::Self_),' in rust

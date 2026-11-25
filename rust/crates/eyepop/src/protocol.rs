@@ -661,18 +661,18 @@ impl End {
 
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct Error {
+pub struct ErrorMessage {
     pub id: Option<String>,
     pub error: String,
     pub message: String,
     pub raw: Map<String, Value>,
 }
 
-impl Error {
-    pub fn from_json(value: &Value) -> std::result::Result<Error, DecodeError> {
+impl ErrorMessage {
+    pub fn from_json(value: &Value) -> std::result::Result<ErrorMessage, DecodeError> {
         let obj = parse_object(value)?;
         required(obj, "type", parse_const("error"))?;
-        Ok(Error {
+        Ok(ErrorMessage {
             id: optional(obj, "id", limit(parse_string, length, Some(1.0), None, None))?,
             error: required(obj, "error", limit(parse_string, length, Some(1.0), None, None))?,
             message: required(obj, "message", parse_string)?,
@@ -918,17 +918,17 @@ impl PopDepthMap {
 
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct Prediction {
+pub struct PredictionMessage {
     pub id: String,
     pub prediction: Map<String, Value>,
     pub raw: Map<String, Value>,
 }
 
-impl Prediction {
-    pub fn from_json(value: &Value) -> std::result::Result<Prediction, DecodeError> {
+impl PredictionMessage {
+    pub fn from_json(value: &Value) -> std::result::Result<PredictionMessage, DecodeError> {
         let obj = parse_object(value)?;
         required(obj, "type", parse_const("prediction"))?;
-        Ok(Prediction {
+        Ok(PredictionMessage {
             id: required(obj, "id", limit(parse_string, length, Some(1.0), None, None))?,
             prediction: required(obj, "prediction", parse_free)?,
             raw: obj.clone(),
@@ -1646,18 +1646,60 @@ impl GroupMember {
 
 
 #[derive(Debug, Clone, PartialEq)]
+pub enum JobMessage {
+    Start(Start),
+    PredictionMessage(PredictionMessage),
+    Dropped(Dropped),
+    Usage(Usage),
+    End(End),
+}
+
+impl JobMessage {
+    pub fn from_json(value: &Value) -> std::result::Result<JobMessage, DecodeError> {
+        let obj = parse_object(value)?;
+        if obj.get("type").and_then(Value::as_str) == Some("start") {
+            return Ok(JobMessage::Start(Start::from_json(value)?));
+        }
+        if obj.get("type").and_then(Value::as_str) == Some("prediction") {
+            return Ok(JobMessage::PredictionMessage(PredictionMessage::from_json(value)?));
+        }
+        if obj.get("type").and_then(Value::as_str) == Some("dropped") {
+            return Ok(JobMessage::Dropped(Dropped::from_json(value)?));
+        }
+        if obj.get("type").and_then(Value::as_str) == Some("usage") {
+            return Ok(JobMessage::Usage(Usage::from_json(value)?));
+        }
+        if obj.get("type").and_then(Value::as_str) == Some("end") {
+            return Ok(JobMessage::End(End::from_json(value)?));
+        }
+        fail("no variant matches".to_string())
+    }
+
+    pub fn to_json(&self) -> Value {
+        match self {
+            JobMessage::Start(v) => v.to_json(),
+            JobMessage::PredictionMessage(v) => v.to_json(),
+            JobMessage::Dropped(v) => v.to_json(),
+            JobMessage::Usage(v) => v.to_json(),
+            JobMessage::End(v) => v.to_json(),
+        }
+    }
+}
+
+
+#[derive(Debug, Clone, PartialEq)]
 pub enum Message {
     Result(Result),
     Send(Send),
     Credit(Credit),
     Start(Start),
-    Prediction(Prediction),
+    PredictionMessage(PredictionMessage),
     Dropped(Dropped),
     Usage(Usage),
     End(End),
     Done(Done),
     Pong(Pong),
-    Error(Error),
+    ErrorMessage(ErrorMessage),
     Unknown(Map<String, Value>),
 }
 
@@ -1677,7 +1719,7 @@ impl Message {
             return Ok(Message::Start(Start::from_json(value)?));
         }
         if obj.get("type").and_then(Value::as_str) == Some("prediction") {
-            return Ok(Message::Prediction(Prediction::from_json(value)?));
+            return Ok(Message::PredictionMessage(PredictionMessage::from_json(value)?));
         }
         if obj.get("type").and_then(Value::as_str) == Some("dropped") {
             return Ok(Message::Dropped(Dropped::from_json(value)?));
@@ -1695,7 +1737,7 @@ impl Message {
             return Ok(Message::Pong(Pong::from_json(value)?));
         }
         if obj.get("type").and_then(Value::as_str) == Some("error") {
-            return Ok(Message::Error(Error::from_json(value)?));
+            return Ok(Message::ErrorMessage(ErrorMessage::from_json(value)?));
         }
         fail("no variant matches".to_string())
     }
@@ -1714,13 +1756,13 @@ impl Message {
             Message::Send(v) => v.to_json(),
             Message::Credit(v) => v.to_json(),
             Message::Start(v) => v.to_json(),
-            Message::Prediction(v) => v.to_json(),
+            Message::PredictionMessage(v) => v.to_json(),
             Message::Dropped(v) => v.to_json(),
             Message::Usage(v) => v.to_json(),
             Message::End(v) => v.to_json(),
             Message::Done(v) => v.to_json(),
             Message::Pong(v) => v.to_json(),
-            Message::Error(v) => v.to_json(),
+            Message::ErrorMessage(v) => v.to_json(),
             Message::Unknown(raw) => Value::Object(raw.clone()),
         }
     }

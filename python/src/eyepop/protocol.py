@@ -512,17 +512,17 @@ class End:
 
 
 @dataclass(frozen=True)
-class Error:
+class ErrorMessage:
     error: str
     message: str
     id: str | None = None
     raw: Mapping[str, Any] = field(default_factory=dict[str, Any], compare=False, repr=False)
 
     @staticmethod
-    def from_json(value: Any) -> Error:
+    def from_json(value: Any) -> ErrorMessage:
         obj = _object(value)
         _required(obj, 'type', _const('error'))
-        return Error(error=_required(obj, 'error', _limit(_string, min_length=1)), message=_required(obj, 'message', _string), id=_optional(obj, 'id', _limit(_string, min_length=1)), raw=copy.deepcopy(obj))
+        return ErrorMessage(error=_required(obj, 'error', _limit(_string, min_length=1)), message=_required(obj, 'message', _string), id=_optional(obj, 'id', _limit(_string, min_length=1)), raw=copy.deepcopy(obj))
 
     def to_json(self) -> dict[str, Any]:
         out = copy.deepcopy(dict(self.raw))
@@ -703,16 +703,16 @@ class PopDepthMap:
 
 
 @dataclass(frozen=True)
-class Prediction:
+class PredictionMessage:
     id: str
     prediction: Mapping[str, Any]
     raw: Mapping[str, Any] = field(default_factory=dict[str, Any], compare=False, repr=False)
 
     @staticmethod
-    def from_json(value: Any) -> Prediction:
+    def from_json(value: Any) -> PredictionMessage:
         obj = _object(value)
         _required(obj, 'type', _const('prediction'))
-        return Prediction(id=_required(obj, 'id', _limit(_string, min_length=1)), prediction=_required(obj, 'prediction', _free), raw=copy.deepcopy(obj))
+        return PredictionMessage(id=_required(obj, 'id', _limit(_string, min_length=1)), prediction=_required(obj, 'prediction', _free), raw=copy.deepcopy(obj))
 
     def to_json(self) -> dict[str, Any]:
         out = copy.deepcopy(dict(self.raw))
@@ -1220,6 +1220,22 @@ def decode_groupmember(value: Any) -> GroupMember:
 
 
 
+_JOBMESSAGE_VARIANTS: _Variants = [
+    (_tag('start'), Start.from_json),
+    (_tag('prediction'), PredictionMessage.from_json),
+    (_tag('dropped'), Dropped.from_json),
+    (_tag('usage'), Usage.from_json),
+    (_tag('end'), End.from_json),
+]
+
+JobMessage = Start | PredictionMessage | Dropped | Usage | End
+
+
+def decode_jobmessage(value: Any) -> JobMessage:
+    return _dispatch(value, _JOBMESSAGE_VARIANTS)
+
+
+
 @dataclass(frozen=True)
 class UnknownMessage:
     raw: Mapping[str, Any]
@@ -1233,16 +1249,16 @@ _MESSAGE_VARIANTS: _Variants = [
     (_tag('send'), Send.from_json),
     (_tag('credit'), Credit.from_json),
     (_tag('start'), Start.from_json),
-    (_tag('prediction'), Prediction.from_json),
+    (_tag('prediction'), PredictionMessage.from_json),
     (_tag('dropped'), Dropped.from_json),
     (_tag('usage'), Usage.from_json),
     (_tag('end'), End.from_json),
     (_tag('done'), Done.from_json),
     (_tag('pong'), Pong.from_json),
-    (_tag('error'), Error.from_json),
+    (_tag('error'), ErrorMessage.from_json),
 ]
 
-Message = Result | Send | Credit | Start | Prediction | Dropped | Usage | End | Done | Pong | Error | UnknownMessage
+Message = Result | Send | Credit | Start | PredictionMessage | Dropped | Usage | End | Done | Pong | ErrorMessage | UnknownMessage
 
 
 def decode_message(value: Any) -> Message:

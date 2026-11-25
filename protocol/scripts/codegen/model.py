@@ -154,6 +154,12 @@ class Model:
     objects: tuple[Object, ...]
     unions: tuple[Union, ...]
     wire: Wire = WIRE
+    # Type names callers may see; None means the schemas set no visibility and every type is public.
+    # Each emitter turns "not public" into its own language's marker.
+    public: frozenset[str] | None = None
+
+    def is_public(self, name: str) -> bool:
+        return self.public is None or name in self.public
 
     @property
     def enums(self) -> tuple[Enum, ...]:
@@ -394,9 +400,47 @@ def check(schemas: Mapping[str, dict], name: str) -> None:
     {"object": object_, "union": union, "scalar": value}[kind(body)](body, [])
 
 
-def parse(schemas: Mapping[str, dict], roots: Sequence[str], namings: Mapping[str, Naming] = {}) -> Model:
+def public_types(objects: Mapping[str, Object], unions: Sequence[Union], sources: Mapping[str, str], listed: Sequence[str]) -> frozenset[str]:
+    """Every type defined in a listed schema file: the file's own type, its inline variants and the enums it declares.
+
+    Nothing is added for the caller, so a public type that holds or contains a type from an unlisted file fails here
+    instead of leaking it.
+    """
+    public = frozenset(name for name, origin in sources.items() if origin.split(".json#")[0] in listed)
+    for file in listed:
+        if not any(origin.split(".json#")[0] == file for origin in sources.values()):
+            raise SchemaError(f"the public list names {file!r}, which defines no type")
+
+    def holds(type_: Type) -> list[str]:
+        match type_:
+            case Ref(name):
+                return [name]
+            case Array(item):
+                return holds(item)
+            case _:
+                return []
+
+    for obj in objects.values():
+        for name in (n for f in obj.fields for n in holds(f.type)) if obj.name in public else ():
+            if name not in public:
+                raise SchemaError(f"public type {obj.name} holds {name}, which is not on the public list")
+    for union in unions:
+        for variant in union.variants if union.name in public else ():
+            if variant.name not in public:
+                raise SchemaError(f"public type {union.name} has the variant {variant.name}, which is not on the public list")
+    return public
+
+
+def parse(
+    schemas: Mapping[str, dict], roots: Sequence[str], namings: Mapping[str, Naming] = {}, public: Sequence[str] | None = None
+) -> Model:
     for name in schemas:
         check(schemas, name)
+    if public is not None and not public:
+        raise SchemaError("the public list is empty")
+    for name in public or ():
+        if name not in schemas:
+            raise SchemaError(f"the public list names {name!r}, which is not a schema")
     objects: dict[str, Object] = {}
     sources: dict[str, str] = {}
     origin = ""
@@ -488,7 +532,8 @@ def parse(schemas: Mapping[str, dict], roots: Sequence[str], namings: Mapping[st
     missing = [root for root in roots if pascal(root) not in {u.name for u in unions}]
     if missing:
         raise SchemaError(f"requested roots that are not unions: {', '.join(missing)}")
-    return Model(tuple(objects.values()), unions)
+    visible = None if public is None else public_types(objects, unions, sources, public)
+    return Model(tuple(objects.values()), unions, public=visible)
 
 
 def variant_suffix(item: dict) -> str:

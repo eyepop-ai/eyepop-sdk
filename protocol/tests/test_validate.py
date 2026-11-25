@@ -41,16 +41,39 @@ def test_an_expected_rule_for_a_missing_example_fails(make_root):
     assert check(root) == [Failure("invalid/command-ping-gone.json", "stale_expectation")]
 
 
-def test_a_variant_whose_type_const_differs_from_its_file_name_fails(make_root):
+def test_an_invalid_example_is_checked_against_the_variant_its_tag_names_whatever_the_file_is_called(make_root):
+    # The pong variant fails on a missing `seq`; the ping variant would fail on the tag instead, and the union on `oneOf`.
+    def variant(tag: str, *own: str) -> dict:
+        properties = {"type": {"const": tag}, "id": {"type": "string"}, **{key: {"type": "integer"} for key in own}}
+        return schema(f"{tag}Message", {"type": "object", "properties": properties, "required": ["type", "id", *own]})
+
     root = make_root(
         schemas={
-            "pong": schema("pong", {"type": "object", "properties": {"type": {"const": "pang"}}, "required": ["type"]}),
-            "command": schema("command", {"oneOf": [{"$ref": "ping.json"}, {"$ref": "pong.json"}]}),
+            "ping": schema("ping", {"type": "object"}),
+            "pingMessage": variant("ping"),
+            "pongMessage": variant("pong", "seq"),
+            "command": schema("command", {"oneOf": [{"$ref": "pingMessage.json"}, {"$ref": "pongMessage.json"}]}),
+        },
+        valid={"command-ping.json": {"type": "ping", "id": "p1"}, "command-pong.json": {"type": "pong", "id": "p1", "seq": 1}},
+        invalid={"command-pong-no-seq.json": {"type": "pong", "id": "p1"}},
+        expected={"command-pong-no-seq.json": {"path": "", "keyword": "required"}},
+    )
+
+    assert check(root) == []
+
+
+def test_a_job_message_with_a_variant_the_message_union_lacks_fails(make_root):
+    pong = schema("pong", {"type": "object", "properties": {"type": {"const": "pong"}}, "required": ["type"]})
+    root = make_root(
+        schemas={
+            "pong": pong,
+            "message": schema("message", {"oneOf": [{"$ref": "ping.json"}]}),
+            "jobMessage": schema("jobMessage", {"oneOf": [{"$ref": "ping.json"}, {"$ref": "pong.json"}]}),
         },
         valid=valid_ping(),
     )
 
-    assert check(root) == [Failure("schema/pong.json", "type_mismatch")]
+    assert check(root) == [Failure("schema/pong.json", "not_in_message")]
 
 
 def test_a_variant_missing_from_its_union_fails(make_root):

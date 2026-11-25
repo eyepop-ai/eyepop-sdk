@@ -816,7 +816,8 @@ func (v Dropped) ToJSON() any {
 	return out
 }
 
-func (Dropped) isMessage() {}
+func (Dropped) isJobMessage() {}
+func (Dropped) isMessage()    {}
 
 type End struct {
 	Id                string
@@ -871,39 +872,40 @@ func (v End) ToJSON() any {
 	return out
 }
 
-func (End) isMessage() {}
+func (End) isJobMessage() {}
+func (End) isMessage()    {}
 
-type Error struct {
+type ErrorMessage struct {
 	Id      *string
 	Error   string
 	Message string
 	Raw     map[string]any
 }
 
-func ErrorFromJSON(value any) (Error, error) {
+func ErrorMessageFromJSON(value any) (ErrorMessage, error) {
 	obj, err := parseObject(value)
 	if err != nil {
-		return Error{}, err
+		return ErrorMessage{}, err
 	}
 	if _, err := required(obj, "type", parseConst("error")); err != nil {
-		return Error{}, err
+		return ErrorMessage{}, err
 	}
 	v0, err := optional(obj, "id", limitString(parseString, 1))
 	if err != nil {
-		return Error{}, err
+		return ErrorMessage{}, err
 	}
 	v1, err := required(obj, "error", limitString(parseString, 1))
 	if err != nil {
-		return Error{}, err
+		return ErrorMessage{}, err
 	}
 	v2, err := required(obj, "message", parseString)
 	if err != nil {
-		return Error{}, err
+		return ErrorMessage{}, err
 	}
-	return Error{Id: v0, Error: v1, Message: v2, Raw: copyMap(obj)}, nil
+	return ErrorMessage{Id: v0, Error: v1, Message: v2, Raw: copyMap(obj)}, nil
 }
 
-func (v Error) ToJSON() any {
+func (v ErrorMessage) ToJSON() any {
 	out := copyMap(v.Raw)
 	if v.Id != nil {
 		out["id"] = (*v.Id)
@@ -916,7 +918,7 @@ func (v Error) ToJSON() any {
 	return out
 }
 
-func (Error) isMessage() {}
+func (ErrorMessage) isMessage() {}
 
 type GetGraph struct {
 	Id      string
@@ -1190,32 +1192,32 @@ func (v PopDepthMap) ToJSON() any {
 	return out
 }
 
-type Prediction struct {
+type PredictionMessage struct {
 	Id         string
 	Prediction map[string]any
 	Raw        map[string]any
 }
 
-func PredictionFromJSON(value any) (Prediction, error) {
+func PredictionMessageFromJSON(value any) (PredictionMessage, error) {
 	obj, err := parseObject(value)
 	if err != nil {
-		return Prediction{}, err
+		return PredictionMessage{}, err
 	}
 	if _, err := required(obj, "type", parseConst("prediction")); err != nil {
-		return Prediction{}, err
+		return PredictionMessage{}, err
 	}
 	v0, err := required(obj, "id", limitString(parseString, 1))
 	if err != nil {
-		return Prediction{}, err
+		return PredictionMessage{}, err
 	}
 	v1, err := required(obj, "prediction", parseFree)
 	if err != nil {
-		return Prediction{}, err
+		return PredictionMessage{}, err
 	}
-	return Prediction{Id: v0, Prediction: v1, Raw: copyMap(obj)}, nil
+	return PredictionMessage{Id: v0, Prediction: v1, Raw: copyMap(obj)}, nil
 }
 
-func (v Prediction) ToJSON() any {
+func (v PredictionMessage) ToJSON() any {
 	out := copyMap(v.Raw)
 	out["id"] = v.Id
 	out["prediction"] = deepCopy(v.Prediction)
@@ -1223,7 +1225,8 @@ func (v Prediction) ToJSON() any {
 	return out
 }
 
-func (Prediction) isMessage() {}
+func (PredictionMessage) isJobMessage() {}
+func (PredictionMessage) isMessage()    {}
 
 type Quit struct {
 	Id  string
@@ -1677,7 +1680,8 @@ func (v Start) ToJSON() any {
 	return out
 }
 
-func (Start) isMessage() {}
+func (Start) isJobMessage() {}
+func (Start) isMessage()    {}
 
 type StopSource struct {
 	Id  string
@@ -1780,7 +1784,8 @@ func (v Usage) ToJSON() any {
 	return out
 }
 
-func (Usage) isMessage() {}
+func (Usage) isJobMessage() {}
+func (Usage) isMessage()    {}
 
 type GroupMemberUrl struct {
 	Url string
@@ -2087,6 +2092,54 @@ func GroupMemberFromJSON(value any) (GroupMember, error) {
 	return nil, fmt.Errorf("no variant matches")
 }
 
+type JobMessage interface {
+	ToJSON() any
+	isJobMessage()
+}
+
+func JobMessageFromJSON(value any) (JobMessage, error) {
+	obj, err := parseObject(value)
+	if err != nil {
+		return nil, err
+	}
+	if obj["type"] == "start" {
+		parsed, err := StartFromJSON(value)
+		if err != nil {
+			return nil, err
+		}
+		return parsed, nil
+	}
+	if obj["type"] == "prediction" {
+		parsed, err := PredictionMessageFromJSON(value)
+		if err != nil {
+			return nil, err
+		}
+		return parsed, nil
+	}
+	if obj["type"] == "dropped" {
+		parsed, err := DroppedFromJSON(value)
+		if err != nil {
+			return nil, err
+		}
+		return parsed, nil
+	}
+	if obj["type"] == "usage" {
+		parsed, err := UsageFromJSON(value)
+		if err != nil {
+			return nil, err
+		}
+		return parsed, nil
+	}
+	if obj["type"] == "end" {
+		parsed, err := EndFromJSON(value)
+		if err != nil {
+			return nil, err
+		}
+		return parsed, nil
+	}
+	return nil, fmt.Errorf("no variant matches")
+}
+
 type Message interface {
 	ToJSON() any
 	isMessage()
@@ -2126,7 +2179,7 @@ func MessageFromJSON(value any) (Message, error) {
 		return parsed, nil
 	}
 	if obj["type"] == "prediction" {
-		parsed, err := PredictionFromJSON(value)
+		parsed, err := PredictionMessageFromJSON(value)
 		if err != nil {
 			return nil, err
 		}
@@ -2168,7 +2221,7 @@ func MessageFromJSON(value any) (Message, error) {
 		return parsed, nil
 	}
 	if obj["type"] == "error" {
-		parsed, err := ErrorFromJSON(value)
+		parsed, err := ErrorMessageFromJSON(value)
 		if err != nil {
 			return nil, err
 		}

@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.eyepop.ai/pipeline-socket/v1/jobMessage.json",
+  "title": "jobMessage",
+  "oneOf": [
+    { "$ref": "start.json" },
+    { "$ref": "predictionMessage.json" },
+    { "$ref": "dropped.json" },
+    { "$ref": "usage.json" },
+    { "$ref": "end.json" }
+  ]
+}

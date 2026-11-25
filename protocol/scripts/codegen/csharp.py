@@ -396,9 +396,14 @@ internal static class WireRules
 
 
 def emit(model: Model) -> str:
-    parts = [emit_enum(e) for e in model.enums]
-    parts += [emit_object(o, model.unions_of(o)) for o in model.objects]
-    parts += [emit_union(u) for u in model.unions]
+    def access(name: str) -> str:
+        return "public" if model.is_public(name) else "internal"
+
+    based = {u.name for u in model.unions if all(access(v.name) == access(u.name) for v in u.variants)}
+
+    parts = [emit_enum(e, access(e.name)) for e in model.enums]
+    parts += [emit_object(o, [u for u in model.unions_of(o) if u in based], [u for u in model.unions_of(o) if u not in based], access(o.name)) for o in model.objects]
+    parts += [emit_union(u, access(u.name), u.name in based) for u in model.unions]
     return HEADER + constants(model.wire) + "\n" + "\n".join(parts)
 
 
@@ -495,17 +500,17 @@ def reserved(field: Field, fields: Sequence[Field]) -> set[str]:
 NAMING = Naming(field=prop_name, reserved=reserved, value=value_name)
 
 
-def emit_enum(enum: Enum) -> str:
+def emit_enum(enum: Enum, access: str) -> str:
     names = enum.value_names
     reads = "\n".join(f'            "{v}" => {enum.name}.{n},' for v, n in zip(enum.values, names))
     writes = "\n".join(f'            {enum.name}.{n} => "{v}",' for v, n in zip(enum.values, names))
     return f"""
-public enum {enum.name}
+{access} enum {enum.name}
 {{
     {", ".join(names)},
 }}
 
-public static class {enum.name}Wire
+{access} static class {enum.name}Wire
 {{
     public static {enum.name} FromJson(JsonNode? value) =>
         Wire.String(value) switch
@@ -524,7 +529,7 @@ public static class {enum.name}Wire
 """
 
 
-def emit_object(obj: Object, unions: list[str]) -> str:
+def emit_object(obj: Object, bases: list[str], interfaces: list[str], access: str) -> str:
     ordered = sorted(obj.typed, key=lambda f: not f.required)
     params = [
         f"{cs_type(f.type)} {prop_name(obj.name, f.name)}" if f.required else f"{cs_type(f.type)}? {prop_name(obj.name, f.name)} = null"
@@ -552,11 +557,12 @@ def emit_object(obj: Object, unions: list[str]) -> str:
             put = f'Wire.PutNumber(result, "{f.name}", {value});' if is_number(f.type) else f'result["{f.name}"] = {node(f.type, value)};'
             writes.append(f'        if ({prop} is not null) {put}\n        else result.Remove("{f.name}");')
     writes += [f'        result["{f.name}"] = "{f.type.value}";' for f in obj.consts]
-    base = f" : {unions[0]}" if unions else ""
-    hide = "new " if unions else ""
-    override = "override " if unions else ""
+    supers = bases[:1] + [f"I{u}" for u in interfaces]
+    base = f" : {', '.join(supers)}" if supers else ""
+    hide = "new " if bases else ""
+    override = "override " if bases else ""
     return f"""
-public sealed record {obj.name}({", ".join(params)}){base}
+{access} sealed record {obj.name}({", ".join(params)}){base}
 {{
     public static {hide}{obj.name} FromJson(JsonNode? value)
     {{
@@ -584,8 +590,12 @@ def condition(variant: Variant) -> str | None:
             return None
 
 
-def emit_union(union: Union) -> str:
+def emit_union(union: Union, access: str, base: bool) -> str:
+    # A record cannot derive from a type less accessible than itself, so a union that holds a public variant
+    # while being internal (the socket's messages, of which a few are public) is not a base type. Its variants
+    # implement an internal interface instead, which a public record may do, and a static class decodes to it.
     name = union.name
+    result = name if base else f"I{name}"
     branches = []
     for v in union.variants:
         cond = condition(v)
@@ -599,13 +609,13 @@ def emit_union(union: Union) -> str:
     decode = ""
     if union.open:
         unknown = f"""
-public sealed record Unknown{name}(JsonObject Raw) : {name}
+{access} sealed record Unknown{name}(JsonObject Raw) : {name if base else "I" + name}
 {{
-    public override JsonNode ToJson() => Raw.DeepClone();
+    public {"override " if base else ""}JsonNode ToJson() => Raw.DeepClone();
 }}
 """
         decode = f"""
-    public static {name} Decode(JsonNode? value)
+    public static {result} Decode(JsonNode? value)
     {{
         var tree = Wire.Tree(value, out var unicode);
         try
@@ -619,12 +629,15 @@ public sealed record Unknown{name}(JsonObject Raw) : {name}
         }}
     }}
 """
-    return f"""
-public abstract record {name}
+    if base:
+        shape, name_, head = "abstract record", name, "    public abstract JsonNode ToJson();\n\n"
+    else:
+        shape, name_, head = "static class", name + "Wire", ""
+    interface = "" if base else f"\ninternal interface I{name}\n{{\n    JsonNode ToJson();\n}}\n"
+    return f"""{interface}
+{access} {shape} {name_}
 {{
-    public abstract JsonNode ToJson();
-
-    public static {name} FromJson(JsonNode? value)
+{head}    public static {result} FromJson(JsonNode? value)
     {{
         var obj = Wire.Object(value);
 {chr(10).join(branches)}

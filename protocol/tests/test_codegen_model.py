@@ -382,7 +382,7 @@ def test_a_string_type_beside_const_or_enum_is_accepted_and_changes_nothing(keyw
 def test_a_description_leaves_the_generated_output_unchanged():
     described = thing(name={"type": "string", "description": "what it is called"})
 
-    assert generate({"thing": described}, ()) == generate({"thing": thing(name={"type": "string"})}, ())
+    assert generate({"thing": described}, (), None) == generate({"thing": thing(name={"type": "string"})}, (), None)
 
 
 @pytest.mark.parametrize(
@@ -413,7 +413,7 @@ def test_additional_properties_false_and_an_excluded_const_are_kept_in_the_model
 
     (obj,) = parse({"thing": marked}, ()).objects
     assert obj.closed and obj.fields[1].excluded == "x"
-    assert generate({"thing": marked}, ()) == generate({"thing": plain}, ())
+    assert generate({"thing": marked}, (), None) == generate({"thing": plain}, (), None)
 
 
 def test_the_model_lists_every_enum_sorted_by_name_including_array_items():

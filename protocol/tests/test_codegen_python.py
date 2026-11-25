@@ -7,7 +7,7 @@ from codegen import generate
 
 
 def python(schemas, roots=()):
-    return load_python(generate(schemas, roots)["python"])
+    return load_python(generate(schemas, roots, None)["python"])
 
 
 def test_a_closed_object_round_trips():
@@ -124,4 +124,4 @@ def test_a_field_set_to_none_is_removed_from_the_retained_json():
 
 def test_a_requested_root_that_is_not_a_union_is_rejected():
     with pytest.raises(ValueError, match="message"):
-        generate({"ping": ping()}, ("message",))
+        generate({"ping": ping()}, ("message",), None)

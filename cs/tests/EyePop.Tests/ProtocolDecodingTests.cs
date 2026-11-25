@@ -50,7 +50,7 @@ public class ProtocolDecodingTests
         var data = JsonNode.Parse(text, documentOptions: options);
         var (unknown, decoded) = c["union"]!.GetValue<string>() == "command"
             ? Result(Command.Decode(data))
-            : Result(Message.Decode(data));
+            : Result(MessageWire.Decode(data));
         var encoded = JsonNode.Parse(decoded.ToJsonString(), documentOptions: options)!;
         var variant = unknown ? "Unknown" : encoded["type"]!.GetValue<string>();
         if (variant != c["variant"]!.GetValue<string>())
@@ -71,7 +71,7 @@ public class ProtocolDecodingTests
 
     private static (bool, JsonNode) Result(Command command) => (command is UnknownCommand, command.ToJson());
 
-    private static (bool, JsonNode) Result(Message message) => (message is UnknownMessage, message.ToJson());
+    private static (bool, JsonNode) Result(IMessage message) => (message is UnknownMessage, message.ToJson());
 
     private static bool Unchanged(JsonNode encoded, JsonElement input, string text)
     {
@@ -148,7 +148,7 @@ public class ProtocolDecodingTests
     public void Decoded_json_is_a_snapshot_of_the_input()
     {
         var input = JsonNode.Parse("""{"type":"result","id":"r1","extra":{"status":"original"}}""")!;
-        var message = Message.Decode(input);
+        var message = MessageWire.Decode(input);
 
         input["extra"]!["status"] = "changed";
 
@@ -158,8 +158,8 @@ public class ProtocolDecodingTests
     [Fact]
     public void A_nan_double_keeps_every_field()
     {
-        var known = Message.Decode(new JsonObject { ["type"] = "credit", ["id"] = "c1", ["bytes"] = 1, ["extra"] = JsonValue.Create(double.NaN) });
-        var unknown = Message.Decode(new JsonObject { ["type"] = "credit", ["id"] = "c1", ["bytes"] = JsonValue.Create(double.NaN) });
+        var known = MessageWire.Decode(new JsonObject { ["type"] = "credit", ["id"] = "c1", ["bytes"] = 1, ["extra"] = JsonValue.Create(double.NaN) });
+        var unknown = MessageWire.Decode(new JsonObject { ["type"] = "credit", ["id"] = "c1", ["bytes"] = JsonValue.Create(double.NaN) });
 
         Assert.True(double.IsNaN(((Credit)known).Raw!["extra"]!.GetValue<double>()));
         Assert.Equal(3, ((UnknownMessage)unknown).Raw.Count);
@@ -168,7 +168,7 @@ public class ProtocolDecodingTests
     [Fact]
     public void A_lone_surrogate_key_decodes_to_unknown_keeping_every_field()
     {
-        var message = Message.Decode(new JsonObject { ["type"] = "credit", ["id"] = "c1", ["bytes"] = 1, ["\ud800"] = 1 });
+        var message = MessageWire.Decode(new JsonObject { ["type"] = "credit", ["id"] = "c1", ["bytes"] = 1, ["\ud800"] = 1 });
 
         Assert.Equal(4, Assert.IsType<UnknownMessage>(message).Raw.Count);
     }
@@ -179,7 +179,7 @@ public class ProtocolDecodingTests
     [InlineData("""{"type":"credit","id":"\ud800","bytes":1,"bytes":2}""", """{"type":"credit","id":"\uFFFD","bytes":2}""")]
     public void A_lone_surrogate_in_parsed_text_decodes_to_a_readable_unknown(string text, string written)
     {
-        var message = Assert.IsType<UnknownMessage>(Message.Decode(JsonNode.Parse(text)));
+        var message = Assert.IsType<UnknownMessage>(MessageWire.Decode(JsonNode.Parse(text)));
 
         Assert.Equal(("credit", written), (message.Raw["type"]!.GetValue<string>(), message.ToJson().ToJsonString()));
     }
@@ -192,7 +192,7 @@ public class ProtocolDecodingTests
         Wire.ReadsUnreadObjects = false;
         try
         {
-            var message = Assert.IsType<UnknownMessage>(Message.Decode(JsonNode.Parse(text)));
+            var message = Assert.IsType<UnknownMessage>(MessageWire.Decode(JsonNode.Parse(text)));
 
             Assert.Empty(message.Raw);
         }
@@ -205,7 +205,7 @@ public class ProtocolDecodingTests
     [Fact]
     public void A_lone_surrogate_value_held_in_memory_decodes_to_unknown_keeping_every_field()
     {
-        var message = Message.Decode(new JsonObject { ["type"] = "credit", ["id"] = "c1", ["bytes"] = 1, ["note"] = "\ud800" });
+        var message = MessageWire.Decode(new JsonObject { ["type"] = "credit", ["id"] = "c1", ["bytes"] = 1, ["note"] = "\ud800" });
 
         Assert.Equal(4, Assert.IsType<UnknownMessage>(message).Raw.Count);
     }
@@ -213,7 +213,7 @@ public class ProtocolDecodingTests
     [Fact]
     public void A_replacement_character_is_ordinary_text()
     {
-        Assert.IsType<Credit>(Message.Decode(JsonNode.Parse("""{"type":"credit","id":"\ufffd","bytes":1,"\ufffd":"\ufffd"}""")));
+        Assert.IsType<Credit>(MessageWire.Decode(JsonNode.Parse("""{"type":"credit","id":"\ufffd","bytes":1,"\ufffd":"\ufffd"}""")));
     }
 
     [Fact]
@@ -227,6 +227,6 @@ public class ProtocolDecodingTests
     {
         var input = new JsonObject { ["type"] = "credit", ["id"] = "c1", ["bytes"] = JsonValue.Create(1) };
 
-        Assert.IsType<Credit>(Message.Decode(input));
+        Assert.IsType<Credit>(MessageWire.Decode(input));
     }
 }
