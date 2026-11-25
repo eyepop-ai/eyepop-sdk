@@ -66,7 +66,7 @@ No IO, no clock, no environment.
 - `setPop(pop)`: sent in order like any command, and completes when the server answers `result`. It changes the pop in place, under the sources already running or queued. If it fails, the Pipeline keeps the last pop that applied.
 - `getGraph(format, verbose?) → graph`: the server's answer, as raw JSON.
 - `ping()`: completes when the server answers `pong`.
-- `status()`: `state` (`connecting`, `open`, `backingOff`, `idle`, `closed`), the number of reconnects, the last Error, and the number of malformed frames with the last one.
+- `status()`: the Pipeline `id`, `state` (`connecting`, `open`, `backingOff`, `idle`, `closed`), the number of reconnects (every attempt that followed a failure, failed attempts included), the last Error, and the number of malformed frames with the last one.
 - `close()`: sends `quit` and stops reconnecting.
 
 **Job**: the handle of one Source.
@@ -90,13 +90,13 @@ The SDK sends every command as it is called and keeps no queue and no ordering p
 
 ## Uploads
 
-A known length of 8 MiB or less goes as one combined message. Anything else is chunked under the server's credit in 64 KiB frames, one upload at a time, and the SDK sends `uploaded` after the last chunk. The caller never sees `send`, `credit` or `uploaded`. Credit arrives through the reader, so an upload moves only while its Job (or a command) is being pulled. If the caller's own stream fails to open or read, the SDK stops that source and its Job ends with that failure, not with an Error kind: the failure is the caller's, and a retry would hit it again. A file path is a per-language helper that builds the stream, not part of this contract.
+A known length of 8 MiB or less goes as one combined message. Anything else is chunked under the server's credit in 64 KiB frames, one upload at a time, and the SDK sends `uploaded` after the last chunk. The caller never sees `send`, `credit` or `uploaded`. Credit arrives through the reader, so an upload moves only while its Job (or a command) is being pulled. The SDK closes a source's stream when its Job ends, when its socket is replaced and when the Pipeline closes. If the caller's own stream fails to open or read, the SDK stops that source and its Job ends with that failure, not with an Error kind: the failure is the caller's, and a retry would hit it again. A file path is a per-language helper that builds the stream, not part of this contract.
 
 ## Backpressure and closing
 
-The Pipeline reads the socket only while a consumer pulls from a Job (from its first read until it ends) or a command waits for its answer. Each Job has a buffer of 256 messages; when one is full the reader waits, even if another Job is being read, so the pressure reaches the server, which drops predictions for live sources and closes with `1008 slow_client` after its write timeout for the others. The SDK drops nothing itself. The limit is on what the reader adds: the Pipeline's own `reconnecting` and `reconnected` messages can take a buffer a few past it. Consume every Job you open: one stalled Job holds up the others. A Pipeline nobody reads does not notice its socket closing until the next read or command.
+The Pipeline reads the socket only while a consumer pulls from a Job (from its first read until it ends) or a command waits for its answer. Each Job has a buffer of 256 messages; when one is full the reader waits, even if another Job is being read, so the pressure reaches the server, which drops predictions for live sources and closes with `1008 slow_client` after its write timeout for the others. The SDK drops nothing itself. The limit is on what the reader adds: the Pipeline's own `reconnecting` and `reconnected` messages can take a buffer a few past it. A Job whose reader has stopped (the enumeration ended early, or the Job was disposed) is abandoned: it buffers nothing more, so it no longer holds up the others. A Job that was only cancelled is still read to its end. Consume every Job you open: one stalled Job holds up the others. A Pipeline nobody reads does not notice its socket closing until the next read or command.
 
-`close()` ends every Job's `messages()` normally, and only `close()` ends a Pipeline. A `1000 idle` close leaves the Pipeline idle: the next command opens a new socket. Every other close goes through "Supervision". A close it cannot retry is an error of kind `closed` with its `closeCode` and reason, and every Job in flight receives it.
+`close()` ends every Job's `messages()` normally, and only `close()` ends a Pipeline. It flushes `quit` before it closes the socket, for at most 5 s, so a server that stopped reading cannot hold `close()` forever. A `1000 idle` close leaves the Pipeline idle: the next command opens a new socket. Every other close goes through "Supervision". A close it cannot retry is an error of kind `closed` with its `closeCode` and reason, and every Job in flight receives it.
 
 ## Supervision
 
@@ -131,6 +131,11 @@ Backoff is exponential with full jitter. It starts at 1 s, is capped at 60 s, an
 | `end` with reason `eos` or `error` on a live source | Sends that source again with backoff |
 | `end` on a finite source | The Job ends |
 | `error` `overloaded` for a finite source, still refused after the give-up window | The Job ends with `command_rejected` and error `overloaded` |
+
+## Known limits
+
+- One inbound frame has no size limit.
+- A socket that does not open within 30 s counts as failed and is retried with backoff.
 
 ## Naming
 

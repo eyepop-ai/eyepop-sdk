@@ -49,7 +49,7 @@ public sealed class ClientWebSocketFactoryTests : IDisposable
             await socket.CloseAsync((WebSocketCloseStatus)1008, "credential_expired", default);
         });
 
-        var socket = await new ClientWebSocketFactory().ConnectAsync(_url, "the-jwt", default);
+        var socket = await new ClientWebSocketFactory(TimeProvider.System).ConnectAsync(_url, "the-jwt", default);
         await socket.SendAsync(new TextFrame("hello"), default);
         var text = await socket.ReceiveAsync(default);
         var binary = await socket.ReceiveAsync(default);
@@ -73,7 +73,7 @@ public sealed class ClientWebSocketFactoryTests : IDisposable
             context.Response.Close();
         });
 
-        var failure = await Assert.ThrowsAsync<UpgradeException>(() => new ClientWebSocketFactory().ConnectAsync(_url, null, default));
+        var failure = await Assert.ThrowsAsync<UpgradeException>(() => new ClientWebSocketFactory(TimeProvider.System).ConnectAsync(_url, null, default));
 
         Assert.Equal(503, failure.Status);
         Assert.Equal(TimeSpan.FromSeconds(12), failure.RetryAfter);
@@ -85,7 +85,7 @@ public sealed class ClientWebSocketFactoryTests : IDisposable
     {
         _listener.Close();
 
-        var failure = await Assert.ThrowsAsync<UpgradeException>(() => new ClientWebSocketFactory().ConnectAsync(_url, null, default));
+        var failure = await Assert.ThrowsAsync<UpgradeException>(() => new ClientWebSocketFactory(TimeProvider.System).ConnectAsync(_url, null, default));
 
         Assert.Null(failure.Status);
     }
@@ -101,7 +101,7 @@ public sealed class ClientWebSocketFactoryTests : IDisposable
             context.Response.Abort();
         });
 
-        await using var socket = await new ClientWebSocketFactory().ConnectAsync(_url, null, default);
+        await using var socket = await new ClientWebSocketFactory(TimeProvider.System).ConnectAsync(_url, null, default);
         var closed = await socket.ReceiveAsync(default).WaitAsync(TimeSpan.FromSeconds(5));
 
         Assert.Equal(new Inbound.Closed(null, null), closed);

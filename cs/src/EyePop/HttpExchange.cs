@@ -7,8 +7,12 @@ namespace EyePop;
 /// <summary>Trades the API key for a short-lived token. Nothing it throws holds the key or the token.</summary>
 internal sealed class HttpExchange : IExchange
 {
-    // One client for the process, as HttpClient is meant to be used.
-    private static readonly HttpClient Shared = new() { Timeout = Timeout.InfiniteTimeSpan };
+    // One client for the process, as HttpClient is meant to be used. Pooled connections are recycled, so a
+    // long-running process notices a changed DNS record of the auth service.
+    private static readonly HttpClient Shared = new(new SocketsHttpHandler { PooledConnectionLifetime = TimeSpan.FromMinutes(5) })
+    {
+        Timeout = Timeout.InfiniteTimeSpan,
+    };
     private static readonly TimeSpan RequestTimeout = TimeSpan.FromSeconds(30);
 
     private readonly HttpClient _http;

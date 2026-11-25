@@ -9,8 +9,11 @@ public enum PipelineState { Connecting, Open, BackingOff, Idle, Closed }
 
 public enum GraphFormat { Dot, Png, Pdf }
 
-/// <summary>What <see cref="Pipeline.Status"/> reports. The malformed frames are the ones the SDK skipped.</summary>
-public sealed record PipelineStatus(PipelineState State, int Reconnects, EyePopException? LastError, int Malformed, string? LastMalformed);
+/// <summary>
+/// What <see cref="Pipeline.Status"/> reports. Reconnects counts every attempt that followed a failure, failed attempts included.
+/// The malformed frames are the ones the SDK skipped.
+/// </summary>
+public sealed record PipelineStatus(string Id, PipelineState State, int Reconnects, EyePopException? LastError, int Malformed, string? LastMalformed);
 
 /// <summary>
 /// One pop and its sources, over one socket at a time. It outlives its socket: when one fails for a reason a
@@ -25,10 +28,11 @@ public sealed class Pipeline : IAsyncDisposable
     private readonly Config _config;
     private readonly Dependencies _deps;
     private readonly CancellationTokenSource _lifetime = new();
+    private CancellationTokenSource _timers;
     private readonly HashSet<Task> _tasks = new();
     private readonly Dictionary<string, TaskCompletionSource<JsonNode>> _commands = new();
     private readonly Dictionary<string, Job> _jobs = new();
-    private readonly Dictionary<(string Id, int? Member), UploadReader> _uploads = new();
+    private readonly Dictionary<int, UploadReader> _uploads = new();
 
     private State _state;
     private Link? _link;
@@ -38,6 +42,8 @@ public sealed class Pipeline : IAsyncDisposable
     private bool _backingOff;
     private int _pulling;
     private TaskCompletionSource _wake = NewWake();
+    private bool _closing;
+    private bool _disposed;
 
     private int _reconnects;
     private int _malformed;
@@ -49,6 +55,7 @@ public sealed class Pipeline : IAsyncDisposable
         _config = config;
         _deps = deps;
         _state = State.Initial(deps.Settings);
+        _timers = CancellationTokenSource.CreateLinkedTokenSource(_lifetime.Token);
         Id = Guid.NewGuid().ToString();
     }
 
@@ -117,21 +124,45 @@ public sealed class Pipeline : IAsyncDisposable
                 Phase.Connecting => _backingOff ? PipelineState.BackingOff : PipelineState.Connecting,
                 _ => PipelineState.Idle,
             };
-            return new PipelineStatus(state, _reconnects, _lastError, _malformed, _lastMalformed);
+            return new PipelineStatus(Id, state, _reconnects, _lastError, _malformed, _lastMalformed);
         }
     }
 
     /// <summary>Sends quit, ends every Job normally and stops reconnecting. Only this ends a Pipeline.</summary>
     public async Task CloseAsync(CancellationToken ct = default)
     {
-        Task[] tasks;
         lock (_lock)
         {
-            Apply(new Input.Quit());
-            _lifetime.Cancel();
-            tasks = _tasks.ToArray();
+            if (!_closing)
+            {
+                _closing = true;
+                Apply(new Input.Quit());
+                _lifetime.Cancel();
+            }
         }
-        await Task.WhenAll(tasks).WaitAsync(ct).ConfigureAwait(false);
+        // Looped, because a task that was starting when the snapshot was taken is waited for by the next one.
+        while (true)
+        {
+            Task[] tasks;
+            lock (_lock)
+            {
+                tasks = _tasks.ToArray();
+            }
+            if (tasks.Length == 0)
+            {
+                break;
+            }
+            await Task.WhenAll(tasks).WaitAsync(ct).ConfigureAwait(false);
+        }
+        lock (_lock)
+        {
+            if (!_disposed)
+            {
+                _disposed = true;
+                _timers.Dispose();
+                _lifetime.Dispose();
+            }
+        }
     }
 
     public ValueTask DisposeAsync() => new(CloseAsync());
@@ -236,6 +267,7 @@ public sealed class Pipeline : IAsyncDisposable
                     _lastError = close.Error ?? _lastError;
                     closed.Complete(close.Error);
                 }
+                DisposeUploads(close.JobId);
                 break;
             case Output.Completed completed:
                 if (_commands.Remove(completed.CommandId, out var answer))
@@ -251,17 +283,20 @@ public sealed class Pipeline : IAsyncDisposable
                 }
                 break;
             case Output.Connect connect:
+                RenewTimers();
                 StartConnect(connect);
                 break;
             case Output.CloseSocket:
                 RetireLink(graceful: false);
                 break;
             case Output.GoIdle:
+                RenewTimers();
                 CancelConnect();
                 RetireLink(graceful: true);
                 break;
             case Output.ScheduleResend resend:
-                Spawn(() => ResendLater(resend));
+                var timers = _timers.Token;
+                Spawn(() => ResendLater(resend, timers));
                 break;
             case Output.ReadUpload read:
                 Spawn(() => ReadUpload(read));
@@ -275,7 +310,7 @@ public sealed class Pipeline : IAsyncDisposable
     // The reader runs only while a Job is pulled or a command awaits its answer, and never while a Job
     // holds a full buffer.
     private bool Wanted() =>
-        (_commands.Count > 0 || _pulling > 0) && !_jobs.Values.Any(job => job.Buffered >= Job.BufferLimit);
+        (_commands.Count > 0 || _pulling > 0) && !_jobs.Values.Any(job => !job.Abandoned && job.Buffered >= Job.BufferLimit);
 
     private static TaskCompletionSource NewWake() => new(TaskCreationOptions.RunContinuationsAsynchronously);
 
@@ -340,20 +375,20 @@ public sealed class Pipeline : IAsyncDisposable
             {
                 return;
             }
-            ISocket socket;
-            try
+            var socket = await OpenSocket(id, jwt.Value, ct).ConfigureAwait(false);
+            if (socket is not null && !Attach(id, socket))
             {
-                socket = await _deps.Sockets.ConnectAsync(_config.PipelineUrl, jwt.Value, ct).ConfigureAwait(false);
+                // Awaited here, so CloseAsync returns only after a socket that arrived too late is closed.
+                await socket.DisposeAsync().ConfigureAwait(false);
             }
-            catch (UpgradeException e)
-            {
-                Fail(id, new Failure.Upgrade(e.Status, e.RetryAfter));
-                return;
-            }
-            Attach(id, socket);
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
+        }
+        catch (Exception) when (!ct.IsCancellationRequested)
+        {
+            // Something the transport should not throw: the attempt failed, and a retry may work.
+            Fail(id, new Failure.Upgrade(null));
         }
         finally
         {
@@ -367,6 +402,26 @@ public sealed class Pipeline : IAsyncDisposable
             }
             cts.Dispose();
         }
+    }
+
+    // Null: the attempt failed and was reported.
+    private async Task<ISocket?> OpenSocket(int id, string? jwt, CancellationToken ct)
+    {
+        using var timeout = new CancellationTokenSource(_deps.UpgradeTimeout, _deps.Time);
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, timeout.Token);
+        try
+        {
+            return await _deps.Sockets.ConnectAsync(_config.PipelineUrl, jwt, linked.Token).ConfigureAwait(false);
+        }
+        catch (UpgradeException e)
+        {
+            Fail(id, new Failure.Upgrade(e.Status, e.RetryAfter));
+        }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+        {
+            Fail(id, new Failure.Upgrade(null));
+        }
+        return null;
     }
 
     private async Task<(string? Value, bool Failed)> CurrentJwt(int id, bool force, CancellationToken ct)
@@ -411,14 +466,14 @@ public sealed class Pipeline : IAsyncDisposable
         }
     }
 
-    private void Attach(int connectId, ISocket socket)
+    // False: the attempt was replaced or the Pipeline closed, and the caller closes the socket.
+    private bool Attach(int connectId, ISocket socket)
     {
         lock (_lock)
         {
             if (_connectId != connectId)
             {
-                Spawn(async () => await socket.DisposeAsync().ConfigureAwait(false));
-                return;
+                return false;
             }
             _backingOff = false;
             var link = new Link(socket);
@@ -426,6 +481,7 @@ public sealed class Pipeline : IAsyncDisposable
             Apply(new Input.Opened());
             Spawn(() => ReadLoop(link));
             Spawn(() => WriteLoop(link));
+            return true;
         }
     }
 
@@ -439,14 +495,19 @@ public sealed class Pipeline : IAsyncDisposable
             return;
         }
         _link = null;
-        // A graceful retire lets quit go out before the socket closes; a socket already reported dead has nothing to flush.
+        // A graceful retire lets quit go out before the socket closes, but only for so long: a server that
+        // stopped reading would otherwise hold Close forever. A socket already reported dead has nothing to flush.
         graceful &= !link.Dead;
         link.Dead = true;
-        link.ReadCts.Cancel();
+        link.CancelRead();
         link.Outbox.Writer.TryComplete();
-        if (!graceful)
+        if (graceful)
         {
-            link.WriteCts.Cancel();
+            link.StartDrain(_deps.Time, _deps.DrainLimit);
+        }
+        else
+        {
+            link.CancelWrite();
         }
     }
 
@@ -490,9 +551,14 @@ public sealed class Pipeline : IAsyncDisposable
         catch (OperationCanceledException)
         {
         }
+        finally
+        {
+            link.Release();
+        }
     }
 
     // Null: the liveness window passed with no message. Time spent waiting for demand does not count.
+    // The socket honours the token, so a cancelled read ends by itself; the wait below is for silence only.
     // The client socket answers the server's pings inside the transport and never shows them, so a quiet
     // healthy socket cannot be told from a dead one by waiting. Halfway through the window the shell asks
     // with a ping of its own: any message, the pong included, proves the socket alive.
@@ -505,7 +571,7 @@ public sealed class Pipeline : IAsyncDisposable
         {
             try
             {
-                return await receiving.WaitAsync(half, _deps.Time, ct).ConfigureAwait(false);
+                return await receiving.WaitAsync(half, _deps.Time).ConfigureAwait(false);
             }
             catch (TimeoutException)
             {
@@ -571,16 +637,25 @@ public sealed class Pipeline : IAsyncDisposable
         finally
         {
             await link.Socket.DisposeAsync().ConfigureAwait(false);
+            link.Release();
         }
     }
 
     // Timers and uploads
 
-    private async Task ResendLater(Output.ScheduleResend resend)
+    // Connecting and going idle both end whatever resend was waiting: the sources are sent again, or not at all, by the core.
+    private void RenewTimers()
+    {
+        _timers.Cancel();
+        _timers.Dispose();
+        _timers = CancellationTokenSource.CreateLinkedTokenSource(_lifetime.Token);
+    }
+
+    private async Task ResendLater(Output.ScheduleResend resend, CancellationToken ct)
     {
         try
         {
-            await Task.Delay(resend.Delay, _deps.Time, _lifetime.Token).ConfigureAwait(false);
+            await Task.Delay(resend.Delay, _deps.Time, ct).ConfigureAwait(false);
         }
         catch (OperationCanceledException)
         {
@@ -594,42 +669,62 @@ public sealed class Pipeline : IAsyncDisposable
 
     private async Task ReadUpload(Output.ReadUpload read)
     {
+        if (ReaderFor(read) is not { } reader)
+        {
+            return;
+        }
         try
         {
-            var reader = ReaderFor(read);
             var (data, last) = await reader.ReadAsync(read.Count, read.Whole, _lifetime.Token).ConfigureAwait(false);
             lock (_lock)
             {
                 if (last || read.Whole)
                 {
-                    _uploads.Remove((read.Id, read.Member));
-                    reader.Dispose();
+                    Forget(read.Token, reader);
                 }
-                Apply(new Input.UploadRead(read.Epoch, read.Id, read.Token, read.Member, data, last || read.Whole));
+                // The answer to a read for a socket that has been replaced is not for the new one.
+                if (read.Epoch == _state.Epoch)
+                {
+                    Apply(new Input.UploadRead(read.Epoch, read.Id, read.Token, read.Member, data, last || read.Whole));
+                }
             }
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException) when (_lifetime.IsCancellationRequested)
         {
         }
-        catch (Exception e) when (e is IOException or UnauthorizedAccessException or NotSupportedException or ObjectDisposedException or InvalidOperationException)
+        catch (Exception e) when (!_lifetime.IsCancellationRequested)
         {
+            // The caller's stream threw: whatever it threw, including its own cancellation and timeouts.
             UploadFailed(read, e);
         }
     }
 
-    private UploadReader ReaderFor(Output.ReadUpload read)
+    // Null: the read is for a socket that is gone, and nothing is opened for it.
+    private UploadReader? ReaderFor(Output.ReadUpload read)
     {
         lock (_lock)
         {
-            if (_uploads.TryGetValue((read.Id, read.Member), out var existing) && existing.Epoch == read.Epoch)
+            if (read.Epoch != _state.Epoch || _state.Phase != Phase.Open)
             {
-                return existing;
+                return null;
             }
-            existing?.Dispose();
-            var created = new UploadReader(read.Epoch, read.Content);
-            _uploads[(read.Id, read.Member)] = created;
-            return created;
+            if (!_uploads.TryGetValue(read.Token, out var reader))
+            {
+                reader = new UploadReader(read.Id, read.Content);
+                _uploads[read.Token] = reader;
+            }
+            return reader;
         }
+    }
+
+    // Only the reader that was stored under the token may remove it.
+    private void Forget(int token, UploadReader reader)
+    {
+        if (_uploads.TryGetValue(token, out var stored) && ReferenceEquals(stored, reader))
+        {
+            _uploads.Remove(token);
+        }
+        reader.Dispose();
     }
 
     // The caller's stream failed. The server holds a half-sent upload, so the source is stopped, and its Job
@@ -647,19 +742,22 @@ public sealed class Pipeline : IAsyncDisposable
                 job.FailWith(failure);
             }
             Apply(new Input.StopSource(read.Id));
+            DisposeUploads(read.Id);
         }
     }
 
-    private void DisposeUploads()
+    private void DisposeUploads(string? jobId = null)
     {
-        foreach (var reader in _uploads.Values) reader.Dispose();
-        _uploads.Clear();
+        foreach (var (token, reader) in _uploads.Where(u => jobId is null || u.Value.JobId == jobId).ToList())
+        {
+            Forget(token, reader);
+        }
     }
 
-    // Starts background work that CloseAsync waits for. Always under _lock.
+    // Starts background work that CloseAsync waits for. Always under _lock, but the work never runs inside it.
     private void Spawn(Func<Task> work)
     {
-        var start = new TaskCompletionSource();
+        var start = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         Task? task = null;
         task = Task.Run(async () =>
         {
@@ -667,6 +765,17 @@ public sealed class Pipeline : IAsyncDisposable
             try
             {
                 await work().ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+            }
+            catch (Exception) when (!_lifetime.IsCancellationRequested)
+            {
+                // A bug in a transport or a stream must not leave the Pipeline waiting on work that died.
+                lock (_lock)
+                {
+                    Apply(new Input.Failed(new Failure.Upgrade(null)));
+                }
             }
             finally
             {
@@ -682,6 +791,10 @@ public sealed class Pipeline : IAsyncDisposable
 
     private sealed class Link(ISocket socket)
     {
+        private int _live = 2;
+        private bool _released;
+        private ITimer? _drain;
+
         public ISocket Socket { get; } = socket;
         public Channel<Frame> Outbox { get; } = Channel.CreateUnbounded<Frame>(new UnboundedChannelOptions { SingleReader = true });
         public CancellationTokenSource ReadCts { get; } = new();
@@ -689,5 +802,39 @@ public sealed class Pipeline : IAsyncDisposable
 
         /// <summary>Failed or retired. Under the Pipeline's lock.</summary>
         public bool Dead { get; set; }
+
+        public void CancelRead() => Guarded(ReadCts.Cancel);
+
+        public void CancelWrite() => Guarded(WriteCts.Cancel);
+
+        public void StartDrain(TimeProvider time, TimeSpan limit) =>
+            Guarded(() => _drain = time.CreateTimer(_ => CancelWrite(), null, limit, Timeout.InfiniteTimeSpan));
+
+        // The reader and the writer each release the link when they end; the last one disposes what it owns.
+        public void Release()
+        {
+            if (Interlocked.Decrement(ref _live) == 0)
+            {
+                Guarded(() =>
+                {
+                    _released = true;
+                    _drain?.Dispose();
+                    ReadCts.Dispose();
+                    WriteCts.Dispose();
+                });
+            }
+        }
+
+        // A late cancel or timer can meet a link that has ended and been disposed.
+        private void Guarded(Action action)
+        {
+            lock (this)
+            {
+                if (!_released)
+                {
+                    action();
+                }
+            }
+        }
     }
 }

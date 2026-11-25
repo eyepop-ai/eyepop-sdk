@@ -302,8 +302,7 @@ public class PipelineTests
         first.Close(1001, "going away");
         Assert.True(await next);
         var reconnecting = Assert.IsType<Reconnecting>(messages.Current);
-        await Eventually.Settle();
-        rig.Time.Advance(TimeSpan.FromSeconds(1));
+        await rig.AdvanceUntilConnect();
         var second = await rig.Sockets.Socket(1);
         var replayedPop = await second.SentOfType("setPop");
         var replayedSource = await second.SentOfType("setSource");
@@ -332,8 +331,7 @@ public class PipelineTests
 
         Assert.True(await next);
         Assert.IsType<Reconnecting>(messages.Current);
-        await Eventually.Settle();
-        rig.Time.Advance(TimeSpan.FromSeconds(1));
+        await rig.AdvanceUntilConnect();
         var second = await rig.Sockets.Socket(1);
         await Rig.Answer(second, "setPop");
         var rest = await Take(messages, 1);
@@ -367,13 +365,11 @@ public class PipelineTests
         var job = pipeline.SetSource(LiveUrl);
         var messages = job.Messages().GetAsyncEnumerator();
         var next = messages.MoveNextAsync().AsTask();
-        await Eventually.Settle();
-        rig.Time.Advance(TimeSpan.FromSeconds(50));
+        await rig.Elapse(TimeSpan.FromSeconds(50));
 
         first.Close(1001, "going away");
         Assert.True(await next);
-        await Eventually.Settle();
-        rig.Time.Advance(TimeSpan.FromSeconds(2));
+        await rig.AdvanceUntilConnect();
 
         var second = await rig.Sockets.Socket(1);
         Assert.Equal("jwt-2", second.Jwt);
@@ -389,8 +385,7 @@ public class PipelineTests
 
         first.Close(1001, "going away");
         await next;
-        await Eventually.Settle();
-        rig.Time.Advance(TimeSpan.FromSeconds(2));
+        await rig.AdvanceUntilConnect();
 
         var second = await rig.Sockets.Socket(1);
         Assert.Equal("jwt-1", second.Jwt);
@@ -407,11 +402,10 @@ public class PipelineTests
         rig.Sockets.FailNext(503, TimeSpan.FromSeconds(30));
         first.Close(1001, "going away");
         await next;
-        await Eventually.Settle();
-        rig.Time.Advance(TimeSpan.FromSeconds(1));
+        await rig.AdvanceUntilConnect();
         await Eventually.True(() => rig.Sockets.Attempts == 2);
 
-        await Eventually.Settle();
+        await Eventually.True(() => rig.Time.HasTimerWithin(TimeSpan.FromSeconds(31)));
         rig.Time.Advance(TimeSpan.FromSeconds(29));
         await Eventually.Settle();
 
@@ -450,16 +444,12 @@ public class PipelineTests
         var (pipeline, first) = await rig.Open();
         var job = pipeline.SetSource(LiveUrl);
         var next = job.Messages().GetAsyncEnumerator().MoveNextAsync().AsTask();
-        await Eventually.Settle();
-
-        rig.Time.Advance(TimeSpan.FromSeconds(31));
+        await rig.Elapse(TimeSpan.FromSeconds(31));
         var probe = await first.SentOfType("ping");
-        await Eventually.Settle();
-        rig.Time.Advance(TimeSpan.FromSeconds(31));
+        await rig.Elapse(TimeSpan.FromSeconds(31));
 
         Assert.True(await next);
-        await Eventually.Settle();
-        rig.Time.Advance(TimeSpan.FromSeconds(2));
+        await rig.AdvanceUntilConnect();
         var second = await rig.Sockets.Socket(1);
         Assert.NotNull(second);
         Assert.Equal("liveness", Rig.Id(probe));
@@ -474,14 +464,12 @@ public class PipelineTests
         var job = pipeline.SetSource(LiveUrl);
         var messages = job.Messages().GetAsyncEnumerator();
         var next = messages.MoveNextAsync().AsTask();
-        await Eventually.Settle();
-        rig.Time.Advance(TimeSpan.FromSeconds(31));
+        await rig.Elapse(TimeSpan.FromSeconds(31));
         await first.SentOfType("ping");
 
         first.Say(new { type = "pong", id = "liveness" });
         first.Say(Rig.Prediction(job.Id, 1));
-        await Eventually.Settle();
-        rig.Time.Advance(TimeSpan.FromSeconds(31));
+        await rig.Elapse(TimeSpan.FromSeconds(31));
         await Eventually.Settle();
 
         Assert.True(await next);
@@ -693,8 +681,7 @@ public class PipelineTests
         for (var i = 1; i <= 25; i++)
         {
             socket.Close(1001, "going away");
-            await Eventually.Settle();
-            rig.Time.Advance(TimeSpan.FromMinutes(2));
+            await rig.AdvanceUntilConnect();
             socket = await rig.Sockets.Socket(i);
             await Rig.Answer(socket, "setPop");
         }

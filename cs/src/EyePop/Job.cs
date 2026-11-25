@@ -18,6 +18,7 @@ public sealed class Job : IAsyncDisposable
     private readonly Channel<JobMessage> _queue = Channel.CreateUnbounded<JobMessage>(new UnboundedChannelOptions { SingleReader = true });
     private int _buffered;
     private int _taken;
+    private int _abandoned;
     private Exception? _failure;
 
     internal Job(Pipeline owner) => _owner = owner;
@@ -26,6 +27,9 @@ public sealed class Job : IAsyncDisposable
     public string Id { get; internal set; } = "";
 
     internal int Buffered => Volatile.Read(ref _buffered);
+
+    /// <summary>Nobody will read this Job again: it buffers nothing more and holds nobody else up.</summary>
+    internal bool Abandoned => Volatile.Read(ref _abandoned) == 1;
 
     /// <summary>That source's start, prediction, dropped, usage and end, and the Pipeline's reconnecting and reconnected.</summary>
     /// <exception cref="InvalidOperationException">Messages or Predictions was already called: a Job has one reader.</exception>
@@ -52,7 +56,16 @@ public sealed class Job : IAsyncDisposable
     public ValueTask DisposeAsync()
     {
         Cancel();
+        Abandon();
         return default;
+    }
+
+    // A Job a caller walked away from would fill to the limit and stall the reader for every other Job.
+    // Its end is still processed, so the source stops and its upload stream closes.
+    private void Abandon()
+    {
+        Volatile.Write(ref _abandoned, 1);
+        _owner.Wake();
     }
 
     // A second reader would see only part of the buffer, so it is refused at the call, not at the first read.
@@ -84,6 +97,7 @@ public sealed class Job : IAsyncDisposable
         finally
         {
             _owner.Pull(false);
+            Abandon();
         }
     }
 
@@ -106,6 +120,10 @@ public sealed class Job : IAsyncDisposable
 
     internal void Enqueue(JobMessage message)
     {
+        if (Abandoned)
+        {
+            return;
+        }
         Interlocked.Increment(ref _buffered);
         _queue.Writer.TryWrite(message);
     }

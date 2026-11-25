@@ -61,20 +61,28 @@ internal interface ISocketFactory
     Task<ISocket> ConnectAsync(Uri pipelineUrl, string? jwt, CancellationToken ct);
 }
 
-/// <summary>Everything the Pipeline gets from outside itself.</summary>
+/// <summary>
+/// Everything the Pipeline gets from outside itself. Liveness is the silence after which a socket is dead,
+/// UpgradeTimeout how long opening one may take, and DrainLimit how long a closing socket may take to send
+/// what is queued (quit).
+/// </summary>
 internal sealed record Dependencies(
     IExchange? Exchange,
     ISocketFactory Sockets,
     TimeProvider Time,
     Func<double> Random,
     Settings Settings,
-    TimeSpan Liveness)
+    TimeSpan Liveness,
+    TimeSpan UpgradeTimeout,
+    TimeSpan DrainLimit)
 {
     public static Dependencies For(Config config) => new(
         config.Auth is Auth.Exchange exchange ? new HttpExchange(exchange, config.AccountUuid, TimeProvider.System) : null,
-        new ClientWebSocketFactory(),
+        new ClientWebSocketFactory(TimeProvider.System),
         TimeProvider.System,
         System.Random.Shared.NextDouble,
         new Settings(),
-        TimeSpan.FromSeconds(60));
+        TimeSpan.FromSeconds(60),
+        TimeSpan.FromSeconds(30),
+        TimeSpan.FromSeconds(5));
 }

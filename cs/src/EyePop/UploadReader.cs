@@ -2,7 +2,8 @@ namespace EyePop;
 
 /// <summary>
 /// Reads one upload's content for the shell, remembering where it stopped. The core asks for 64 KiB at a
-/// time as credit arrives, and a stream is read once, so the position has to live here.
+/// time as credit arrives, and a stream is read once, so the position has to live here. One reader serves
+/// one send of an upload: a source sent again after a reconnect gets a new reader and a new stream.
 /// </summary>
 internal sealed class UploadReader : IDisposable
 {
@@ -10,14 +11,13 @@ internal sealed class UploadReader : IDisposable
     private Stream? _stream;
     private int _offset;
 
-    public UploadReader(int epoch, UploadContent content)
+    public UploadReader(string jobId, UploadContent content)
     {
-        Epoch = epoch;
+        JobId = jobId;
         _content = content;
     }
 
-    /// <summary>The socket this read belongs to: a reconnect sends the upload again from its first byte.</summary>
-    public int Epoch { get; }
+    public string JobId { get; }
 
     /// <summary>Up to <paramref name="count"/> bytes, or all of them when <paramref name="whole"/>. Last is true once the content ended.</summary>
     public async Task<(ReadOnlyMemory<byte> Data, bool Last)> ReadAsync(long count, bool whole, CancellationToken ct)

@@ -22,6 +22,12 @@ internal sealed class FakeTime : TimeProvider
         return timer;
     }
 
+    /// <summary>Whether a timer is waiting that <see cref="Advance"/> by this much would fire. Tests wait for it instead of sleeping.</summary>
+    public bool HasTimerWithin(TimeSpan by)
+    {
+        lock (_sync) return _timers.Any(t => t.Due <= _now + by);
+    }
+
     /// <summary>Moves the clock in steps so a timer set by a fired timer still fires in order.</summary>
     public void Advance(TimeSpan by)
     {
@@ -73,6 +79,13 @@ internal sealed class FakeSocket : ISocket
     private int _disposed;
 
     public string? Jwt { get; init; }
+
+    /// <summary>A socket whose receive does not honour cancellation, like one a real transport is still reading from.</summary>
+    public bool IgnoreToken { get; init; }
+
+    public volatile bool FailSends;
+    public volatile bool BlockSends;
+    public volatile Exception? ThrowOnReceive;
     public int Received => Volatile.Read(ref _received);
     public bool Disposed => Volatile.Read(ref _disposed) == 1;
 
@@ -89,16 +102,17 @@ internal sealed class FakeSocket : ISocket
 
     public void Close(int? code, string? reason) => _inbound.Writer.TryWrite(new Inbound.Closed(code, reason));
 
-    public Task SendAsync(Frame frame, CancellationToken ct)
+    public async Task SendAsync(Frame frame, CancellationToken ct)
     {
-        if (Disposed) throw new IOException("the socket is closed");
+        if (Disposed || FailSends) throw new IOException("the socket is closed");
+        if (BlockSends) await Task.Delay(Timeout.Infinite, ct);
         lock (_sent) _sent.Add(frame);
-        return Task.CompletedTask;
     }
 
     public async Task<Inbound> ReceiveAsync(CancellationToken ct)
     {
-        var inbound = await _inbound.Reader.ReadAsync(ct);
+        if (ThrowOnReceive is { } failure) throw failure;
+        var inbound = await _inbound.Reader.ReadAsync(IgnoreToken ? CancellationToken.None : ct);
         Interlocked.Increment(ref _received);
         return inbound;
     }
@@ -106,6 +120,8 @@ internal sealed class FakeSocket : ISocket
     public ValueTask DisposeAsync()
     {
         Interlocked.Exchange(ref _disposed, 1);
+        // A receive that ignores its token ends when the socket goes, as a transport's would.
+        if (!IgnoreToken) _inbound.Writer.TryComplete();
         return default;
     }
 
@@ -121,6 +137,14 @@ internal sealed class FakeSockets : ISocketFactory
     private readonly Queue<UpgradeException> _failures = new();
     public List<FakeSocket> Opened { get; } = new();
     public int Attempts;
+    private readonly Queue<Func<Task<ISocket>>> _scripted = new();
+    public bool NextIgnoresToken { get; set; }
+
+    /// <summary>The next connect never answers, but honours cancellation.</summary>
+    public void HangNext() => _scripted.Enqueue(null!);
+
+    /// <summary>The next connect throws something the factory contract does not allow.</summary>
+    public void BreakNext() => _scripted.Enqueue(() => throw new InvalidOperationException("a bug in the transport"));
 
     /// <summary>When set, a connect waits for it and ignores cancellation, as a real socket that was nearly open might.</summary>
     public Task? Hold { get; set; }
@@ -131,8 +155,14 @@ internal sealed class FakeSockets : ISocketFactory
     {
         Interlocked.Increment(ref Attempts);
         if (Hold is { } hold) await hold;
+        if (_scripted.TryDequeue(out var script))
+        {
+            if (script is null) await Task.Delay(Timeout.Infinite, ct);
+            else return await script();
+        }
         if (_failures.TryDequeue(out var failure)) throw failure;
-        var socket = new FakeSocket { Jwt = jwt };
+        var socket = new FakeSocket { Jwt = jwt, IgnoreToken = NextIgnoresToken };
+        NextIgnoresToken = false;
         lock (Opened) Opened.Add(socket);
         return socket;
     }
@@ -196,8 +226,31 @@ internal sealed class Rig
 
     public Rig() => Exchange = new FakeExchange(Time);
 
+    /// <summary>Moves time once a timer is waiting that this step would fire, so no test guesses how long a task takes to start.</summary>
+    public async Task Elapse(TimeSpan by)
+    {
+        await Eventually.True(() => Time.HasTimerWithin(by));
+        Time.Advance(by);
+    }
+
+    /// <summary>
+    /// Moves time in small steps until the Pipeline has made another connect attempt. The backoff timer is
+    /// started by a background task, so a single jump could land before it exists.
+    /// </summary>
+    public async Task AdvanceUntilConnect()
+    {
+        var before = Sockets.Attempts;
+        var until = DateTime.UtcNow.AddSeconds(5);
+        while (Sockets.Attempts == before)
+        {
+            if (DateTime.UtcNow > until) throw new TimeoutException("the Pipeline made no connect attempt");
+            Time.Advance(TimeSpan.FromMilliseconds(500));
+            await Task.Delay(2);
+        }
+    }
+
     public Dependencies Deps(bool exchange = false, Settings? settings = null) =>
-        new(exchange ? Exchange : null, Sockets, Time, () => 0.5, settings ?? new Settings(), TimeSpan.FromSeconds(60));
+        new(exchange ? Exchange : null, Sockets, Time, () => 0.5, settings ?? new Settings(), TimeSpan.FromSeconds(60), TimeSpan.FromSeconds(30), TimeSpan.FromSeconds(5));
 
     public static Config LocalConfig => Config.Create(new Uri("http://127.0.0.1:9002"), Auth.Anonymous);
 

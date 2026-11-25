@@ -5,7 +5,7 @@ using EyePop.Core;
 namespace EyePop;
 
 /// <summary>Opens the pipeline socket with subprotocol eyepop.v1 and the token in the Authorization header.</summary>
-internal sealed class ClientWebSocketFactory : ISocketFactory
+internal sealed class ClientWebSocketFactory(TimeProvider time) : ISocketFactory
 {
     // The server closes a socket silent for 40 s, so the client socket answers its pings (and sends its own) every 20 s.
     private static readonly TimeSpan KeepAlive = TimeSpan.FromSeconds(20);
@@ -29,7 +29,7 @@ internal sealed class ClientWebSocketFactory : ISocketFactory
         {
             var status = (int)socket.HttpStatusCode is >= 100 and not 101 ? (int?)socket.HttpStatusCode : null;
             var after = socket.HttpResponseHeaders is { } headers && headers.TryGetValue("Retry-After", out var values)
-                ? RetryAfter.Parse(values.FirstOrDefault(), DateTimeOffset.UtcNow)
+                ? RetryAfter.Parse(values.FirstOrDefault(), time.GetUtcNow())
                 : null;
             socket.Dispose();
             throw new UpgradeException(status, after);
