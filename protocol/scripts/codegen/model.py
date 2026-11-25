@@ -64,6 +64,9 @@ class Field:
     type: Type
     required: bool
     excluded: str | None = None
+    # Set by `x-tolerant` on a `$ref` to an object with no required member: a value that cannot be read leaves that object
+    # empty with only its raw JSON, so one bad nested value does not fail the whole message.
+    tolerant: bool = False
 
 
 @dataclass(frozen=True)
@@ -321,7 +324,7 @@ def check(schemas: Mapping[str, dict], name: str) -> None:
 
     def target(node: object, path: list[str]) -> dict:
         a_schema(node, path)
-        allow(node, path, {"$ref"})
+        allow(node, path, {"$ref", "x-tolerant"})
         ref = node.get("$ref")
         if not isinstance(ref, str) or not ref.endswith(".json") or not isinstance(schemas.get(ref_name(node)), dict):
             fail(path, f"`$ref` {ref!r} does not name a schema file")
@@ -352,6 +355,8 @@ def check(schemas: Mapping[str, dict], name: str) -> None:
     def value(node: object, path: list[str]) -> None:
         a_schema(node, path)
         if "$ref" in node:
+            if "x-tolerant" in node and (node["x-tolerant"] is not True or kind(target(node, path)) != "object"):
+                fail(path, "`x-tolerant` must be true and beside a `$ref` to an object schema")
             if kind(target(node, path)) == "scalar":
                 acyclic(ref_name(node), path, "$ref", lambda n: [r for r in refs(schemas, schemas[n]) if kind(schemas[r]) == "scalar"])
         elif "const" in node:
@@ -469,7 +474,7 @@ def parse(
     def add_object(name: str, body: dict, where: str) -> str:
         properties, required, exactly_one, places = flatten(body, where)
         fields = tuple(
-            Field(key, type_of(prop, name + pascal(key), places[key]), key in required, prop.get("not", {}).get("const"))
+            Field(key, type_of(prop, name + pascal(key), places[key]), key in required, prop.get("not", {}).get("const"), prop.get("x-tolerant") is True)
             for key, prop in properties.items()
         )
         for f in fields:

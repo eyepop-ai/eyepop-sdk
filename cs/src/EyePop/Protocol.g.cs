@@ -134,6 +134,19 @@ internal static class Wire
             ? array.Select(item).ToList()
             : throw new FormatException($"expected an array, got {Show(value)}");
 
+    public static Func<JsonNode?, T> Tolerant<T>(Func<JsonNode?, T> parse, Func<JsonNode?, T> empty) =>
+        value =>
+        {
+            try
+            {
+                return parse(value);
+            }
+            catch (FormatException)
+            {
+                return empty(value);
+            }
+        };
+
     public static T Required<T>(JsonObject obj, string key, Func<JsonNode?, T> parse) =>
         obj.TryGetPropertyValue(key, out var value) ? parse(value) : throw new FormatException($"missing {key}");
 
@@ -1213,7 +1226,7 @@ public sealed record PredictionMessage(string Id, Prediction Prediction, JsonObj
     {
         var obj = Wire.Snapshot(value);
         Wire.Required(obj, "type", Wire.Const("prediction"));
-        return new PredictionMessage(Wire.Required(obj, "id", Wire.Limit(Wire.String, minLength: 1)), Wire.Required(obj, "prediction", Prediction.FromJson), obj);
+        return new PredictionMessage(Wire.Required(obj, "id", Wire.Limit(Wire.String, minLength: 1)), Wire.Required(obj, "prediction", Wire.Tolerant(Prediction.FromJson, value => new Prediction(Raw: Wire.Snapshot(value)))), obj);
     }
 
     public override JsonNode ToJson()

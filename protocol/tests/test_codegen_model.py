@@ -463,3 +463,29 @@ def test_an_object_knows_every_union_that_lists_it_in_schema_order():
 
     model = parse(schemas, ())
     assert {o.name: model.unions_of(o) for o in model.objects} == {"A": ["First", "Second"], "B": ["First"], "C": []}
+
+
+def holder(ref: dict) -> dict:
+    return schema(
+        "holder", {"type": "object", "properties": {"type": {"const": "holder"}, "part": ref}, "required": ["type", "part"]}
+    )
+
+
+def test_x_tolerant_beside_a_ref_to_an_object_makes_the_csharp_read_tolerant():
+    schemas = {
+        "holder": holder({"$ref": "thing.json", "x-tolerant": True}),
+        "thing": thing(),
+        "either": schema("either", {"oneOf": [{"$ref": "holder.json"}]}),
+    }
+
+    source = generate(schemas, ("either",))["csharp"]
+
+    assert 'Wire.Tolerant(Thing.FromJson, value => new Thing(Raw: Wire.Snapshot(value)))' in source
+
+
+def test_x_tolerant_that_is_not_true_is_rejected():
+    rejects({"holder": holder({"$ref": "thing.json", "x-tolerant": False}), "thing": thing()}, "holder.json#/properties/part: `x-tolerant`")
+
+
+def test_x_tolerant_beside_a_ref_to_a_scalar_is_rejected():
+    rejects({"holder": holder({"$ref": "name.json", "x-tolerant": True}), "name": schema("name", {"type": "string"})}, "`x-tolerant`")
