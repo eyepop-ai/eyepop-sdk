@@ -25,7 +25,7 @@ Inside the repo with Devbox: `devbox run -- task demo:cs -- ocr`.
 Example output:
 
 ```
-prediction objects=3 [person]
+prediction objects=9 [person]
 PASS objects
 ```
 
@@ -41,28 +41,32 @@ PASS objects
 | `ocr` | `eyepop.text:latest`, then `eyepop.text.recognize.landscape:latest` on each crop | the text read |
 | `caption` | `eyepop.vlm.image:latest` | the caption |
 
-The sample image has people in it, so `ocr` and `classes` may find little on it: pass `--file` or `--url` with a picture that suits the scenario.
+The sample image shows nine people (`objects` prints `objects=9 [person]`), so `ocr` and `classes` may find little on it: pass `--file` or `--url` with a picture that suits the scenario.
 
 ## Options
 
 | Option | Meaning |
 |--------|---------|
 | `list` | Print the scenario names and exit. |
-| `<scenario>` | Run one scenario. With no command, `objects` runs. |
+| `<scenario>` | Run one scenario. With no command, objects runs. |
 | `all` | Run every scenario in turn. |
 | `--file <path>` | Process this file instead of the sample. |
-| `--url <url>` | Process this URL instead of the sample. Not with `--file`. |
-| `--pop <file.json>` | Run the pop in this JSON file instead of a scenario. The file has the same `{"components": [...]}` JSON as the scenario blocks. |
+| `--url <url>` | Process this URL instead of the sample. Not with --file. |
+| `--pop <file.json>` | Run the pop in this JSON file instead of a scenario. |
 | `--json` | Print each prediction as raw JSON instead of the summary line. |
 | `--timeout <seconds>` | Give up on a scenario after this long. Default 60. |
+| `--help`, `-h` | Print this text and exit. |
+
+`--pop` takes the same `{"components": [...]}` JSON as the scenario blocks. A flag needs a value that does not start with `--`, and a flag given twice is a usage error. `--help` prints the same table.
 
 | Environment variable | Meaning |
 |----------------------|---------|
-| `EYEPOP_API_KEY` | Required. |
+| `EYEPOP_API_KEY` | Required for `production` and `staging`. Leave it unset with `EYEPOP_ENV=local`, which runs without auth. |
 | `EYEPOP_ENV` | `production` (default), `staging` or `local`. |
 | `EYEPOP_URL`, `EYEPOP_AUTH_URL` | Override the pipeline and auth URLs of the environment. |
+| `EYEPOP_ACCOUNT_UUID` | Run as this account, when the key belongs to more than one. |
 
-Exit codes: `0` every scenario passed, `1` a scenario failed, `2` the command line or environment is wrong (a missing `EYEPOP_API_KEY`, an unknown scenario).
+Exit codes: `0` every scenario passed, `1` a scenario failed, `2` the command line or environment is wrong (a missing `EYEPOP_API_KEY`, an unknown scenario, a bad flag).
 
 ## Tests
 
@@ -87,7 +91,7 @@ Copy the structure, not the code. A port keeps this behavior exactly, so the dem
   - `--json` replaces that line with the prediction's JSON on one line.
   - `reconnecting (attempt N): <reason>` before each reconnect attempt and `reconnected` after it.
   - The last line of each scenario: `PASS <scenario>` or `FAIL <scenario>: <reason>`. `<scenario>` is `pop` for `--pop`.
-- **Failures.** The reason is one short sentence with the fix, never a stack trace. Map the SDK's error kinds: rejected key (exchange failure), cannot reach EyePop (no network), file not found, timed out after N seconds. A job that ends in error fails the scenario.
-- **Missing key and usage errors** print one line to stderr and exit `2`, before any network call.
+- **Failures.** The reason is one short sentence with the fix, never a stack trace. Map the SDK's error kinds: rejected key (exchange failure), refused connection, rejected request, closed connection, file not found. An unreachable network is not an error kind: the SDK retries until the deadline, so it surfaces as the timeout, `timed out after N seconds; check your network, or raise it with --timeout` when no prediction arrived, and `timed out after N seconds; raise it with --timeout` otherwise. (A `reconnecting` line may carry a "cannot reach EyePop" reason.) A job that ends with error, or is preempted (`job was preempted`), fails the scenario.
+- **Usage errors** (including `pop` as a command, a missing key when the environment needs one, a flag with no value, a repeated flag) print one line to stderr and exit `2`, before any network call.
 - **Exit codes** are `0`, `1` and `2` as above.
 - **Tests** cover the pure logic only: argument parsing and the summary lines, with no network.

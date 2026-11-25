@@ -8,10 +8,13 @@ public sealed class DemoFailure(string message) : Exception(message);
 public static class Failure
 {
     /// <summary>One short sentence for the FAIL line; never a stack trace.</summary>
-    public static string Describe(Exception error, int timeoutSeconds) => error switch
+    public static string Describe(Exception error, int timeoutSeconds, bool gotPredictions) => error switch
     {
         DemoFailure => error.Message,
-        OperationCanceledException => $"timed out after {timeoutSeconds} seconds; raise it with --timeout",
+        // Without the network the SDK retries until the deadline, so "unreachable" shows up as a timeout.
+        OperationCanceledException => gotPredictions
+            ? $"timed out after {timeoutSeconds} seconds; raise it with --timeout"
+            : $"timed out after {timeoutSeconds} seconds; check your network, or raise it with --timeout",
         EyePopException e => Describe(e),
         JsonException => "the pop is not valid JSON",
         FormatException => $"the pop is not a valid pop: {error.Message}",

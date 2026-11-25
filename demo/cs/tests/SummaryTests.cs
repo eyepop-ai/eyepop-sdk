@@ -39,4 +39,18 @@ public class SummaryTests
     [Fact]
     public void A_caption_comes_from_the_tokens() =>
         Assert.Equal("prediction caption=\"a silver car\"", Line("""{"tokens":{"text":"a silver car"}}"""));
+
+    [Fact]
+    public void A_depth_without_a_size_is_left_out() =>
+        Assert.Equal("prediction empty", Line("""{"depth":{"width":640}}"""));
+
+    [Fact]
+    public void Texts_without_text_are_skipped_and_repeats_are_kept() =>
+        Assert.Equal(
+            "prediction texts=2 [\"A\", \"A\"]",
+            Line("""{"texts":[{"text":"A"},{"confidence":0.5},{"text":"A"}]}"""));
+
+    [Fact]
+    public void A_caption_that_is_not_a_string_is_left_out() =>
+        Assert.Equal("prediction empty", Line("""{"tokens":{"text":5}}"""));
 }

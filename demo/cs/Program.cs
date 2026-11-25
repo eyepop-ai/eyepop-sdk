@@ -15,6 +15,12 @@ catch (UsageException e)
     return 2;
 }
 
+if (options.Command == "help")
+{
+    Console.WriteLine(Options.Usage);
+    return 0;
+}
+
 if (options.Command == "list")
 {
     foreach (var (name, _) in Scenarios.All) Console.WriteLine(name);
@@ -23,12 +29,7 @@ if (options.Command == "list")
 
 var environment = Environment.GetEnvironmentVariables().Cast<DictionaryEntry>()
     .ToDictionary(e => (string)e.Key, e => (string)(e.Value ?? ""));
-if (string.IsNullOrWhiteSpace(environment.GetValueOrDefault("EYEPOP_API_KEY")))
-{
-    Console.Error.WriteLine("Set EYEPOP_API_KEY to your EyePop API key; you can create one in the EyePop dashboard at https://dashboard.eyepop.ai");
-    return 2;
-}
-
+// Config decides whether a key is needed: every environment with an auth URL needs one, local needs none.
 Config config;
 try
 {
@@ -36,7 +37,9 @@ try
 }
 catch (EyePopException e)
 {
-    Console.Error.WriteLine(Failure.Describe(e));
+    Console.Error.WriteLine(string.IsNullOrWhiteSpace(environment.GetValueOrDefault("EYEPOP_API_KEY"))
+        ? "Set EYEPOP_API_KEY to your EyePop API key; you can create one in the EyePop dashboard at https://dashboard.eyepop.ai"
+        : Failure.Describe(e));
     return 2;
 }
 
@@ -52,14 +55,16 @@ foreach (var (name, execute) in scenarios)
 {
     // A fresh deadline per scenario, so one slow pop does not eat the next one's time.
     using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(options.TimeoutSeconds));
+    Run? run = null;
     try
     {
-        await execute(new Run(config, Run.SourceFor(options), options, timeout.Token));
+        run = new Run(config, Run.SourceFor(options), options, timeout.Token);
+        await execute(run);
         Console.WriteLine($"PASS {name}");
     }
     catch (Exception e)
     {
-        Console.WriteLine($"FAIL {name}: {Failure.Describe(e, options.TimeoutSeconds)}");
+        Console.WriteLine($"FAIL {name}: {Failure.Describe(e, options.TimeoutSeconds, run?.Predictions > 0)}");
         failed = true;
     }
 }

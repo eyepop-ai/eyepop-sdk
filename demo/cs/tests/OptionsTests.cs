@@ -48,6 +48,22 @@ public class OptionsTests
     [InlineData("--timeout", "soon")]
     [InlineData("--file", "a.jpg", "--url", "http://x")]
     [InlineData("--pop", "p.json", "objects")]
+    [InlineData("pop")]
+    [InlineData("--file", "--json")]
+    [InlineData("--json", "--json")]
+    [InlineData("--timeout", "5", "--timeout", "6")]
     public void A_wrong_command_line_is_a_usage_error(params string[] args) =>
         Assert.Throws<UsageException>(() => Parse(args));
+
+    [Theory]
+    [InlineData("--help")]
+    [InlineData("-h")]
+    public void Help_is_a_command(string flag) => Assert.Equal("help", Parse(flag).Command);
+
+    [Fact]
+    public void The_usage_text_names_every_option()
+    {
+        foreach (var flag in new[] { "list", "all", "--file", "--url", "--pop", "--json", "--timeout", "--help" })
+            Assert.Contains(flag, Options.Usage);
+    }
 }

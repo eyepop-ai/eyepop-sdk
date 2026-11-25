@@ -1,3 +1,4 @@
+using System.Text.Json.Nodes;
 using EyePop.Protocol;
 
 namespace EyePop.Demo;
@@ -31,7 +32,10 @@ public static class Summary
 
         if (prediction.Depth is { Width: { } w, Height: { } h }) parts.Add($"depth={w}x{h}");
 
-        if (prediction.Tokens?["text"]?.GetValue<string>() is { } caption) parts.Add($"caption=\"{caption}\"");
+        // tokens is free-form JSON, so text may be anything; only a string is a caption.
+        if (prediction.Tokens is { } tokens && tokens.TryGetPropertyValue("text", out var node)
+            && node is JsonValue value && value.TryGetValue<string>(out var caption))
+            parts.Add($"caption=\"{caption}\"");
 
         return parts.Count == 0 ? "prediction empty" : "prediction " + string.Join(" ", parts);
     }
