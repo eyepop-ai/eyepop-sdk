@@ -6,7 +6,7 @@
   "properties": {
     "type": { "const": "prediction" },
     "id": { "$ref": "id.json" },
-    "prediction": { "type": "object" }
+    "prediction": { "$ref": "prediction.json" }
   },
   "required": ["type", "id", "prediction"]
 }

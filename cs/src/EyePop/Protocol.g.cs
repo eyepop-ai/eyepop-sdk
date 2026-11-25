@@ -634,6 +634,26 @@ public sealed record ComponentParams(long ComponentId, JsonObject Values, JsonOb
 }
 
 
+public sealed record Contour(IReadOnlyList<Point>? Points = null, IReadOnlyList<IReadOnlyList<Point>>? Cutouts = null, JsonObject? Raw = null)
+{
+    public static Contour FromJson(JsonNode? value)
+    {
+        var obj = Wire.Snapshot(value);
+        return new Contour(Wire.Optional(obj, "points", Wire.List(Point.FromJson)), Wire.Optional(obj, "cutouts", Wire.List(Wire.List(Point.FromJson))), obj);
+    }
+
+    public JsonNode ToJson()
+    {
+        var result = Wire.Copy(Raw);
+        if (Points is not null) result["points"] = new JsonArray(Points!.Select(x => (JsonNode?)x.ToJson()).ToArray());
+        else result.Remove("points");
+        if (Cutouts is not null) result["cutouts"] = new JsonArray(Cutouts!.Select(x => (JsonNode?)new JsonArray(x.Select(x => (JsonNode?)x.ToJson()).ToArray())).ToArray());
+        else result.Remove("cutouts");
+        return result;
+    }
+}
+
+
 internal sealed record Credit(string Id, long Bytes, long? Member = null, JsonObject? Raw = null) : IMessage
 {
     public static Credit FromJson(JsonNode? value)
@@ -651,6 +671,32 @@ internal sealed record Credit(string Id, long Bytes, long? Member = null, JsonOb
         if (Member is not null) result["member"] = JsonValue.Create(Member!.Value);
         else result.Remove("member");
         result["type"] = "credit";
+        return result;
+    }
+}
+
+
+public sealed record Depth(long? Width = null, long? Height = null, string? Semantic = null, string? Values = null, string? World = null, JsonObject? Raw = null)
+{
+    public static Depth FromJson(JsonNode? value)
+    {
+        var obj = Wire.Snapshot(value);
+        return new Depth(Wire.OptionalValue(obj, "width", Wire.Integer), Wire.OptionalValue(obj, "height", Wire.Integer), Wire.Optional(obj, "semantic", Wire.String), Wire.Optional(obj, "values", Wire.String), Wire.Optional(obj, "world", Wire.String), obj);
+    }
+
+    public JsonNode ToJson()
+    {
+        var result = Wire.Copy(Raw);
+        if (Width is not null) result["width"] = JsonValue.Create(Width!.Value);
+        else result.Remove("width");
+        if (Height is not null) result["height"] = JsonValue.Create(Height!.Value);
+        else result.Remove("height");
+        if (Semantic is not null) result["semantic"] = JsonValue.Create(Semantic!);
+        else result.Remove("semantic");
+        if (Values is not null) result["values"] = JsonValue.Create(Values!);
+        else result.Remove("values");
+        if (World is not null) result["world"] = JsonValue.Create(World!);
+        else result.Remove("world");
         return result;
     }
 }
@@ -789,6 +835,32 @@ public sealed record InferenceComponent(string? Ability = null, string? AbilityU
 }
 
 
+public sealed record Mask(long? Width = null, long? Height = null, long? Stride = null, string? Bitmap = null, string? World = null, JsonObject? Raw = null)
+{
+    public static Mask FromJson(JsonNode? value)
+    {
+        var obj = Wire.Snapshot(value);
+        return new Mask(Wire.OptionalValue(obj, "width", Wire.Integer), Wire.OptionalValue(obj, "height", Wire.Integer), Wire.OptionalValue(obj, "stride", Wire.Integer), Wire.Optional(obj, "bitmap", Wire.String), Wire.Optional(obj, "world", Wire.String), obj);
+    }
+
+    public JsonNode ToJson()
+    {
+        var result = Wire.Copy(Raw);
+        if (Width is not null) result["width"] = JsonValue.Create(Width!.Value);
+        else result.Remove("width");
+        if (Height is not null) result["height"] = JsonValue.Create(Height!.Value);
+        else result.Remove("height");
+        if (Stride is not null) result["stride"] = JsonValue.Create(Stride!.Value);
+        else result.Remove("stride");
+        if (Bitmap is not null) result["bitmap"] = JsonValue.Create(Bitmap!);
+        else result.Remove("bitmap");
+        if (World is not null) result["world"] = JsonValue.Create(World!);
+        else result.Remove("world");
+        return result;
+    }
+}
+
+
 internal sealed record Ping(string Id, JsonObject? Raw = null) : Command
 {
     public static new Ping FromJson(JsonNode? value)
@@ -803,6 +875,34 @@ internal sealed record Ping(string Id, JsonObject? Raw = null) : Command
         var result = Wire.Copy(Raw);
         result["id"] = JsonValue.Create(Id);
         result["type"] = "ping";
+        return result;
+    }
+}
+
+
+public sealed record Point(double? X = null, double? Y = null, double? Z = null, double? WorldX = null, double? WorldY = null, double? WorldZ = null, JsonObject? Raw = null)
+{
+    public static Point FromJson(JsonNode? value)
+    {
+        var obj = Wire.Snapshot(value);
+        return new Point(Wire.OptionalValue(obj, "x", Wire.Number), Wire.OptionalValue(obj, "y", Wire.Number), Wire.OptionalValue(obj, "z", Wire.Number), Wire.OptionalValue(obj, "worldX", Wire.Number), Wire.OptionalValue(obj, "worldY", Wire.Number), Wire.OptionalValue(obj, "worldZ", Wire.Number), obj);
+    }
+
+    public JsonNode ToJson()
+    {
+        var result = Wire.Copy(Raw);
+        if (X is not null) Wire.PutNumber(result, "x", X!.Value);
+        else result.Remove("x");
+        if (Y is not null) Wire.PutNumber(result, "y", Y!.Value);
+        else result.Remove("y");
+        if (Z is not null) Wire.PutNumber(result, "z", Z!.Value);
+        else result.Remove("z");
+        if (WorldX is not null) Wire.PutNumber(result, "worldX", WorldX!.Value);
+        else result.Remove("worldX");
+        if (WorldY is not null) Wire.PutNumber(result, "worldY", WorldY!.Value);
+        else result.Remove("worldY");
+        if (WorldZ is not null) Wire.PutNumber(result, "worldZ", WorldZ!.Value);
+        else result.Remove("worldZ");
         return result;
     }
 }
@@ -873,20 +973,254 @@ public sealed record PopDepthMap(string? Ability = null, string? AbilityUuid = n
 }
 
 
-public sealed record PredictionMessage(string Id, JsonObject Prediction, JsonObject? Raw = null) : JobMessage, IMessage
+public sealed record PredictedClass(string? ClassLabel = null, double? Confidence = null, string? Category = null, JsonObject? Raw = null)
+{
+    public static PredictedClass FromJson(JsonNode? value)
+    {
+        var obj = Wire.Snapshot(value);
+        return new PredictedClass(Wire.Optional(obj, "classLabel", Wire.String), Wire.OptionalValue(obj, "confidence", Wire.Number), Wire.Optional(obj, "category", Wire.String), obj);
+    }
+
+    public JsonNode ToJson()
+    {
+        var result = Wire.Copy(Raw);
+        if (ClassLabel is not null) result["classLabel"] = JsonValue.Create(ClassLabel!);
+        else result.Remove("classLabel");
+        if (Confidence is not null) Wire.PutNumber(result, "confidence", Confidence!.Value);
+        else result.Remove("confidence");
+        if (Category is not null) result["category"] = JsonValue.Create(Category!);
+        else result.Remove("category");
+        return result;
+    }
+}
+
+
+public sealed record PredictedKeyPoint(double? X = null, double? Y = null, double? Z = null, double? WorldX = null, double? WorldY = null, double? WorldZ = null, string? ClassLabel = null, double? Confidence = null, string? Category = null, bool? Visible = null, JsonObject? Raw = null)
+{
+    public static PredictedKeyPoint FromJson(JsonNode? value)
+    {
+        var obj = Wire.Snapshot(value);
+        return new PredictedKeyPoint(Wire.OptionalValue(obj, "x", Wire.Number), Wire.OptionalValue(obj, "y", Wire.Number), Wire.OptionalValue(obj, "z", Wire.Number), Wire.OptionalValue(obj, "worldX", Wire.Number), Wire.OptionalValue(obj, "worldY", Wire.Number), Wire.OptionalValue(obj, "worldZ", Wire.Number), Wire.Optional(obj, "classLabel", Wire.String), Wire.OptionalValue(obj, "confidence", Wire.Number), Wire.Optional(obj, "category", Wire.String), Wire.OptionalValue(obj, "visible", Wire.Boolean), obj);
+    }
+
+    public JsonNode ToJson()
+    {
+        var result = Wire.Copy(Raw);
+        if (X is not null) Wire.PutNumber(result, "x", X!.Value);
+        else result.Remove("x");
+        if (Y is not null) Wire.PutNumber(result, "y", Y!.Value);
+        else result.Remove("y");
+        if (Z is not null) Wire.PutNumber(result, "z", Z!.Value);
+        else result.Remove("z");
+        if (WorldX is not null) Wire.PutNumber(result, "worldX", WorldX!.Value);
+        else result.Remove("worldX");
+        if (WorldY is not null) Wire.PutNumber(result, "worldY", WorldY!.Value);
+        else result.Remove("worldY");
+        if (WorldZ is not null) Wire.PutNumber(result, "worldZ", WorldZ!.Value);
+        else result.Remove("worldZ");
+        if (ClassLabel is not null) result["classLabel"] = JsonValue.Create(ClassLabel!);
+        else result.Remove("classLabel");
+        if (Confidence is not null) Wire.PutNumber(result, "confidence", Confidence!.Value);
+        else result.Remove("confidence");
+        if (Category is not null) result["category"] = JsonValue.Create(Category!);
+        else result.Remove("category");
+        if (Visible is not null) result["visible"] = JsonValue.Create(Visible!.Value);
+        else result.Remove("visible");
+        return result;
+    }
+}
+
+
+public sealed record PredictedKeyPoints(double? Confidence = null, string? Category = null, IReadOnlyList<PredictedKeyPoint>? Points = null, JsonObject? Raw = null)
+{
+    public static PredictedKeyPoints FromJson(JsonNode? value)
+    {
+        var obj = Wire.Snapshot(value);
+        return new PredictedKeyPoints(Wire.OptionalValue(obj, "confidence", Wire.Number), Wire.Optional(obj, "category", Wire.String), Wire.Optional(obj, "points", Wire.List(PredictedKeyPoint.FromJson)), obj);
+    }
+
+    public JsonNode ToJson()
+    {
+        var result = Wire.Copy(Raw);
+        if (Confidence is not null) Wire.PutNumber(result, "confidence", Confidence!.Value);
+        else result.Remove("confidence");
+        if (Category is not null) result["category"] = JsonValue.Create(Category!);
+        else result.Remove("category");
+        if (Points is not null) result["points"] = new JsonArray(Points!.Select(x => (JsonNode?)x.ToJson()).ToArray());
+        else result.Remove("points");
+        return result;
+    }
+}
+
+
+public sealed record PredictedMesh(double? Confidence = null, string? Category = null, IReadOnlyList<Point>? Points = null, JsonObject? Raw = null)
+{
+    public static PredictedMesh FromJson(JsonNode? value)
+    {
+        var obj = Wire.Snapshot(value);
+        return new PredictedMesh(Wire.OptionalValue(obj, "confidence", Wire.Number), Wire.Optional(obj, "category", Wire.String), Wire.Optional(obj, "points", Wire.List(Point.FromJson)), obj);
+    }
+
+    public JsonNode ToJson()
+    {
+        var result = Wire.Copy(Raw);
+        if (Confidence is not null) Wire.PutNumber(result, "confidence", Confidence!.Value);
+        else result.Remove("confidence");
+        if (Category is not null) result["category"] = JsonValue.Create(Category!);
+        else result.Remove("category");
+        if (Points is not null) result["points"] = new JsonArray(Points!.Select(x => (JsonNode?)x.ToJson()).ToArray());
+        else result.Remove("points");
+        return result;
+    }
+}
+
+
+public sealed record PredictedObject(string? ClassLabel = null, double? Confidence = null, string? Category = null, double? X = null, double? Y = null, double? Width = null, double? Height = null, double? Orientation = null, long? TrackId = null, long? GlobalObjectId = null, IReadOnlyList<Point>? Outline = null, IReadOnlyList<Contour>? Contours = null, Mask? Mask = null, IReadOnlyList<PredictedObject>? Objects = null, IReadOnlyList<PredictedClass>? Classes = null, IReadOnlyList<PredictedText>? Texts = null, IReadOnlyList<PredictedKeyPoints>? KeyPoints = null, IReadOnlyList<PredictedMesh>? Meshes = null, IReadOnlyList<JsonObject>? Details = null, JsonObject? Raw = null)
+{
+    public static PredictedObject FromJson(JsonNode? value)
+    {
+        var obj = Wire.Snapshot(value);
+        return new PredictedObject(Wire.Optional(obj, "classLabel", Wire.String), Wire.OptionalValue(obj, "confidence", Wire.Number), Wire.Optional(obj, "category", Wire.String), Wire.OptionalValue(obj, "x", Wire.Number), Wire.OptionalValue(obj, "y", Wire.Number), Wire.OptionalValue(obj, "width", Wire.Number), Wire.OptionalValue(obj, "height", Wire.Number), Wire.OptionalValue(obj, "orientation", Wire.Number), Wire.OptionalValue(obj, "trackId", Wire.Integer), Wire.OptionalValue(obj, "globalObjectId", Wire.Integer), Wire.Optional(obj, "outline", Wire.List(Point.FromJson)), Wire.Optional(obj, "contours", Wire.List(Contour.FromJson)), Wire.Optional(obj, "mask", Mask.FromJson), Wire.Optional(obj, "objects", Wire.List(PredictedObject.FromJson)), Wire.Optional(obj, "classes", Wire.List(PredictedClass.FromJson)), Wire.Optional(obj, "texts", Wire.List(PredictedText.FromJson)), Wire.Optional(obj, "keyPoints", Wire.List(PredictedKeyPoints.FromJson)), Wire.Optional(obj, "meshes", Wire.List(PredictedMesh.FromJson)), Wire.Optional(obj, "details", Wire.List(Wire.Free)), obj);
+    }
+
+    public JsonNode ToJson()
+    {
+        var result = Wire.Copy(Raw);
+        if (ClassLabel is not null) result["classLabel"] = JsonValue.Create(ClassLabel!);
+        else result.Remove("classLabel");
+        if (Confidence is not null) Wire.PutNumber(result, "confidence", Confidence!.Value);
+        else result.Remove("confidence");
+        if (Category is not null) result["category"] = JsonValue.Create(Category!);
+        else result.Remove("category");
+        if (X is not null) Wire.PutNumber(result, "x", X!.Value);
+        else result.Remove("x");
+        if (Y is not null) Wire.PutNumber(result, "y", Y!.Value);
+        else result.Remove("y");
+        if (Width is not null) Wire.PutNumber(result, "width", Width!.Value);
+        else result.Remove("width");
+        if (Height is not null) Wire.PutNumber(result, "height", Height!.Value);
+        else result.Remove("height");
+        if (Orientation is not null) Wire.PutNumber(result, "orientation", Orientation!.Value);
+        else result.Remove("orientation");
+        if (TrackId is not null) result["trackId"] = JsonValue.Create(TrackId!.Value);
+        else result.Remove("trackId");
+        if (GlobalObjectId is not null) result["globalObjectId"] = JsonValue.Create(GlobalObjectId!.Value);
+        else result.Remove("globalObjectId");
+        if (Outline is not null) result["outline"] = new JsonArray(Outline!.Select(x => (JsonNode?)x.ToJson()).ToArray());
+        else result.Remove("outline");
+        if (Contours is not null) result["contours"] = new JsonArray(Contours!.Select(x => (JsonNode?)x.ToJson()).ToArray());
+        else result.Remove("contours");
+        if (Mask is not null) result["mask"] = Mask!.ToJson();
+        else result.Remove("mask");
+        if (Objects is not null) result["objects"] = new JsonArray(Objects!.Select(x => (JsonNode?)x.ToJson()).ToArray());
+        else result.Remove("objects");
+        if (Classes is not null) result["classes"] = new JsonArray(Classes!.Select(x => (JsonNode?)x.ToJson()).ToArray());
+        else result.Remove("classes");
+        if (Texts is not null) result["texts"] = new JsonArray(Texts!.Select(x => (JsonNode?)x.ToJson()).ToArray());
+        else result.Remove("texts");
+        if (KeyPoints is not null) result["keyPoints"] = new JsonArray(KeyPoints!.Select(x => (JsonNode?)x.ToJson()).ToArray());
+        else result.Remove("keyPoints");
+        if (Meshes is not null) result["meshes"] = new JsonArray(Meshes!.Select(x => (JsonNode?)x.ToJson()).ToArray());
+        else result.Remove("meshes");
+        if (Details is not null) result["details"] = new JsonArray(Details!.Select(x => (JsonNode?)x.DeepClone()).ToArray());
+        else result.Remove("details");
+        return result;
+    }
+}
+
+
+public sealed record PredictedText(string? Text = null, double? Confidence = null, string? Category = null, JsonObject? Raw = null)
+{
+    public static PredictedText FromJson(JsonNode? value)
+    {
+        var obj = Wire.Snapshot(value);
+        return new PredictedText(Wire.Optional(obj, "text", Wire.String), Wire.OptionalValue(obj, "confidence", Wire.Number), Wire.Optional(obj, "category", Wire.String), obj);
+    }
+
+    public JsonNode ToJson()
+    {
+        var result = Wire.Copy(Raw);
+        if (Text is not null) result["text"] = JsonValue.Create(Text!);
+        else result.Remove("text");
+        if (Confidence is not null) Wire.PutNumber(result, "confidence", Confidence!.Value);
+        else result.Remove("confidence");
+        if (Category is not null) result["category"] = JsonValue.Create(Category!);
+        else result.Remove("category");
+        return result;
+    }
+}
+
+
+public sealed record Prediction(long? Timestamp = null, double? Seconds = null, long? Offset = null, long? Duration = null, long? Captured_at = null, string? Source_id = null, long? Source_width = null, long? Source_height = null, double? Compute_units = null, long? Milli_compute_units = null, bool? Selected = null, IReadOnlyList<PredictedObject>? Objects = null, IReadOnlyList<PredictedClass>? Classes = null, IReadOnlyList<PredictedText>? Texts = null, IReadOnlyList<PredictedKeyPoints>? KeyPoints = null, IReadOnlyList<PredictedMesh>? Meshes = null, Depth? Depth = null, JsonObject? Tokens = null, IReadOnlyList<JsonObject>? Details = null, IReadOnlyList<TrackEvent>? Track_events = null, JsonObject? Raw = null)
+{
+    public static Prediction FromJson(JsonNode? value)
+    {
+        var obj = Wire.Snapshot(value);
+        return new Prediction(Wire.OptionalValue(obj, "timestamp", Wire.Integer), Wire.OptionalValue(obj, "seconds", Wire.Number), Wire.OptionalValue(obj, "offset", Wire.Integer), Wire.OptionalValue(obj, "duration", Wire.Integer), Wire.OptionalValue(obj, "captured_at", Wire.Integer), Wire.Optional(obj, "source_id", Wire.String), Wire.OptionalValue(obj, "source_width", Wire.Integer), Wire.OptionalValue(obj, "source_height", Wire.Integer), Wire.OptionalValue(obj, "compute_units", Wire.Number), Wire.OptionalValue(obj, "milli_compute_units", Wire.Integer), Wire.OptionalValue(obj, "selected", Wire.Boolean), Wire.Optional(obj, "objects", Wire.List(PredictedObject.FromJson)), Wire.Optional(obj, "classes", Wire.List(PredictedClass.FromJson)), Wire.Optional(obj, "texts", Wire.List(PredictedText.FromJson)), Wire.Optional(obj, "keyPoints", Wire.List(PredictedKeyPoints.FromJson)), Wire.Optional(obj, "meshes", Wire.List(PredictedMesh.FromJson)), Wire.Optional(obj, "depth", Depth.FromJson), Wire.Optional(obj, "tokens", Wire.Free), Wire.Optional(obj, "details", Wire.List(Wire.Free)), Wire.Optional(obj, "track_events", Wire.List(TrackEvent.FromJson)), obj);
+    }
+
+    public JsonNode ToJson()
+    {
+        var result = Wire.Copy(Raw);
+        if (Timestamp is not null) result["timestamp"] = JsonValue.Create(Timestamp!.Value);
+        else result.Remove("timestamp");
+        if (Seconds is not null) Wire.PutNumber(result, "seconds", Seconds!.Value);
+        else result.Remove("seconds");
+        if (Offset is not null) result["offset"] = JsonValue.Create(Offset!.Value);
+        else result.Remove("offset");
+        if (Duration is not null) result["duration"] = JsonValue.Create(Duration!.Value);
+        else result.Remove("duration");
+        if (Captured_at is not null) result["captured_at"] = JsonValue.Create(Captured_at!.Value);
+        else result.Remove("captured_at");
+        if (Source_id is not null) result["source_id"] = JsonValue.Create(Source_id!);
+        else result.Remove("source_id");
+        if (Source_width is not null) result["source_width"] = JsonValue.Create(Source_width!.Value);
+        else result.Remove("source_width");
+        if (Source_height is not null) result["source_height"] = JsonValue.Create(Source_height!.Value);
+        else result.Remove("source_height");
+        if (Compute_units is not null) Wire.PutNumber(result, "compute_units", Compute_units!.Value);
+        else result.Remove("compute_units");
+        if (Milli_compute_units is not null) result["milli_compute_units"] = JsonValue.Create(Milli_compute_units!.Value);
+        else result.Remove("milli_compute_units");
+        if (Selected is not null) result["selected"] = JsonValue.Create(Selected!.Value);
+        else result.Remove("selected");
+        if (Objects is not null) result["objects"] = new JsonArray(Objects!.Select(x => (JsonNode?)x.ToJson()).ToArray());
+        else result.Remove("objects");
+        if (Classes is not null) result["classes"] = new JsonArray(Classes!.Select(x => (JsonNode?)x.ToJson()).ToArray());
+        else result.Remove("classes");
+        if (Texts is not null) result["texts"] = new JsonArray(Texts!.Select(x => (JsonNode?)x.ToJson()).ToArray());
+        else result.Remove("texts");
+        if (KeyPoints is not null) result["keyPoints"] = new JsonArray(KeyPoints!.Select(x => (JsonNode?)x.ToJson()).ToArray());
+        else result.Remove("keyPoints");
+        if (Meshes is not null) result["meshes"] = new JsonArray(Meshes!.Select(x => (JsonNode?)x.ToJson()).ToArray());
+        else result.Remove("meshes");
+        if (Depth is not null) result["depth"] = Depth!.ToJson();
+        else result.Remove("depth");
+        if (Tokens is not null) result["tokens"] = Tokens!.DeepClone();
+        else result.Remove("tokens");
+        if (Details is not null) result["details"] = new JsonArray(Details!.Select(x => (JsonNode?)x.DeepClone()).ToArray());
+        else result.Remove("details");
+        if (Track_events is not null) result["track_events"] = new JsonArray(Track_events!.Select(x => (JsonNode?)x.ToJson()).ToArray());
+        else result.Remove("track_events");
+        return result;
+    }
+}
+
+
+public sealed record PredictionMessage(string Id, Prediction Prediction, JsonObject? Raw = null) : JobMessage, IMessage
 {
     public static new PredictionMessage FromJson(JsonNode? value)
     {
         var obj = Wire.Snapshot(value);
         Wire.Required(obj, "type", Wire.Const("prediction"));
-        return new PredictionMessage(Wire.Required(obj, "id", Wire.Limit(Wire.String, minLength: 1)), Wire.Required(obj, "prediction", Wire.Free), obj);
+        return new PredictionMessage(Wire.Required(obj, "id", Wire.Limit(Wire.String, minLength: 1)), Wire.Required(obj, "prediction", Prediction.FromJson), obj);
     }
 
     public override JsonNode ToJson()
     {
         var result = Wire.Copy(Raw);
         result["id"] = JsonValue.Create(Id);
-        result["prediction"] = Prediction.DeepClone();
+        result["prediction"] = Prediction.ToJson();
         result["type"] = "prediction";
         return result;
     }
@@ -1114,6 +1448,30 @@ internal sealed record StopSource(string Id, JsonObject? Raw = null) : Command
         var result = Wire.Copy(Raw);
         result["id"] = JsonValue.Create(Id);
         result["type"] = "stopSource";
+        return result;
+    }
+}
+
+
+public sealed record TrackEvent(long? Track_id = null, bool? Is_ended = null, long? Started_at = null, long? Ended_at = null, JsonObject? Raw = null)
+{
+    public static TrackEvent FromJson(JsonNode? value)
+    {
+        var obj = Wire.Snapshot(value);
+        return new TrackEvent(Wire.OptionalValue(obj, "track_id", Wire.Integer), Wire.OptionalValue(obj, "is_ended", Wire.Boolean), Wire.OptionalValue(obj, "started_at", Wire.Integer), Wire.OptionalValue(obj, "ended_at", Wire.Integer), obj);
+    }
+
+    public JsonNode ToJson()
+    {
+        var result = Wire.Copy(Raw);
+        if (Track_id is not null) result["track_id"] = JsonValue.Create(Track_id!.Value);
+        else result.Remove("track_id");
+        if (Is_ended is not null) result["is_ended"] = JsonValue.Create(Is_ended!.Value);
+        else result.Remove("is_ended");
+        if (Started_at is not null) result["started_at"] = JsonValue.Create(Started_at!.Value);
+        else result.Remove("started_at");
+        if (Ended_at is not null) result["ended_at"] = JsonValue.Create(Ended_at!.Value);
+        else result.Remove("ended_at");
         return result;
     }
 }

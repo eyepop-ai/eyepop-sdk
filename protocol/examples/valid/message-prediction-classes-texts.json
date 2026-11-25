@@ -1,0 +1,1 @@
+{"type":"prediction","id":"s1","prediction":{"source_width":1280,"source_height":720,"timestamp":0,"classes":[{"classLabel":"neutral","confidence":0.9966,"category":"expression"}],"texts":[{"text":"YORK","confidence":0.9898}]}}

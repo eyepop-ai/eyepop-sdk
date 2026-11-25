@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.eyepop.ai/pipeline-socket/v1/predictedMesh.json",
+  "title": "predictedMesh",
+  "type": "object",
+  "properties": {
+    "confidence": { "type": "number" },
+    "category": { "type": "string" },
+    "points": { "type": "array", "items": { "$ref": "point.json" } }
+  }
+}

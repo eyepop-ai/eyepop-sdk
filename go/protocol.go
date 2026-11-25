@@ -714,6 +714,43 @@ func (v ComponentParams) ToJSON() any {
 	return out
 }
 
+type Contour struct {
+	Points  []Point
+	Cutouts [][]Point
+	Raw     map[string]any
+}
+
+func ContourFromJSON(value any) (Contour, error) {
+	obj, err := parseObject(value)
+	if err != nil {
+		return Contour{}, err
+	}
+	v0, err := optionalNil(obj, "points", parseArray(PointFromJSON))
+	if err != nil {
+		return Contour{}, err
+	}
+	v1, err := optionalNil(obj, "cutouts", parseArray(parseArray(PointFromJSON)))
+	if err != nil {
+		return Contour{}, err
+	}
+	return Contour{Points: v0, Cutouts: v1, Raw: copyMap(obj)}, nil
+}
+
+func (v Contour) ToJSON() any {
+	out := copyMap(v.Raw)
+	if v.Points != nil {
+		out["points"] = mapList(v.Points, func(x Point) any { return x.ToJSON() })
+	} else {
+		delete(out, "points")
+	}
+	if v.Cutouts != nil {
+		out["cutouts"] = mapList(v.Cutouts, func(x []Point) any { return mapList(x, func(x Point) any { return x.ToJSON() }) })
+	} else {
+		delete(out, "cutouts")
+	}
+	return out
+}
+
 type Credit struct {
 	Id     string
 	Bytes  int64
@@ -758,6 +795,73 @@ func (v Credit) ToJSON() any {
 }
 
 func (Credit) isMessage() {}
+
+type Depth struct {
+	Width    *int64
+	Height   *int64
+	Semantic *string
+	Values   *string
+	World    *string
+	Raw      map[string]any
+}
+
+func DepthFromJSON(value any) (Depth, error) {
+	obj, err := parseObject(value)
+	if err != nil {
+		return Depth{}, err
+	}
+	v0, err := optional(obj, "width", parseInteger)
+	if err != nil {
+		return Depth{}, err
+	}
+	v1, err := optional(obj, "height", parseInteger)
+	if err != nil {
+		return Depth{}, err
+	}
+	v2, err := optional(obj, "semantic", parseString)
+	if err != nil {
+		return Depth{}, err
+	}
+	v3, err := optional(obj, "values", parseString)
+	if err != nil {
+		return Depth{}, err
+	}
+	v4, err := optional(obj, "world", parseString)
+	if err != nil {
+		return Depth{}, err
+	}
+	return Depth{Width: v0, Height: v1, Semantic: v2, Values: v3, World: v4, Raw: copyMap(obj)}, nil
+}
+
+func (v Depth) ToJSON() any {
+	out := copyMap(v.Raw)
+	if v.Width != nil {
+		out["width"] = (*v.Width)
+	} else {
+		delete(out, "width")
+	}
+	if v.Height != nil {
+		out["height"] = (*v.Height)
+	} else {
+		delete(out, "height")
+	}
+	if v.Semantic != nil {
+		out["semantic"] = (*v.Semantic)
+	} else {
+		delete(out, "semantic")
+	}
+	if v.Values != nil {
+		out["values"] = (*v.Values)
+	} else {
+		delete(out, "values")
+	}
+	if v.World != nil {
+		out["world"] = (*v.World)
+	} else {
+		delete(out, "world")
+	}
+	return out
+}
 
 type Done struct {
 	Raw map[string]any
@@ -1031,6 +1135,73 @@ func (v InferenceComponent) ToJSON() any {
 
 func (InferenceComponent) isPopComponent() {}
 
+type Mask struct {
+	Width  *int64
+	Height *int64
+	Stride *int64
+	Bitmap *string
+	World  *string
+	Raw    map[string]any
+}
+
+func MaskFromJSON(value any) (Mask, error) {
+	obj, err := parseObject(value)
+	if err != nil {
+		return Mask{}, err
+	}
+	v0, err := optional(obj, "width", parseInteger)
+	if err != nil {
+		return Mask{}, err
+	}
+	v1, err := optional(obj, "height", parseInteger)
+	if err != nil {
+		return Mask{}, err
+	}
+	v2, err := optional(obj, "stride", parseInteger)
+	if err != nil {
+		return Mask{}, err
+	}
+	v3, err := optional(obj, "bitmap", parseString)
+	if err != nil {
+		return Mask{}, err
+	}
+	v4, err := optional(obj, "world", parseString)
+	if err != nil {
+		return Mask{}, err
+	}
+	return Mask{Width: v0, Height: v1, Stride: v2, Bitmap: v3, World: v4, Raw: copyMap(obj)}, nil
+}
+
+func (v Mask) ToJSON() any {
+	out := copyMap(v.Raw)
+	if v.Width != nil {
+		out["width"] = (*v.Width)
+	} else {
+		delete(out, "width")
+	}
+	if v.Height != nil {
+		out["height"] = (*v.Height)
+	} else {
+		delete(out, "height")
+	}
+	if v.Stride != nil {
+		out["stride"] = (*v.Stride)
+	} else {
+		delete(out, "stride")
+	}
+	if v.Bitmap != nil {
+		out["bitmap"] = (*v.Bitmap)
+	} else {
+		delete(out, "bitmap")
+	}
+	if v.World != nil {
+		out["world"] = (*v.World)
+	} else {
+		delete(out, "world")
+	}
+	return out
+}
+
 type Ping struct {
 	Id  string
 	Raw map[string]any
@@ -1059,6 +1230,83 @@ func (v Ping) ToJSON() any {
 }
 
 func (Ping) isCommand() {}
+
+type Point struct {
+	X      *float64
+	Y      *float64
+	Z      *float64
+	WorldX *float64
+	WorldY *float64
+	WorldZ *float64
+	Raw    map[string]any
+}
+
+func PointFromJSON(value any) (Point, error) {
+	obj, err := parseObject(value)
+	if err != nil {
+		return Point{}, err
+	}
+	v0, err := optional(obj, "x", parseNumber)
+	if err != nil {
+		return Point{}, err
+	}
+	v1, err := optional(obj, "y", parseNumber)
+	if err != nil {
+		return Point{}, err
+	}
+	v2, err := optional(obj, "z", parseNumber)
+	if err != nil {
+		return Point{}, err
+	}
+	v3, err := optional(obj, "worldX", parseNumber)
+	if err != nil {
+		return Point{}, err
+	}
+	v4, err := optional(obj, "worldY", parseNumber)
+	if err != nil {
+		return Point{}, err
+	}
+	v5, err := optional(obj, "worldZ", parseNumber)
+	if err != nil {
+		return Point{}, err
+	}
+	return Point{X: v0, Y: v1, Z: v2, WorldX: v3, WorldY: v4, WorldZ: v5, Raw: copyMap(obj)}, nil
+}
+
+func (v Point) ToJSON() any {
+	out := copyMap(v.Raw)
+	if v.X != nil {
+		putNumber(out, "x", *v.X)
+	} else {
+		delete(out, "x")
+	}
+	if v.Y != nil {
+		putNumber(out, "y", *v.Y)
+	} else {
+		delete(out, "y")
+	}
+	if v.Z != nil {
+		putNumber(out, "z", *v.Z)
+	} else {
+		delete(out, "z")
+	}
+	if v.WorldX != nil {
+		putNumber(out, "worldX", *v.WorldX)
+	} else {
+		delete(out, "worldX")
+	}
+	if v.WorldY != nil {
+		putNumber(out, "worldY", *v.WorldY)
+	} else {
+		delete(out, "worldY")
+	}
+	if v.WorldZ != nil {
+		putNumber(out, "worldZ", *v.WorldZ)
+	} else {
+		delete(out, "worldZ")
+	}
+	return out
+}
 
 type Pong struct {
 	Id  string
@@ -1192,9 +1440,738 @@ func (v PopDepthMap) ToJSON() any {
 	return out
 }
 
+type PredictedClass struct {
+	ClassLabel *string
+	Confidence *float64
+	Category   *string
+	Raw        map[string]any
+}
+
+func PredictedClassFromJSON(value any) (PredictedClass, error) {
+	obj, err := parseObject(value)
+	if err != nil {
+		return PredictedClass{}, err
+	}
+	v0, err := optional(obj, "classLabel", parseString)
+	if err != nil {
+		return PredictedClass{}, err
+	}
+	v1, err := optional(obj, "confidence", parseNumber)
+	if err != nil {
+		return PredictedClass{}, err
+	}
+	v2, err := optional(obj, "category", parseString)
+	if err != nil {
+		return PredictedClass{}, err
+	}
+	return PredictedClass{ClassLabel: v0, Confidence: v1, Category: v2, Raw: copyMap(obj)}, nil
+}
+
+func (v PredictedClass) ToJSON() any {
+	out := copyMap(v.Raw)
+	if v.ClassLabel != nil {
+		out["classLabel"] = (*v.ClassLabel)
+	} else {
+		delete(out, "classLabel")
+	}
+	if v.Confidence != nil {
+		putNumber(out, "confidence", *v.Confidence)
+	} else {
+		delete(out, "confidence")
+	}
+	if v.Category != nil {
+		out["category"] = (*v.Category)
+	} else {
+		delete(out, "category")
+	}
+	return out
+}
+
+type PredictedKeyPoint struct {
+	X          *float64
+	Y          *float64
+	Z          *float64
+	WorldX     *float64
+	WorldY     *float64
+	WorldZ     *float64
+	ClassLabel *string
+	Confidence *float64
+	Category   *string
+	Visible    *bool
+	Raw        map[string]any
+}
+
+func PredictedKeyPointFromJSON(value any) (PredictedKeyPoint, error) {
+	obj, err := parseObject(value)
+	if err != nil {
+		return PredictedKeyPoint{}, err
+	}
+	v0, err := optional(obj, "x", parseNumber)
+	if err != nil {
+		return PredictedKeyPoint{}, err
+	}
+	v1, err := optional(obj, "y", parseNumber)
+	if err != nil {
+		return PredictedKeyPoint{}, err
+	}
+	v2, err := optional(obj, "z", parseNumber)
+	if err != nil {
+		return PredictedKeyPoint{}, err
+	}
+	v3, err := optional(obj, "worldX", parseNumber)
+	if err != nil {
+		return PredictedKeyPoint{}, err
+	}
+	v4, err := optional(obj, "worldY", parseNumber)
+	if err != nil {
+		return PredictedKeyPoint{}, err
+	}
+	v5, err := optional(obj, "worldZ", parseNumber)
+	if err != nil {
+		return PredictedKeyPoint{}, err
+	}
+	v6, err := optional(obj, "classLabel", parseString)
+	if err != nil {
+		return PredictedKeyPoint{}, err
+	}
+	v7, err := optional(obj, "confidence", parseNumber)
+	if err != nil {
+		return PredictedKeyPoint{}, err
+	}
+	v8, err := optional(obj, "category", parseString)
+	if err != nil {
+		return PredictedKeyPoint{}, err
+	}
+	v9, err := optional(obj, "visible", parseBoolean)
+	if err != nil {
+		return PredictedKeyPoint{}, err
+	}
+	return PredictedKeyPoint{X: v0, Y: v1, Z: v2, WorldX: v3, WorldY: v4, WorldZ: v5, ClassLabel: v6, Confidence: v7, Category: v8, Visible: v9, Raw: copyMap(obj)}, nil
+}
+
+func (v PredictedKeyPoint) ToJSON() any {
+	out := copyMap(v.Raw)
+	if v.X != nil {
+		putNumber(out, "x", *v.X)
+	} else {
+		delete(out, "x")
+	}
+	if v.Y != nil {
+		putNumber(out, "y", *v.Y)
+	} else {
+		delete(out, "y")
+	}
+	if v.Z != nil {
+		putNumber(out, "z", *v.Z)
+	} else {
+		delete(out, "z")
+	}
+	if v.WorldX != nil {
+		putNumber(out, "worldX", *v.WorldX)
+	} else {
+		delete(out, "worldX")
+	}
+	if v.WorldY != nil {
+		putNumber(out, "worldY", *v.WorldY)
+	} else {
+		delete(out, "worldY")
+	}
+	if v.WorldZ != nil {
+		putNumber(out, "worldZ", *v.WorldZ)
+	} else {
+		delete(out, "worldZ")
+	}
+	if v.ClassLabel != nil {
+		out["classLabel"] = (*v.ClassLabel)
+	} else {
+		delete(out, "classLabel")
+	}
+	if v.Confidence != nil {
+		putNumber(out, "confidence", *v.Confidence)
+	} else {
+		delete(out, "confidence")
+	}
+	if v.Category != nil {
+		out["category"] = (*v.Category)
+	} else {
+		delete(out, "category")
+	}
+	if v.Visible != nil {
+		out["visible"] = (*v.Visible)
+	} else {
+		delete(out, "visible")
+	}
+	return out
+}
+
+type PredictedKeyPoints struct {
+	Confidence *float64
+	Category   *string
+	Points     []PredictedKeyPoint
+	Raw        map[string]any
+}
+
+func PredictedKeyPointsFromJSON(value any) (PredictedKeyPoints, error) {
+	obj, err := parseObject(value)
+	if err != nil {
+		return PredictedKeyPoints{}, err
+	}
+	v0, err := optional(obj, "confidence", parseNumber)
+	if err != nil {
+		return PredictedKeyPoints{}, err
+	}
+	v1, err := optional(obj, "category", parseString)
+	if err != nil {
+		return PredictedKeyPoints{}, err
+	}
+	v2, err := optionalNil(obj, "points", parseArray(PredictedKeyPointFromJSON))
+	if err != nil {
+		return PredictedKeyPoints{}, err
+	}
+	return PredictedKeyPoints{Confidence: v0, Category: v1, Points: v2, Raw: copyMap(obj)}, nil
+}
+
+func (v PredictedKeyPoints) ToJSON() any {
+	out := copyMap(v.Raw)
+	if v.Confidence != nil {
+		putNumber(out, "confidence", *v.Confidence)
+	} else {
+		delete(out, "confidence")
+	}
+	if v.Category != nil {
+		out["category"] = (*v.Category)
+	} else {
+		delete(out, "category")
+	}
+	if v.Points != nil {
+		out["points"] = mapList(v.Points, func(x PredictedKeyPoint) any { return x.ToJSON() })
+	} else {
+		delete(out, "points")
+	}
+	return out
+}
+
+type PredictedMesh struct {
+	Confidence *float64
+	Category   *string
+	Points     []Point
+	Raw        map[string]any
+}
+
+func PredictedMeshFromJSON(value any) (PredictedMesh, error) {
+	obj, err := parseObject(value)
+	if err != nil {
+		return PredictedMesh{}, err
+	}
+	v0, err := optional(obj, "confidence", parseNumber)
+	if err != nil {
+		return PredictedMesh{}, err
+	}
+	v1, err := optional(obj, "category", parseString)
+	if err != nil {
+		return PredictedMesh{}, err
+	}
+	v2, err := optionalNil(obj, "points", parseArray(PointFromJSON))
+	if err != nil {
+		return PredictedMesh{}, err
+	}
+	return PredictedMesh{Confidence: v0, Category: v1, Points: v2, Raw: copyMap(obj)}, nil
+}
+
+func (v PredictedMesh) ToJSON() any {
+	out := copyMap(v.Raw)
+	if v.Confidence != nil {
+		putNumber(out, "confidence", *v.Confidence)
+	} else {
+		delete(out, "confidence")
+	}
+	if v.Category != nil {
+		out["category"] = (*v.Category)
+	} else {
+		delete(out, "category")
+	}
+	if v.Points != nil {
+		out["points"] = mapList(v.Points, func(x Point) any { return x.ToJSON() })
+	} else {
+		delete(out, "points")
+	}
+	return out
+}
+
+type PredictedObject struct {
+	ClassLabel     *string
+	Confidence     *float64
+	Category       *string
+	X              *float64
+	Y              *float64
+	Width          *float64
+	Height         *float64
+	Orientation    *float64
+	TrackId        *int64
+	GlobalObjectId *int64
+	Outline        []Point
+	Contours       []Contour
+	Mask           *Mask
+	Objects        []PredictedObject
+	Classes        []PredictedClass
+	Texts          []PredictedText
+	KeyPoints      []PredictedKeyPoints
+	Meshes         []PredictedMesh
+	Details        []map[string]any
+	Raw            map[string]any
+}
+
+func PredictedObjectFromJSON(value any) (PredictedObject, error) {
+	obj, err := parseObject(value)
+	if err != nil {
+		return PredictedObject{}, err
+	}
+	v0, err := optional(obj, "classLabel", parseString)
+	if err != nil {
+		return PredictedObject{}, err
+	}
+	v1, err := optional(obj, "confidence", parseNumber)
+	if err != nil {
+		return PredictedObject{}, err
+	}
+	v2, err := optional(obj, "category", parseString)
+	if err != nil {
+		return PredictedObject{}, err
+	}
+	v3, err := optional(obj, "x", parseNumber)
+	if err != nil {
+		return PredictedObject{}, err
+	}
+	v4, err := optional(obj, "y", parseNumber)
+	if err != nil {
+		return PredictedObject{}, err
+	}
+	v5, err := optional(obj, "width", parseNumber)
+	if err != nil {
+		return PredictedObject{}, err
+	}
+	v6, err := optional(obj, "height", parseNumber)
+	if err != nil {
+		return PredictedObject{}, err
+	}
+	v7, err := optional(obj, "orientation", parseNumber)
+	if err != nil {
+		return PredictedObject{}, err
+	}
+	v8, err := optional(obj, "trackId", parseInteger)
+	if err != nil {
+		return PredictedObject{}, err
+	}
+	v9, err := optional(obj, "globalObjectId", parseInteger)
+	if err != nil {
+		return PredictedObject{}, err
+	}
+	v10, err := optionalNil(obj, "outline", parseArray(PointFromJSON))
+	if err != nil {
+		return PredictedObject{}, err
+	}
+	v11, err := optionalNil(obj, "contours", parseArray(ContourFromJSON))
+	if err != nil {
+		return PredictedObject{}, err
+	}
+	v12, err := optional(obj, "mask", MaskFromJSON)
+	if err != nil {
+		return PredictedObject{}, err
+	}
+	v13, err := optionalNil(obj, "objects", parseArray(PredictedObjectFromJSON))
+	if err != nil {
+		return PredictedObject{}, err
+	}
+	v14, err := optionalNil(obj, "classes", parseArray(PredictedClassFromJSON))
+	if err != nil {
+		return PredictedObject{}, err
+	}
+	v15, err := optionalNil(obj, "texts", parseArray(PredictedTextFromJSON))
+	if err != nil {
+		return PredictedObject{}, err
+	}
+	v16, err := optionalNil(obj, "keyPoints", parseArray(PredictedKeyPointsFromJSON))
+	if err != nil {
+		return PredictedObject{}, err
+	}
+	v17, err := optionalNil(obj, "meshes", parseArray(PredictedMeshFromJSON))
+	if err != nil {
+		return PredictedObject{}, err
+	}
+	v18, err := optionalNil(obj, "details", parseArray(parseFree))
+	if err != nil {
+		return PredictedObject{}, err
+	}
+	return PredictedObject{ClassLabel: v0, Confidence: v1, Category: v2, X: v3, Y: v4, Width: v5, Height: v6, Orientation: v7, TrackId: v8, GlobalObjectId: v9, Outline: v10, Contours: v11, Mask: v12, Objects: v13, Classes: v14, Texts: v15, KeyPoints: v16, Meshes: v17, Details: v18, Raw: copyMap(obj)}, nil
+}
+
+func (v PredictedObject) ToJSON() any {
+	out := copyMap(v.Raw)
+	if v.ClassLabel != nil {
+		out["classLabel"] = (*v.ClassLabel)
+	} else {
+		delete(out, "classLabel")
+	}
+	if v.Confidence != nil {
+		putNumber(out, "confidence", *v.Confidence)
+	} else {
+		delete(out, "confidence")
+	}
+	if v.Category != nil {
+		out["category"] = (*v.Category)
+	} else {
+		delete(out, "category")
+	}
+	if v.X != nil {
+		putNumber(out, "x", *v.X)
+	} else {
+		delete(out, "x")
+	}
+	if v.Y != nil {
+		putNumber(out, "y", *v.Y)
+	} else {
+		delete(out, "y")
+	}
+	if v.Width != nil {
+		putNumber(out, "width", *v.Width)
+	} else {
+		delete(out, "width")
+	}
+	if v.Height != nil {
+		putNumber(out, "height", *v.Height)
+	} else {
+		delete(out, "height")
+	}
+	if v.Orientation != nil {
+		putNumber(out, "orientation", *v.Orientation)
+	} else {
+		delete(out, "orientation")
+	}
+	if v.TrackId != nil {
+		out["trackId"] = (*v.TrackId)
+	} else {
+		delete(out, "trackId")
+	}
+	if v.GlobalObjectId != nil {
+		out["globalObjectId"] = (*v.GlobalObjectId)
+	} else {
+		delete(out, "globalObjectId")
+	}
+	if v.Outline != nil {
+		out["outline"] = mapList(v.Outline, func(x Point) any { return x.ToJSON() })
+	} else {
+		delete(out, "outline")
+	}
+	if v.Contours != nil {
+		out["contours"] = mapList(v.Contours, func(x Contour) any { return x.ToJSON() })
+	} else {
+		delete(out, "contours")
+	}
+	if v.Mask != nil {
+		out["mask"] = (*v.Mask).ToJSON()
+	} else {
+		delete(out, "mask")
+	}
+	if v.Objects != nil {
+		out["objects"] = mapList(v.Objects, func(x PredictedObject) any { return x.ToJSON() })
+	} else {
+		delete(out, "objects")
+	}
+	if v.Classes != nil {
+		out["classes"] = mapList(v.Classes, func(x PredictedClass) any { return x.ToJSON() })
+	} else {
+		delete(out, "classes")
+	}
+	if v.Texts != nil {
+		out["texts"] = mapList(v.Texts, func(x PredictedText) any { return x.ToJSON() })
+	} else {
+		delete(out, "texts")
+	}
+	if v.KeyPoints != nil {
+		out["keyPoints"] = mapList(v.KeyPoints, func(x PredictedKeyPoints) any { return x.ToJSON() })
+	} else {
+		delete(out, "keyPoints")
+	}
+	if v.Meshes != nil {
+		out["meshes"] = mapList(v.Meshes, func(x PredictedMesh) any { return x.ToJSON() })
+	} else {
+		delete(out, "meshes")
+	}
+	if v.Details != nil {
+		out["details"] = mapList(v.Details, func(x map[string]any) any { return deepCopy(x) })
+	} else {
+		delete(out, "details")
+	}
+	return out
+}
+
+type PredictedText struct {
+	Text       *string
+	Confidence *float64
+	Category   *string
+	Raw        map[string]any
+}
+
+func PredictedTextFromJSON(value any) (PredictedText, error) {
+	obj, err := parseObject(value)
+	if err != nil {
+		return PredictedText{}, err
+	}
+	v0, err := optional(obj, "text", parseString)
+	if err != nil {
+		return PredictedText{}, err
+	}
+	v1, err := optional(obj, "confidence", parseNumber)
+	if err != nil {
+		return PredictedText{}, err
+	}
+	v2, err := optional(obj, "category", parseString)
+	if err != nil {
+		return PredictedText{}, err
+	}
+	return PredictedText{Text: v0, Confidence: v1, Category: v2, Raw: copyMap(obj)}, nil
+}
+
+func (v PredictedText) ToJSON() any {
+	out := copyMap(v.Raw)
+	if v.Text != nil {
+		out["text"] = (*v.Text)
+	} else {
+		delete(out, "text")
+	}
+	if v.Confidence != nil {
+		putNumber(out, "confidence", *v.Confidence)
+	} else {
+		delete(out, "confidence")
+	}
+	if v.Category != nil {
+		out["category"] = (*v.Category)
+	} else {
+		delete(out, "category")
+	}
+	return out
+}
+
+type Prediction struct {
+	Timestamp           *int64
+	Seconds             *float64
+	Offset              *int64
+	Duration            *int64
+	Captured_at         *int64
+	Source_id           *string
+	Source_width        *int64
+	Source_height       *int64
+	Compute_units       *float64
+	Milli_compute_units *int64
+	Selected            *bool
+	Objects             []PredictedObject
+	Classes             []PredictedClass
+	Texts               []PredictedText
+	KeyPoints           []PredictedKeyPoints
+	Meshes              []PredictedMesh
+	Depth               *Depth
+	Tokens              map[string]any
+	Details             []map[string]any
+	Track_events        []TrackEvent
+	Raw                 map[string]any
+}
+
+func PredictionFromJSON(value any) (Prediction, error) {
+	obj, err := parseObject(value)
+	if err != nil {
+		return Prediction{}, err
+	}
+	v0, err := optional(obj, "timestamp", parseInteger)
+	if err != nil {
+		return Prediction{}, err
+	}
+	v1, err := optional(obj, "seconds", parseNumber)
+	if err != nil {
+		return Prediction{}, err
+	}
+	v2, err := optional(obj, "offset", parseInteger)
+	if err != nil {
+		return Prediction{}, err
+	}
+	v3, err := optional(obj, "duration", parseInteger)
+	if err != nil {
+		return Prediction{}, err
+	}
+	v4, err := optional(obj, "captured_at", parseInteger)
+	if err != nil {
+		return Prediction{}, err
+	}
+	v5, err := optional(obj, "source_id", parseString)
+	if err != nil {
+		return Prediction{}, err
+	}
+	v6, err := optional(obj, "source_width", parseInteger)
+	if err != nil {
+		return Prediction{}, err
+	}
+	v7, err := optional(obj, "source_height", parseInteger)
+	if err != nil {
+		return Prediction{}, err
+	}
+	v8, err := optional(obj, "compute_units", parseNumber)
+	if err != nil {
+		return Prediction{}, err
+	}
+	v9, err := optional(obj, "milli_compute_units", parseInteger)
+	if err != nil {
+		return Prediction{}, err
+	}
+	v10, err := optional(obj, "selected", parseBoolean)
+	if err != nil {
+		return Prediction{}, err
+	}
+	v11, err := optionalNil(obj, "objects", parseArray(PredictedObjectFromJSON))
+	if err != nil {
+		return Prediction{}, err
+	}
+	v12, err := optionalNil(obj, "classes", parseArray(PredictedClassFromJSON))
+	if err != nil {
+		return Prediction{}, err
+	}
+	v13, err := optionalNil(obj, "texts", parseArray(PredictedTextFromJSON))
+	if err != nil {
+		return Prediction{}, err
+	}
+	v14, err := optionalNil(obj, "keyPoints", parseArray(PredictedKeyPointsFromJSON))
+	if err != nil {
+		return Prediction{}, err
+	}
+	v15, err := optionalNil(obj, "meshes", parseArray(PredictedMeshFromJSON))
+	if err != nil {
+		return Prediction{}, err
+	}
+	v16, err := optional(obj, "depth", DepthFromJSON)
+	if err != nil {
+		return Prediction{}, err
+	}
+	v17, err := optionalNil(obj, "tokens", parseFree)
+	if err != nil {
+		return Prediction{}, err
+	}
+	v18, err := optionalNil(obj, "details", parseArray(parseFree))
+	if err != nil {
+		return Prediction{}, err
+	}
+	v19, err := optionalNil(obj, "track_events", parseArray(TrackEventFromJSON))
+	if err != nil {
+		return Prediction{}, err
+	}
+	return Prediction{Timestamp: v0, Seconds: v1, Offset: v2, Duration: v3, Captured_at: v4, Source_id: v5, Source_width: v6, Source_height: v7, Compute_units: v8, Milli_compute_units: v9, Selected: v10, Objects: v11, Classes: v12, Texts: v13, KeyPoints: v14, Meshes: v15, Depth: v16, Tokens: v17, Details: v18, Track_events: v19, Raw: copyMap(obj)}, nil
+}
+
+func (v Prediction) ToJSON() any {
+	out := copyMap(v.Raw)
+	if v.Timestamp != nil {
+		out["timestamp"] = (*v.Timestamp)
+	} else {
+		delete(out, "timestamp")
+	}
+	if v.Seconds != nil {
+		putNumber(out, "seconds", *v.Seconds)
+	} else {
+		delete(out, "seconds")
+	}
+	if v.Offset != nil {
+		out["offset"] = (*v.Offset)
+	} else {
+		delete(out, "offset")
+	}
+	if v.Duration != nil {
+		out["duration"] = (*v.Duration)
+	} else {
+		delete(out, "duration")
+	}
+	if v.Captured_at != nil {
+		out["captured_at"] = (*v.Captured_at)
+	} else {
+		delete(out, "captured_at")
+	}
+	if v.Source_id != nil {
+		out["source_id"] = (*v.Source_id)
+	} else {
+		delete(out, "source_id")
+	}
+	if v.Source_width != nil {
+		out["source_width"] = (*v.Source_width)
+	} else {
+		delete(out, "source_width")
+	}
+	if v.Source_height != nil {
+		out["source_height"] = (*v.Source_height)
+	} else {
+		delete(out, "source_height")
+	}
+	if v.Compute_units != nil {
+		putNumber(out, "compute_units", *v.Compute_units)
+	} else {
+		delete(out, "compute_units")
+	}
+	if v.Milli_compute_units != nil {
+		out["milli_compute_units"] = (*v.Milli_compute_units)
+	} else {
+		delete(out, "milli_compute_units")
+	}
+	if v.Selected != nil {
+		out["selected"] = (*v.Selected)
+	} else {
+		delete(out, "selected")
+	}
+	if v.Objects != nil {
+		out["objects"] = mapList(v.Objects, func(x PredictedObject) any { return x.ToJSON() })
+	} else {
+		delete(out, "objects")
+	}
+	if v.Classes != nil {
+		out["classes"] = mapList(v.Classes, func(x PredictedClass) any { return x.ToJSON() })
+	} else {
+		delete(out, "classes")
+	}
+	if v.Texts != nil {
+		out["texts"] = mapList(v.Texts, func(x PredictedText) any { return x.ToJSON() })
+	} else {
+		delete(out, "texts")
+	}
+	if v.KeyPoints != nil {
+		out["keyPoints"] = mapList(v.KeyPoints, func(x PredictedKeyPoints) any { return x.ToJSON() })
+	} else {
+		delete(out, "keyPoints")
+	}
+	if v.Meshes != nil {
+		out["meshes"] = mapList(v.Meshes, func(x PredictedMesh) any { return x.ToJSON() })
+	} else {
+		delete(out, "meshes")
+	}
+	if v.Depth != nil {
+		out["depth"] = (*v.Depth).ToJSON()
+	} else {
+		delete(out, "depth")
+	}
+	if v.Tokens != nil {
+		out["tokens"] = deepCopy(v.Tokens)
+	} else {
+		delete(out, "tokens")
+	}
+	if v.Details != nil {
+		out["details"] = mapList(v.Details, func(x map[string]any) any { return deepCopy(x) })
+	} else {
+		delete(out, "details")
+	}
+	if v.Track_events != nil {
+		out["track_events"] = mapList(v.Track_events, func(x TrackEvent) any { return x.ToJSON() })
+	} else {
+		delete(out, "track_events")
+	}
+	return out
+}
+
 type PredictionMessage struct {
 	Id         string
-	Prediction map[string]any
+	Prediction Prediction
 	Raw        map[string]any
 }
 
@@ -1210,7 +2187,7 @@ func PredictionMessageFromJSON(value any) (PredictionMessage, error) {
 	if err != nil {
 		return PredictionMessage{}, err
 	}
-	v1, err := required(obj, "prediction", parseFree)
+	v1, err := required(obj, "prediction", PredictionFromJSON)
 	if err != nil {
 		return PredictionMessage{}, err
 	}
@@ -1220,7 +2197,7 @@ func PredictionMessageFromJSON(value any) (PredictionMessage, error) {
 func (v PredictionMessage) ToJSON() any {
 	out := copyMap(v.Raw)
 	out["id"] = v.Id
-	out["prediction"] = deepCopy(v.Prediction)
+	out["prediction"] = v.Prediction.ToJSON()
 	out["type"] = "prediction"
 	return out
 }
@@ -1711,6 +2688,63 @@ func (v StopSource) ToJSON() any {
 }
 
 func (StopSource) isCommand() {}
+
+type TrackEvent struct {
+	Track_id   *int64
+	Is_ended   *bool
+	Started_at *int64
+	Ended_at   *int64
+	Raw        map[string]any
+}
+
+func TrackEventFromJSON(value any) (TrackEvent, error) {
+	obj, err := parseObject(value)
+	if err != nil {
+		return TrackEvent{}, err
+	}
+	v0, err := optional(obj, "track_id", parseInteger)
+	if err != nil {
+		return TrackEvent{}, err
+	}
+	v1, err := optional(obj, "is_ended", parseBoolean)
+	if err != nil {
+		return TrackEvent{}, err
+	}
+	v2, err := optional(obj, "started_at", parseInteger)
+	if err != nil {
+		return TrackEvent{}, err
+	}
+	v3, err := optional(obj, "ended_at", parseInteger)
+	if err != nil {
+		return TrackEvent{}, err
+	}
+	return TrackEvent{Track_id: v0, Is_ended: v1, Started_at: v2, Ended_at: v3, Raw: copyMap(obj)}, nil
+}
+
+func (v TrackEvent) ToJSON() any {
+	out := copyMap(v.Raw)
+	if v.Track_id != nil {
+		out["track_id"] = (*v.Track_id)
+	} else {
+		delete(out, "track_id")
+	}
+	if v.Is_ended != nil {
+		out["is_ended"] = (*v.Is_ended)
+	} else {
+		delete(out, "is_ended")
+	}
+	if v.Started_at != nil {
+		out["started_at"] = (*v.Started_at)
+	} else {
+		delete(out, "started_at")
+	}
+	if v.Ended_at != nil {
+		out["ended_at"] = (*v.Ended_at)
+	} else {
+		delete(out, "ended_at")
+	}
+	return out
+}
 
 type Uploaded struct {
 	Id     string

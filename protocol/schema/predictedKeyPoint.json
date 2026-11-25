@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.eyepop.ai/pipeline-socket/v1/predictedKeyPoint.json",
+  "title": "predictedKeyPoint",
+  "allOf": [{ "$ref": "point.json" }],
+  "type": "object",
+  "properties": {
+    "classLabel": { "type": "string" },
+    "confidence": { "type": "number" },
+    "category": { "type": "string" },
+    "visible": { "type": "boolean" }
+  }
+}

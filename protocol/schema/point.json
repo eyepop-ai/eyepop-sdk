@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.eyepop.ai/pipeline-socket/v1/point.json",
+  "title": "point",
+  "description": "A point in source pixels. `z` is model-relative depth; `worldX`, `worldY` and `worldZ` are metres and absent for a point the pipeline could not place.",
+  "type": "object",
+  "properties": {
+    "x": { "type": "number" },
+    "y": { "type": "number" },
+    "z": { "type": "number" },
+    "worldX": { "type": "number" },
+    "worldY": { "type": "number" },
+    "worldZ": { "type": "number" }
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.eyepop.ai/pipeline-socket/v1/contour.json",
+  "title": "contour",
+  "type": "object",
+  "properties": {
+    "points": { "type": "array", "items": { "$ref": "point.json" } },
+    "cutouts": { "type": "array", "items": { "type": "array", "items": { "$ref": "point.json" } } }
+  }
+}

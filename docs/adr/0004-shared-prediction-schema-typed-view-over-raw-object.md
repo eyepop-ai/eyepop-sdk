@@ -2,7 +2,7 @@
 
 The pipeline sends one prediction format: prediction format v4 on the socket, with the same keys the Data API stores, and the Pipeline API passes the object through unchanged. `protocol/schema/prediction.json` types that object once, v4 only and with every field optional, so a later Data API or agent-runtime SDK can reuse it. A `prediction` message keeps the raw object. The typed `Prediction` is built from it, and when its typed fields cannot be read a Job still yields the `Prediction` with the raw object alone.
 
-Not built yet: `protocol/schema/predictionMessage.json` is the `prediction` message schema, and the typed object will land as `prediction.json`. `Prediction` joins the public list in `protocol/public.json` with it.
+`protocol/schema/predictionMessage.json` is the `prediction` message schema and `prediction.json` the typed object; `Prediction` and its nested types are in `protocol/public.json`. The message's `prediction` member is that typed `Prediction`, which keeps the JSON it was read from as `raw`. Not built yet: the generated decoders read the member strictly, so a nested value of the wrong type (`objects` that is not an array) makes the whole message `Unknown`. The tolerant view this ADR describes, a `Prediction` with only its raw object, is still to build in the hand-written Pipeline layer or by loosening the message member.
 
 ## Considered options
 

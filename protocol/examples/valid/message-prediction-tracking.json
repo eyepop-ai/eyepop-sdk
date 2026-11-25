@@ -1,0 +1,1 @@
+{"type":"prediction","id":"s1","prediction":{"timestamp":9458333333,"objects":[{"classLabel":"person","trackId":1,"globalObjectId":7,"x":548.181,"y":279.943,"width":135.593,"height":401.181}],"track_events":[{"track_id":1,"is_ended":true,"started_at":0,"ended_at":9291666667}]}}

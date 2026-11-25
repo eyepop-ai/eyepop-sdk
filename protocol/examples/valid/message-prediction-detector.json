@@ -1,0 +1,1 @@
+{"type":"prediction","id":"s1","prediction":{"source_id":"src-1","source_width":1280,"source_height":720,"timestamp":0,"seconds":0,"objects":[{"classLabel":"person","confidence":0.9775,"x":503.281,"y":251.718,"width":166.562,"height":464.765,"orientation":0}]}}
