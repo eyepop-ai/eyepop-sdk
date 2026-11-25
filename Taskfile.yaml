@@ -40,7 +40,7 @@ tasks:
       - scripts/version.test.sh
 
   demo:cs:
-    desc: "Run the C# demo against a real environment (needs EYEPOP_API_KEY); arguments go after --, e.g. task demo:cs -- ocr"
+    desc: "Run the C# demo against a real environment (needs EYEPOP_API_KEY); arguments go after --, e.g. task demo:cs -- pose"
     cmds:
       - dotnet run --project demo/cs -- {{.CLI_ARGS}}
 

@@ -1,6 +1,6 @@
 # EyePop SDK demos
 
-A small app per language that runs real pops against a real EyePop environment and prints what came back. Each demo is meant to be read and copied: a scenario is one self-contained block holding its pop and the few SDK calls that run it.
+A small app per language that runs three real pops against a real EyePop environment and prints what came back. Each demo is meant to be read and copied: a scenario is one self-contained block holding its pop and the few SDK calls that run it.
 
 | Language | Directory | Status |
 |----------|-----------|--------|
@@ -14,34 +14,38 @@ You need the [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0) and 
 
 ```sh
 export EYEPOP_API_KEY=...
-dotnet run --project demo/cs                 # the objects scenario on the bundled sample image
+dotnet run --project demo/cs                 # the objects scenario on the bundled sample image, from any directory
 dotnet run --project demo/cs -- list         # the scenario names
-dotnet run --project demo/cs -- ocr --file ./sign.jpg
+dotnet run --project demo/cs -- pose --file ./team.jpg
 dotnet run --project demo/cs -- all          # every scenario in turn
 ```
 
-Inside the repo with Devbox: `devbox run -- task demo:cs -- ocr`.
+Inside the repo with Devbox: `devbox run -- task demo:cs -- pose`.
 
-Example output:
+Example output of `all` on the sample image. The counts and the caption depend on the live models; the shape of each line does not:
 
 ```
 prediction objects=9 [person]
 PASS objects
+prediction objects=9 [person] keypoints=9
+PASS pose
+prediction caption="A crowd of people standing together."
+PASS caption
 ```
 
 ## Scenarios
 
+All three run on the bundled `demo/media/people-1.jpg`, which shows nine people.
+
 | Scenario | Pop | Prints |
 |----------|-----|--------|
 | `objects` (default) | `eyepop.person:latest` | object count and labels |
-| `classes` | `eyepop.imagenet.classify:latest` | class labels |
-| `keypoints` | person, then `eyepop.person.2d-body-points:latest` on each crop | key point sets |
-| `segmentation` | person, then `eyepop.person.segment:latest` on each crop | contours |
-| `depth` | `eyepop.depth.small:latest` | depth map size |
-| `ocr` | `eyepop.text:latest`, then `eyepop.text.recognize.landscape:latest` on each crop | the text read |
-| `caption` | `eyepop.vlm.image:latest` | the caption |
+| `pose` | person, then `eyepop.person.pose:latest` on each person crop | the objects, and the number of key point sets |
+| `caption` | `eyepop.vlm.image:latest` with the prompt "Describe the scene in one sentence." | the caption |
 
-The sample image shows nine people (`objects` prints `objects=9 [person]`), so `ocr` and `classes` may find little on it: pass `--file` or `--url` with a picture that suits the scenario.
+The pops are copied from the pops the SDKs' integration suite runs against real environments.
+
+What has been run: the unit tests, the argument and failure paths, and every scenario against an unreachable local address (the pops parse and the sample is found from another working directory). No scenario has been run against a real EyePop environment, so the example output above is the expected shape, not a recording. In particular the `keypoints=9` count and the caption text are illustrative, and where `pose` and `caption` answer in a prediction is read from the integration suite's notes: pose key points on the person object (nested at any depth), the caption in `texts`, with `tokens.text` also read because the protocol's own example uses it.
 
 ## Options
 
@@ -83,11 +87,11 @@ CI runs the same task. Running a scenario needs a real environment and is not pa
 Copy the structure, not the code. A port keeps this behavior exactly, so the demos can be compared and scripted the same way.
 
 - **Layout.** `demo/<lang>/` holds one scenario per block, each with its pop written out in full and the same four steps: connect with the pop, set the source, read the job's messages, report each one. Repeat the steps in every block; do not abstract them. Media is shared: `demo/media/`.
-- **Scenarios, commands, options, environment.** As in the tables above, same names, same pops. A bare run is `objects` on the sample image. The environment comes from the SDK's own config loading.
+- **Scenarios, commands, options, environment.** As in the tables above, same names, same pops. A bare run is `objects` on the sample image, which the demo finds next to its own executable so the working directory does not matter. The environment comes from the SDK's own config loading.
 - **Output, to stdout, one line each:**
   - Per prediction, `prediction` followed by the fields that are present, in this order and form:
-    `objects=N [label, ...]`, `classes=N [label, ...]`, `texts=N ["text", ...]`, `keypoints=N`, `contours=N`, `depth=WxH`, `caption="..."`.
-    Labels are distinct, in first-seen order. Texts, key points and contours count those nested inside objects too. The caption is `tokens.text`. A prediction with none of them is `prediction empty`.
+    `objects=N [label, ...]`, `keypoints=N`, `caption="..."`.
+    Labels are distinct, in first-seen order. `keypoints` counts the key point sets on the objects, however deep they nest. The caption is the first `texts[].text`, else `tokens.text`. A prediction with none of them is `prediction empty`.
   - `--json` replaces that line with the prediction's JSON on one line.
   - `reconnecting (attempt N): <reason>` before each reconnect attempt and `reconnected` after it.
   - The last line of each scenario: `PASS <scenario>` or `FAIL <scenario>: <reason>`. `<scenario>` is `pop` for `--pop`.
