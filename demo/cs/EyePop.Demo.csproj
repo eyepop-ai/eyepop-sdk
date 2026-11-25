@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>EyePop.Demo</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../../cs/src/EyePop/EyePop.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The sample the bare run uses, found next to the executable so the working directory does not matter. -->
+    <Content Include="../media/people-1.jpg" Link="media/people-1.jpg" CopyToOutputDirectory="PreserveNewest" />
+    <InternalsVisibleTo Include="EyePop.Demo.Tests" />
+    <!-- The test project lives below this one; its sources are not part of the demo. -->
+    <Compile Remove="tests/**" />
+  </ItemGroup>
+
+</Project>

@@ -38,3 +38,16 @@ tasks:
     desc: Self-check the tag-to-version mapping
     cmds:
       - scripts/version.test.sh
+
+  demo:cs:
+    desc: "Run the C# demo against a real environment (needs EYEPOP_API_KEY); arguments go after --, e.g. task demo:cs -- ocr"
+    cmds:
+      - dotnet run --project demo/cs -- {{.CLI_ARGS}}
+
+  demo:cs:check:
+    desc: Format, build with warnings as errors and test the C# demo; calls no network
+    cmds:
+      - dotnet format demo/cs/EyePop.Demo.csproj --verify-no-changes
+      - dotnet format demo/cs/tests/EyePop.Demo.Tests.csproj --verify-no-changes
+      - dotnet build demo/cs/tests/EyePop.Demo.Tests.csproj -c Release -warnaserror
+      - dotnet test demo/cs/tests/EyePop.Demo.Tests.csproj -c Release --no-build
