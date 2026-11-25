@@ -289,7 +289,7 @@ public class MachineTests
     }
 
     [Fact]
-    public void Quit_sends_quit_ends_every_job_normally_and_ignores_later_input()
+    public void Quit_sends_quit_then_closes_the_socket_and_ends_every_job_normally()
     {
         var session = Session.Opened();
         var id = session.SetSource(Session.Url());
@@ -297,20 +297,173 @@ public class MachineTests
         session.Feed(new Input.Quit());
 
         Assert.Equal("quit", Type(Assert.Single(session.Sent())));
+        Assert.IsType<Output.GoIdle>(session.Out.Last());
         var closed = Assert.Single(session.Of<Output.CloseJob>());
         Assert.Equal(id, closed.JobId);
         Assert.Null(closed.Error);
-        session.Feed(new Input.SetSource(Session.Url()));
-        Assert.Empty(session.Out);
     }
 
     [Fact]
-    public void The_done_message_is_reported_to_the_shell()
+    public void Quit_while_connecting_or_backing_off_cancels_the_connect()
+    {
+        var session = Session.Opened();
+        session.SetSource(Session.Url());
+        session.Feed(new Failure.SocketClosed(1001, null));
+
+        session.Feed(new Input.Quit());
+
+        Assert.Single(session.Of<Output.GoIdle>());
+        Assert.Empty(session.Sent());
+    }
+
+    [Fact]
+    public void An_open_that_arrives_after_quit_closes_the_socket()
+    {
+        var session = Session.Opened();
+        session.Feed(new Failure.SocketClosed(1001, null));
+        session.Feed(new Input.Quit());
+
+        session.Feed(new Input.Opened());
+
+        Assert.Single(session.Of<Output.CloseSocket>());
+        Assert.Empty(session.Sent());
+    }
+
+    [Fact]
+    public void After_quit_a_command_fails_with_closed_instead_of_being_ignored()
+    {
+        var session = Session.Opened();
+        session.Feed(new Input.Quit());
+
+        var job = session.SetSource(Session.Url());
+        Assert.Equal(job, Assert.Single(session.Of<Output.CloseJob>()).JobId);
+        Assert.Equal(ErrorKind.Closed, session.Of<Output.CloseJob>().Single().Error!.Kind);
+
+        session.Feed(new Input.Ping());
+        var ping = session.Issued();
+        var failed = Assert.Single(session.Of<Output.CommandFailed>());
+        Assert.Equal(ping, failed.CommandId);
+        Assert.Equal(ErrorKind.Closed, failed.Error.Kind);
+    }
+
+    [Fact]
+    public void The_old_socket_is_closed_before_the_connect_that_replaces_it()
+    {
+        var session = Session.Opened();
+        session.SetSource(Session.Url());
+
+        session.Feed(Failure.Silent);
+
+        var close = session.Out.FindIndex(o => o is Output.CloseSocket);
+        var connect = session.Out.FindIndex(o => o is Output.Connect);
+        Assert.True(close >= 0 && close < connect);
+    }
+
+    [Fact]
+    public void The_done_message_changes_nothing()
     {
         var session = Session.Opened();
 
         session.Feed(new Done());
 
-        Assert.Single(session.Of<Output.ServerDone>());
+        Assert.Empty(session.Out);
+    }
+
+    [Fact]
+    public void A_source_being_cancelled_is_not_sent_again_after_a_reconnect_and_its_job_ends_stopped()
+    {
+        var session = Session.Opened();
+        var id = session.SetSource(Session.Url(live: true));
+        session.Feed(new Input.StopSource(id));
+        session.Feed(new Failure.SocketClosed(1001, null));
+
+        session.Feed(new Input.Opened());
+
+        Assert.DoesNotContain(session.Sent(), m => m["type"]!.GetValue<string>() == "setSource");
+        var end = Assert.IsType<End>(session.Of<Output.Deliver>().Single(d => d.Message is End).Message);
+        Assert.Equal(EndReason.Stopped, end.Reason);
+        Assert.Equal(id, Assert.Single(session.Of<Output.CloseJob>()).JobId);
+        Assert.Empty(session.State.Sources);
+    }
+
+    [Fact]
+    public void A_live_source_being_cancelled_is_not_sent_again_when_the_server_ends_it_with_eos()
+    {
+        var session = Session.Opened();
+        var id = session.SetSource(Session.Url(live: true));
+        session.Feed(new Input.StopSource(id));
+
+        session.Feed(new End(id, EndReason.Eos));
+
+        Assert.Empty(session.Of<Output.ScheduleResend>());
+        Assert.Single(session.Of<Output.CloseJob>());
+    }
+
+    [Fact]
+    public void A_source_being_cancelled_is_not_sent_again_when_the_server_answers_overloaded()
+    {
+        var session = Session.Opened();
+        var id = session.SetSource(Session.Url(live: true));
+        session.Feed(new Input.StopSource(id));
+
+        session.Feed(new ErrorMessage("overloaded", "busy", id));
+
+        Assert.Empty(session.Of<Output.ScheduleResend>());
+        Assert.Single(session.Of<Output.CloseJob>());
+    }
+
+    [Fact]
+    public void A_source_waiting_to_be_sent_again_gets_no_messages()
+    {
+        var session = Session.Opened();
+        var id = session.SetSource(Session.Url());
+        session.Feed(new ErrorMessage("overloaded", "busy", id));
+
+        session.Feed(new Dropped(id, 1));
+
+        Assert.Empty(session.Out);
+    }
+
+    [Fact]
+    public void The_result_of_the_setPop_a_reconnect_sent_completes_no_command_and_keeps_the_pop()
+    {
+        var session = Session.Opened();
+        var pop = session.State.Pop;
+        session.Feed(new Failure.SocketClosed(1001, null));
+        session.Feed(new Input.Opened());
+        var replay = session.Sent().Single()["id"]!.GetValue<string>();
+
+        session.Feed(new Result(replay));
+
+        Assert.Empty(session.Out);
+        Assert.Same(pop, session.State.Pop);
+        Assert.DoesNotContain(session.State.Pending, p => p.Id == replay);
+    }
+
+    [Fact]
+    public void A_second_reconnect_sends_one_setPop_not_the_stale_one_from_the_first()
+    {
+        var session = Session.Opened();
+        session.Feed(new Failure.SocketClosed(1001, null));
+        session.Feed(new Input.Opened());
+        session.Feed(new Failure.SocketClosed(1001, null));
+
+        session.Feed(new Input.Opened());
+
+        Assert.Single(session.Sent());
+    }
+
+    [Fact]
+    public void Cancelling_while_reconnecting_sends_nothing_and_ends_the_job_stopped()
+    {
+        var session = Session.Opened();
+        var id = session.SetSource(Session.Url());
+        session.Feed(new Failure.SocketClosed(1001, null));
+
+        session.Feed(new Input.StopSource(id));
+
+        Assert.Empty(session.Of<Output.Send>());
+        Assert.Equal(EndReason.Stopped, ((End)session.Of<Output.Deliver>().Single().Message).Reason);
+        Assert.Single(session.Of<Output.CloseJob>());
     }
 }

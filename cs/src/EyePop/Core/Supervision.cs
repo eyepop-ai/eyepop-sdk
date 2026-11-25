@@ -57,7 +57,7 @@ internal static class Supervision
         Failure.Upgrade { Status: var status } =>
             new Verdict.Terminal(new(ErrorKind.UpgradeRefused, "the socket upgrade was refused", status: status)),
 
-        Failure.SocketClosed { Code: 1011 } closed when popPending => new Verdict.PopStopped(Closed(closed)),
+        Failure.SocketClosed { Code: 1011, Reason: "pipeline_stopped" } closed when popPending => new Verdict.PopStopped(Closed(closed)),
         Failure.SocketClosed { Code: 1008, Reason: "credential_expired" } closed =>
             new Verdict.Retry(Closed(closed), Immediate: true, ForceExchange: true),
         // The SDK broke the upload protocol, so sending the upload again would break it again.

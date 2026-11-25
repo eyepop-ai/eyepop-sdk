@@ -104,7 +104,7 @@ public class SupervisionTests
         session.Feed(new Failure.SocketClosed(1001, null));
         session.Feed(new Failure.Upgrade(401));
 
-        AssertRetries(session, TimeSpan.Zero, forceExchange: true);
+        AssertRetries(session, forceExchange: true);
     }
 
     [Fact]
@@ -372,5 +372,145 @@ public class SupervisionTests
         session.Feed(new Failure.Exchange(401));
 
         Assert.Equal(ping, Assert.Single(session.Of<Output.CommandFailed>()).CommandId);
+    }
+
+    [Fact]
+    public void Close_1011_with_a_setPop_pending_for_any_reason_but_pipeline_stopped_reconnects_and_sends_the_setPop_again()
+    {
+        var session = WithLiveJob(out _);
+        session.Feed(new Input.SetPop(new Pop(new PopComponent[] { new RawComponent("source") })));
+        var pending = session.Issued();
+
+        session.Feed(new Failure.SocketClosed(1011, "internal"));
+
+        Assert.Empty(session.Of<Output.CommandFailed>());
+        AssertRetries(session);
+        session.Feed(new Input.Opened());
+        Assert.Contains(session.Sent(), m => m["id"]!.GetValue<string>() == pending);
+    }
+
+    [Fact]
+    public void The_credential_expired_reconnect_at_once_is_for_the_first_failure_of_a_series_only()
+    {
+        var session = WithLiveJob(out _);
+
+        session.Feed(new Failure.SocketClosed(1008, "credential_expired"), random: 1.0);
+        Assert.Equal(TimeSpan.Zero, session.Of<Output.Connect>().Single().Delay);
+
+        session.Feed(new Input.Opened());
+        session.Feed(new Failure.SocketClosed(1008, "credential_expired"), advanceSeconds: 2, random: 1.0);
+        var second = session.Of<Output.Connect>().Single();
+        Assert.Equal(TimeSpan.FromSeconds(2), second.Delay);
+        Assert.True(second.ForceExchange);
+    }
+
+    [Fact]
+    public void The_credential_expired_reconnect_at_once_comes_back_after_30_healthy_seconds()
+    {
+        var session = WithLiveJob(out _);
+        session.Feed(new Failure.SocketClosed(1008, "credential_expired"));
+        session.Feed(new Input.Opened());
+
+        session.Feed(new Failure.SocketClosed(1008, "credential_expired"), advanceSeconds: 31, random: 1.0);
+
+        Assert.Equal(TimeSpan.Zero, session.Of<Output.Connect>().Single().Delay);
+    }
+
+    [Theory]
+    [InlineData(400)]
+    [InlineData(404)]
+    public void An_exchange_status_other_than_401_403_429_and_5xx_is_terminal(int status)
+    {
+        var session = WithLiveJob(out var id);
+
+        session.Feed(new Failure.Exchange(status));
+
+        AssertTerminal(session, id, ErrorKind.ExchangeFailed);
+    }
+
+    [Theory]
+    [InlineData(400)]
+    [InlineData(404)]
+    public void An_upgrade_status_other_than_401_403_429_and_5xx_is_terminal(int status)
+    {
+        var session = WithLiveJob(out var id);
+
+        session.Feed(new Failure.Upgrade(status));
+
+        AssertTerminal(session, id, ErrorKind.UpgradeRefused);
+    }
+
+    [Fact]
+    public void An_upgrade_that_answers_429_is_retried_with_backoff()
+    {
+        var session = WithLiveJob(out _);
+
+        session.Feed(new Failure.Upgrade(429), random: 1.0);
+
+        AssertRetries(session, TimeSpan.FromSeconds(1));
+    }
+
+    [Fact]
+    public void A_retry_after_longer_than_the_backoff_cap_is_capped_at_it()
+    {
+        var session = WithLiveJob(out _);
+
+        session.Feed(new Failure.Upgrade(503, TimeSpan.FromHours(6)), random: 0.0);
+
+        AssertRetries(session, TimeSpan.FromSeconds(60));
+    }
+
+    [Fact]
+    public void A_finite_source_the_server_keeps_refusing_as_overloaded_ends_after_the_give_up_window()
+    {
+        var session = Session.Opened();
+        var id = session.SetSource(Session.Url());
+        var live = session.SetSource(Session.Url(live: true));
+
+        for (var i = 0; i < 60 && !session.Of<Output.CloseJob>().Any(); i++)
+        {
+            session.Feed(new ErrorMessage("overloaded", "busy", id), advanceSeconds: 1, random: 1.0);
+            if (session.Of<Output.ScheduleResend>().SingleOrDefault() is { } resend)
+            {
+                session.Feed(new Input.ResendDue(id), advanceSeconds: resend.Delay.TotalSeconds);
+            }
+        }
+
+        var closed = Assert.Single(session.Of<Output.CloseJob>());
+        Assert.Equal(id, closed.JobId);
+        Assert.Equal(ErrorKind.CommandRejected, closed.Error!.Kind);
+        Assert.Equal("overloaded", closed.Error.Error);
+        Assert.Equal(live, Assert.Single(session.State.Sources).Id);
+    }
+
+    [Fact]
+    public void A_socket_that_opens_and_fails_again_and_again_still_reaches_the_give_up_limit()
+    {
+        var session = Session.Opened();
+        var id = session.SetSource(Session.Url());
+
+        for (var i = 0; i < 60 && !session.Of<Output.CloseJob>().Any(); i++)
+        {
+            session.Feed(new Failure.SocketClosed(1001, null), advanceSeconds: 5, random: 1.0);
+            if (!session.Of<Output.CloseJob>().Any())
+            {
+                session.Feed(new Input.Opened(), advanceSeconds: 54);
+            }
+        }
+
+        Assert.Equal(id, Assert.Single(session.Of<Output.CloseJob>()).JobId);
+    }
+
+    [Fact]
+    public void A_socket_healthy_for_30_seconds_starts_the_give_up_clock_again()
+    {
+        var session = Session.Opened();
+        session.SetSource(Session.Url());
+        session.Feed(new Failure.SocketClosed(1001, null));
+        session.Feed(new Input.Opened());
+
+        session.Feed(new Failure.SocketClosed(1001, null), advanceSeconds: 16 * 60);
+
+        Assert.Empty(session.Of<Output.CloseJob>());
     }
 }

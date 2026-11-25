@@ -6,7 +6,8 @@ namespace EyePop.Core;
 
 internal enum Phase { Idle, Connecting, Open, Closed }
 
-internal sealed record OpenSource(string Id, Source Source, bool AwaitingResend = false);
+/// <summary>Stopping: the caller cancelled it. It is never sent again, so its Job ends when the server answers or at the next reconnect.</summary>
+internal sealed record OpenSource(string Id, Source Source, bool AwaitingResend = false, bool Stopping = false);
 
 /// <summary>A command whose answer has not come. A reconnect sends it again.</summary>
 internal sealed record PendingCommand(string Id, Command Command, bool SentByReconnect);
@@ -15,7 +16,7 @@ internal sealed record PendingCommand(string Id, Command Command, bool SentByRec
 /// One upload being sent in chunks, or, with a Header, one combined upload waiting for its bytes. The content
 /// stays in the Source: the core never reads a stream.
 /// </summary>
-internal sealed record UploadTask(string Id, int? Member, UploadContent Content, long Credit = 0, bool Requested = false, SetSource? Header = null);
+internal sealed record UploadTask(string Id, int? Member, UploadContent Content, long Credit = 0, bool Requested = false, SetSource? Header = null, long Sent = 0);
 
 internal sealed record State
 {
@@ -40,7 +41,10 @@ internal sealed record State
 
     public int Attempt { get; init; }
 
-    /// <summary>When reconnecting began, for the give-up limit.</summary>
+    /// <summary>
+    /// When the current series of failures began, for the give-up limit. A socket that opens does not end the
+    /// series: only 30 healthy seconds do.
+    /// </summary>
     public DateTimeOffset? ReconnectingSince { get; init; }
 
     public DateTimeOffset? HealthySince { get; init; }
@@ -100,12 +104,13 @@ internal abstract record Output
     /// <summary>Close the socket if one is open and stay without one until the next command.</summary>
     public sealed record GoIdle : Output;
 
+    /// <summary>Close the socket if one is open. The Pipeline keeps going: a Connect follows or the input says why not.</summary>
+    public sealed record CloseSocket : Output;
+
     public sealed record ScheduleResend(string Id, TimeSpan Delay) : Output;
 
     /// <summary>An error from the server that belongs to no command.</summary>
     public sealed record Status(EyePopException Error) : Output;
-
-    public sealed record ServerDone : Output;
 }
 
 /// <summary>What the pure core is given besides the input: time and a random value in [0, 1).</summary>

@@ -27,8 +27,10 @@ public class PurityTests
         var type = callee.DeclaringType!;
         var ns = type.Namespace ?? "";
         return ns.StartsWith("System.Net") || ns.StartsWith("System.IO") || ns.StartsWith("System.Threading")
+            || ns.StartsWith("System.Diagnostics") || ns.StartsWith("System.Security.Cryptography")
+            || type == typeof(TimeProvider) || type == typeof(Environment.SpecialFolder)
             || type == typeof(Environment) || type == typeof(Random) || type == typeof(Console)
-            || (type == typeof(DateTime) || type == typeof(DateTimeOffset)) && callee.Name is "get_Now" or "get_UtcNow"
+            || (type == typeof(DateTime) || type == typeof(DateTimeOffset)) && callee.Name is "get_Now" or "get_UtcNow" or "get_Today"
             || type == typeof(Guid) && callee.Name == "NewGuid";
     }
 

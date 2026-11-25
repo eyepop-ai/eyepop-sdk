@@ -143,4 +143,41 @@ public class ConfigTests
     [MemberData(nameof(Refused))]
     public void A_refused_environment_is_invalid_config(Dictionary<string, string> env) =>
         Assert.Equal(ErrorKind.InvalidConfig, KindOf(() => FromEnv(env)));
+
+    [Fact]
+    public void A_url_with_user_info_is_refused() =>
+        Assert.Equal(ErrorKind.InvalidConfig, KindOf(() => Config.Create(new Uri("https://user:pass@pipeline.example.com"), EyePop.Auth.Anonymous)));
+
+    [Fact]
+    public void A_missing_url_or_auth_is_invalid_config_not_a_null_reference()
+    {
+        Assert.Equal(ErrorKind.InvalidConfig, KindOf(() => Config.Create(null!, EyePop.Auth.Anonymous)));
+        Assert.Equal(ErrorKind.InvalidConfig, KindOf(() => Config.Create(Pipeline, null!)));
+        Assert.Equal(ErrorKind.InvalidConfig, KindOf(() => new EyePop.Auth.Exchange(null!, "k")));
+    }
+
+    [Fact]
+    public void An_unknown_environment_name_is_not_echoed_into_the_error()
+    {
+        var error = Assert.Throws<EyePopException>(() => FromEnv(Env(("EYEPOP_ENV", "s3cr3t-looking-value"), ("EYEPOP_API_KEY", "k"))));
+
+        Assert.DoesNotContain("s3cr3t", error.Message);
+    }
+
+    [Fact]
+    public void A_url_without_a_key_says_to_set_the_environment_or_the_key()
+    {
+        var error = Assert.Throws<EyePopException>(() => FromEnv(Env(("EYEPOP_URL", "http://localhost:9002"))));
+
+        Assert.Contains("EYEPOP_ENV=local", error.Message);
+        Assert.Contains("EYEPOP_API_KEY", error.Message);
+    }
+
+    [Fact]
+    public void An_empty_explicit_argument_counts_as_unset()
+    {
+        var config = FromEnv(Env(("EYEPOP_API_KEY", "k")), new ConfigArgs(PipelineUrl: "", AuthUrl: " ", ApiKey: "", AccountUuid: ""));
+
+        Assert.Equal(new Uri("https://pipeline.eyepop.ai"), config.PipelineUrl);
+    }
 }

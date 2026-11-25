@@ -48,13 +48,15 @@ No IO, no clock, no environment.
   - The state chooses every id (commands and Jobs share one counter) and reports it in the outputs, so an id cannot repeat.
   - A command given while no socket is open is kept and sent when one opens: a reconnect sends `setPop`, then the commands that never got an answer, then the sources.
   - An upload is read by the shell, never by the core. A known length of 8 MiB or less is read whole and sent combined; anything else is read in chunks of at most 64 KiB under the credit the server grants. The `setSource` header of a chunked upload is sent when the source is opened, so sources keep the order they were called in; chunks go one upload at a time (and for a group one member at a time, in member order), because a chunk frame names no upload.
-  - The failure table below is a pure function of the failure and the state. A close or status the table does not list is retried with backoff, except that an upgrade answering a `4xx` other than `401` or `403` is terminal `upgrade_refused`, and `1000 idle` leaves the Pipeline idle only when nothing is open or pending.
+  - The failure table below is a pure function of the failure and the state. For the exchange and the upgrade, a status other than `429` and `5xx` (and the `401` and `403` rows) is terminal. Any other close, and a drop with no close frame, is retried with backoff. `1000 idle` leaves the Pipeline idle only when nothing is open or pending.
+  - Every reconnect closes the old socket first (an output of its own), and `close()` closes it, cancels a connect that is waiting and makes every later command fail with `closed`. A socket that opens after `close()` is closed again.
+  - A source the caller cancelled is never sent again: after a reconnect, or when the server ends or refuses it, its Job ends with `end` reason `stopped`.
 - `backoff(attempt, random) → delay`, the jittered delay before a reconnect (see "Supervision").
-- `configFromEnvironment(map) → Config | invalid_config`. Precedence: explicit argument, then `EYEPOP_URL` and `EYEPOP_AUTH_URL`, then the `EYEPOP_ENV` row, then `production`. `EYEPOP_API_KEY` is the only credential variable; `EYEPOP_ACCOUNT_UUID` supplies `accountUuid`. A variable that is empty counts as unset. An environment with an auth URL and no API key is `invalid_config`: `Anonymous` is only for a row with no auth URL, such as `local`.
+- `configFromEnvironment(map) → Config | invalid_config`. Precedence: explicit argument, then `EYEPOP_URL` and `EYEPOP_AUTH_URL`, then the `EYEPOP_ENV` row, then `production`. `EYEPOP_API_KEY` is the only credential variable; `EYEPOP_ACCOUNT_UUID` supplies `accountUuid`. A variable or explicit argument that is empty or only whitespace counts as unset. A URL holding user info is refused, and an unknown `EYEPOP_ENV` is refused without echoing its value. An environment with an auth URL and no API key is `invalid_config`: `Anonymous` is only for a row with no auth URL, such as `local`.
 
 ## Shell
 
-**`connect(config, pop) → Pipeline`**: exchanges the API key for a token when `auth` is `Exchange`, opens the socket with subprotocol `eyepop.v1` and `Authorization: Bearer <token>`, and sets the pop. It retries as described in "Supervision", and fails if the pop fails. The token is a value, `{jwt, expiresAt}`, never cached or shared between Pipelines.
+**`connect(config, pop) → Pipeline`**: exchanges the API key for a token when `auth` is `Exchange`, opens the socket with subprotocol `eyepop.v1` and `Authorization: Bearer <token>`, and sets the pop. It retries as described in "Supervision", and fails if the pop fails; the shell then calls `close()`, so the failed attempt leaves no socket or timer behind. The token is a value, `{jwt, expiresAt}`, never cached or shared between Pipelines.
 
 **Pipeline**: one pop and its sources, over one socket at a time.
 - `id`: made by the SDK when the Pipeline opens. It stays the same across reconnects.
@@ -102,11 +104,12 @@ A reconnect:
 1. closes the old socket fully; no message from it is delivered after this;
 2. exchanges the key again if the token has less than 60 s left;
 3. opens a new socket and sends `setPop` with the current pop;
-4. sends `setSource` again for every source whose `end` has not arrived, in the original order and with the original ids.
+4. sends again every command that never got an answer (a `setPop`, `getGraph` or `ping` in flight);
+5. sends `setSource` again for every source whose `end` has not arrived, in the original order and with the original ids.
 
 Every Job in flight receives `reconnecting` before the attempt and `reconnected` after it. A resent `Url` or `Asset` source starts again at its first frame, and its Job delivers those frames' predictions again. The SDK does not filter them.
 
-Backoff is exponential with full jitter. It starts at 1 s, is capped at 60 s, and resets after 30 s without a failure. A `Retry-After` is a floor. All three values are settings with these defaults.
+Backoff is exponential with full jitter. It starts at 1 s, is capped at 60 s, and resets after 30 s without a failure. A `Retry-After` is a floor, capped at the backoff cap so a hostile or mistaken header cannot stall a Pipeline. The series of failures that backoff and the give-up limit count ends only after the socket has stayed healthy for 30 s: a socket that opens and fails again within that time continues it. A reconnect at once (`credential_expired`, the first `401` on an upgrade) is for the first failure of a series; later ones back off. All three values are settings with these defaults.
 
 | Failure | What the Pipeline does |
 |---|---|
@@ -125,6 +128,7 @@ Backoff is exponential with full jitter. It starts at 1 s, is capped at 60 s, an
 | Any other `error` for a command, such as `queue_full` or `live_source_open` | Terminal `command_rejected` for that command; the socket stays open |
 | `end` with reason `eos` or `error` on a live source | Sends that source again with backoff |
 | `end` on a finite source | The Job ends |
+| `error` `overloaded` for a finite source, still refused after the give-up window | The Job ends with `command_rejected` and error `overloaded` |
 
 ## Naming
 

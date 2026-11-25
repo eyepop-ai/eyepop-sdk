@@ -19,7 +19,7 @@ internal static class Machine
         var outputs = new List<Output>();
         if (state.Phase == Phase.Closed)
         {
-            return (state, outputs);
+            return (RefuseAfterClose(state, input, outputs), outputs);
         }
         var next = input switch
         {
@@ -32,7 +32,9 @@ internal static class Machine
             Input.Received i when state.Phase == Phase.Open => Receive(state, i.Message, moment, outputs),
             Input.Failed i when state.Phase is Phase.Open or Phase.Connecting => Fail(state, i.Failure, moment, outputs),
             Input.Opened when state.Phase == Phase.Connecting => Open(state, moment, outputs),
-            Input.ResendDue i when state.Phase == Phase.Open => Resend(state, i.Id, outputs),
+            // The socket opened after the Pipeline stopped waiting for it.
+            Input.Opened => Discard(state, outputs),
+            Input.ResendDue i when state.Phase == Phase.Open => Resend(state, i.Id, moment, outputs),
             Input.UploadRead i when state.Phase == Phase.Open && i.Epoch == state.Epoch => ReadUploaded(state, i, outputs),
             // A message from a socket that is already closed, or a stale answer: nothing to decide.
             _ => state,
@@ -41,6 +43,35 @@ internal static class Machine
     }
 
     // Commands from the caller
+
+    private static State Discard(State state, List<Output> outputs)
+    {
+        outputs.Add(new Output.CloseSocket());
+        return state;
+    }
+
+    // close() is final: later commands fail with closed instead of vanishing.
+    private static State RefuseAfterClose(State state, Input input, List<Output> outputs)
+    {
+        var closed = new EyePopException(ErrorKind.Closed, "the pipeline was closed");
+        switch (input)
+        {
+            case Input.SetPop or Input.GetGraph or Input.Ping:
+                var (command, s) = NewId(state);
+                outputs.Add(new Output.Issued(command));
+                outputs.Add(new Output.CommandFailed(command, closed));
+                return s;
+            case Input.SetSource:
+                var (job, t) = NewId(state);
+                outputs.Add(new Output.Issued(job));
+                outputs.Add(new Output.CloseJob(job, closed));
+                return t;
+            case Input.Opened:
+                return Discard(state, outputs);
+            default:
+                return state;
+        }
+    }
 
     private static State Issue(State state, Func<string, Command> build, Moment moment, List<Output> outputs)
     {
@@ -81,20 +112,25 @@ internal static class Machine
 
     private static State Stop(State state, string id, List<Output> outputs)
     {
-        if (state.Sources.FirstOrDefault(x => x.Id == id) is not { } source)
+        if (state.Sources.FirstOrDefault(x => x.Id == id) is not { Stopping: false } source)
         {
             return state;
         }
-        var s = state with { Uploads = state.Uploads.RemoveAll(t => t.Id == id) };
-        if (s.Phase == Phase.Open && !source.AwaitingResend)
+        if (state.Phase == Phase.Open && !source.AwaitingResend)
         {
             outputs.Add(new Output.Send(FrameCodec.Encode(new StopSource(id))));
-            return s;
+            var stopping = state with { Sources = state.Sources.Replace(source, source with { Stopping = true }) };
+            return RemoveUploads(stopping, id, outputs);
         }
         // The server has no such source right now, so it will never answer with an end.
-        outputs.Add(new Output.Deliver(id, new End(id, EndReason.Stopped)));
-        outputs.Add(new Output.CloseJob(id, null));
-        return s with { Sources = s.Sources.Remove(source) };
+        return EndStopped(state, source, outputs);
+    }
+
+    private static State EndStopped(State state, OpenSource source, List<Output> outputs)
+    {
+        outputs.Add(new Output.Deliver(source.Id, new End(source.Id, EndReason.Stopped)));
+        outputs.Add(new Output.CloseJob(source.Id, null));
+        return Without(state, source, outputs);
     }
 
     private static State Close(State state, List<Output> outputs)
@@ -107,7 +143,9 @@ internal static class Machine
         }
         var closed = new EyePopException(ErrorKind.Closed, "the pipeline was closed");
         foreach (var source in state.Sources) outputs.Add(new Output.CloseJob(source.Id, null));
-        foreach (var pending in state.Pending) outputs.Add(new Output.CommandFailed(pending.Id, closed));
+        foreach (var pending in state.Pending.Where(p => !p.SentByReconnect)) outputs.Add(new Output.CommandFailed(pending.Id, closed));
+        // Also cancels a connect that is waiting out its delay.
+        outputs.Add(new Output.GoIdle());
         return state with { Phase = Phase.Closed, Sources = ImmutableList<OpenSource>.Empty, Pending = ImmutableList<PendingCommand>.Empty, Uploads = ImmutableList<UploadTask>.Empty };
     }
 
@@ -202,7 +240,8 @@ internal static class Machine
         {
             return state;
         }
-        outputs.Add(new Output.ReadUpload(state.Epoch, current.Id, current.Member, current.Content, Math.Min(current.Credit, ChunkSize), false));
+        var left = current.Content.Length is { } length ? length - current.Sent : long.MaxValue;
+        outputs.Add(new Output.ReadUpload(state.Epoch, current.Id, current.Member, current.Content, Math.Min(Math.Min(current.Credit, ChunkSize), left), false));
         return state with { Uploads = state.Uploads.Replace(current, current with { Requested = true }) };
     }
 
@@ -222,8 +261,9 @@ internal static class Machine
         {
             outputs.Add(new Output.Send(FrameCodec.Chunk(read.Data)));
         }
-        var spent = task with { Credit = task.Credit - read.Data.Length, Requested = false };
-        if (read.Last)
+        var spent = task with { Credit = task.Credit - read.Data.Length, Requested = false, Sent = task.Sent + read.Data.Length };
+        // With a known length the upload is over when its bytes are sent: waiting for an empty read would stall on spent credit.
+        if (read.Last || spent.Content.Length <= spent.Sent)
         {
             outputs.Add(new Output.Send(FrameCodec.Encode(new Uploaded(read.Id, read.Member))));
             return Pump(state with { Uploads = state.Uploads.Remove(task) }, outputs);
@@ -255,9 +295,6 @@ internal static class Machine
                 return state;
             case ErrorMessage error:
                 return Refused(state, error, moment, outputs);
-            case Done:
-                outputs.Add(new Output.ServerDone());
-                return state;
             default:
                 return state;
         }
@@ -301,13 +338,13 @@ internal static class Machine
             return state;
         }
         // A live source that ends this way is a stream that stopped, not a result: it starts again.
-        if (source.Source.Options.Live && end.Reason is EndReason.Eos or EndReason.Error)
+        if (source.Source.Options.Live && !source.Stopping && end.Reason is EndReason.Eos or EndReason.Error)
         {
             return ScheduleResend(state, source, moment, outputs);
         }
         outputs.Add(new Output.Deliver(end.Id, end));
         outputs.Add(new Output.CloseJob(end.Id, null));
-        return Without(state, source);
+        return Without(state, source, outputs);
     }
 
     private static State Refused(State state, ErrorMessage error, Moment moment, List<Output> outputs)
@@ -327,31 +364,53 @@ internal static class Machine
         {
             if (error.Error == "overloaded")
             {
+                if (source.Stopping)
+                {
+                    return EndStopped(state, source, outputs);
+                }
+                // The server keeps refusing a finite source: after the give-up window the caller learns why.
+                if (!source.Source.Options.Live && moment.Now - SeriesStart(state, moment) >= state.Settings.GiveUpDuration)
+                {
+                    outputs.Add(new Output.CloseJob(source.Id, rejected));
+                    return Without(state, source, outputs);
+                }
                 return ScheduleResend(state, source, moment, outputs);
             }
             outputs.Add(new Output.CloseJob(source.Id, rejected));
-            return Without(state, source);
+            return Without(state, source, outputs);
         }
         outputs.Add(new Output.Status(rejected));
         return state;
     }
 
-    private static State Without(State state, OpenSource source) =>
-        state with { Sources = state.Sources.Remove(source), Uploads = state.Uploads.RemoveAll(t => t.Id == source.Id) };
+    // The next upload may be waiting on this one, so every removal looks again.
+    private static State RemoveUploads(State state, string id, List<Output> outputs) =>
+        Pump(state with { Uploads = state.Uploads.RemoveAll(t => t.Id == id) }, outputs);
+
+    private static State Without(State state, OpenSource source, List<Output> outputs) =>
+        RemoveUploads(state with { Sources = state.Sources.Remove(source) }, source.Id, outputs);
 
     private static State ScheduleResend(State state, OpenSource source, Moment moment, List<Output> outputs)
     {
+        var series = SeriesStart(state, moment);
         var (s, delay) = NextBackoff(state, moment);
         outputs.Add(new Output.ScheduleResend(source.Id, delay));
-        return s with
-        {
-            Sources = s.Sources.Replace(source, source with { AwaitingResend = true }),
-            Uploads = s.Uploads.RemoveAll(t => t.Id == source.Id),
-        };
+        return RemoveUploads(
+            s with { ReconnectingSince = series, Sources = s.Sources.Replace(source, source with { AwaitingResend = true }) },
+            source.Id,
+            outputs);
     }
 
-    private static State Resend(State state, string id, List<Output> outputs) =>
-        state.Sources.FirstOrDefault(s => s.Id == id && s.AwaitingResend) is { } source ? Start(state, source, outputs) : state;
+    private static State Resend(State state, string id, Moment moment, List<Output> outputs)
+    {
+        if (state.Sources.FirstOrDefault(s => s.Id == id && s.AwaitingResend) is not { } source)
+        {
+            return state;
+        }
+        return source.Stopping
+            ? EndStopped(state, source, outputs)
+            : Start(state with { HealthySince = moment.Now }, source, outputs);
+    }
 
     // A socket that stayed open past the healthy limit starts the backoff series again.
     private static int CurrentAttempt(State state, Moment moment) =>
@@ -359,11 +418,15 @@ internal static class Machine
             ? 0
             : state.Attempt;
 
+    private static DateTimeOffset SeriesStart(State state, Moment moment) =>
+        CurrentAttempt(state, moment) == 0 ? moment.Now : state.ReconnectingSince ?? moment.Now;
+
+    // The healthy time starts when the resend goes out, not while it waits out its delay.
     private static (State State, TimeSpan Delay) NextBackoff(State state, Moment moment)
     {
         var attempt = CurrentAttempt(state, moment);
         var delay = Core.Backoff.Delay(attempt, moment.Random, state.Settings);
-        return (state with { Attempt = attempt + 1, HealthySince = moment.Now }, delay);
+        return (state with { Attempt = attempt + 1, HealthySince = null }, delay);
     }
 
     // Supervision
@@ -420,21 +483,23 @@ internal static class Machine
 
     private static State Reconnect(State state, Verdict.Retry retry, Moment moment, List<Output> outputs)
     {
-        var since = state.Phase == Phase.Open ? moment.Now : state.ReconnectingSince ?? moment.Now;
+        var since = state.Phase == Phase.Open ? SeriesStart(state, moment) : state.ReconnectingSince ?? moment.Now;
         var attempt = CurrentAttempt(state, moment);
-        var delay = retry.Immediate
+        // Reconnecting at once is for the first failure of a series; an endless run of them would hammer the server.
+        var delay = retry.Immediate && attempt == 0
             ? TimeSpan.Zero
-            : Max(retry.Floor ?? TimeSpan.Zero, Core.Backoff.Delay(attempt, moment.Random, state.Settings));
-        var s = state with { Attempt = retry.Immediate ? attempt : attempt + 1 };
-        s = s with
+            : Max(Min(retry.Floor ?? TimeSpan.Zero, state.Settings.CapDelay), Core.Backoff.Delay(attempt, moment.Random, state.Settings));
+        var s = state with
         {
             Phase = Phase.Connecting,
+            Attempt = attempt + 1,
             ReconnectingSince = since,
             AfterFailure = true,
-            UpgradeRetried = s.UpgradeRetried || retry.UpgradeRetry,
+            UpgradeRetried = state.UpgradeRetried || retry.UpgradeRetry,
             Uploads = ImmutableList<UploadTask>.Empty,
         };
 
+        outputs.Add(new Output.CloseSocket());
         if (moment.Now - since >= s.Settings.GiveUpDuration)
         {
             foreach (var finite in s.Sources.Where(x => !x.Source.Options.Live))
@@ -456,8 +521,9 @@ internal static class Machine
         return s;
     }
 
-    // The socket is open: set the pop again, then the commands that never got an answer, then the sources.
     private static TimeSpan Max(TimeSpan a, TimeSpan b) => a > b ? a : b;
+
+    private static TimeSpan Min(TimeSpan a, TimeSpan b) => a < b ? a : b;
 
     private static State Open(State state, Moment moment, List<Output> outputs)
     {
@@ -466,7 +532,6 @@ internal static class Machine
             Phase = Phase.Open,
             Epoch = state.Epoch + 1,
             HealthySince = moment.Now,
-            ReconnectingSince = null,
             UpgradeRetried = false,
             Uploads = ImmutableList<UploadTask>.Empty,
             Pending = state.Pending.RemoveAll(p => p.SentByReconnect),
@@ -483,7 +548,7 @@ internal static class Machine
         }
         foreach (var source in s.Sources)
         {
-            s = Start(s, source, outputs);
+            s = source.Stopping ? EndStopped(s, source, outputs) : Start(s, source, outputs);
         }
         if (s.AfterFailure)
         {

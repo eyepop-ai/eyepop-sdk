@@ -14,7 +14,7 @@ public sealed record EyePopEnvironment(string Name, Uri PipelineUrl, Uri? AuthUr
         "production" => Production,
         "staging" => Staging,
         "local" => Local,
-        _ => throw Refusal($"unknown environment {name}"),
+        _ => throw Refusal("unknown environment: use production, staging or local"),
     };
 
     private static EyePopException Refusal(string message) => new(ErrorKind.InvalidConfig, message);
@@ -67,7 +67,7 @@ public sealed record Config
     }
 
     public static Config Create(Uri pipelineUrl, Auth auth, Guid? accountUuid = null) =>
-        new(Urls.Checked(pipelineUrl), auth, accountUuid);
+        new(Urls.Checked(pipelineUrl), auth ?? throw new EyePopException(ErrorKind.InvalidConfig, "a config needs an auth"), accountUuid);
 
     /// <summary>
     /// Reads only the map it is given, never the process environment. Precedence: explicit argument, then
@@ -76,23 +76,25 @@ public sealed record Config
     public static Config FromEnvironment(IReadOnlyDictionary<string, string> environment, ConfigArgs? args = null)
     {
         args ??= new ConfigArgs();
-        string? Get(string name) => environment.TryGetValue(name, out var value) && !string.IsNullOrWhiteSpace(value) ? value : null;
+        string? Get(string name) => environment.TryGetValue(name, out var value) ? Set(value) : null;
 
         var row = Get("EYEPOP_ENV") is { } name ? EyePopEnvironment.Named(name) : EyePopEnvironment.Production;
-        var pipelineUrl = ParseUrl(args.PipelineUrl ?? Get("EYEPOP_URL")) ?? row.PipelineUrl;
-        var authUrl = ParseUrl(args.AuthUrl ?? Get("EYEPOP_AUTH_URL")) ?? row.AuthUrl;
-        var apiKey = args.ApiKey ?? Get("EYEPOP_API_KEY");
+        var pipelineUrl = ParseUrl(Set(args.PipelineUrl) ?? Get("EYEPOP_URL")) ?? row.PipelineUrl;
+        var authUrl = ParseUrl(Set(args.AuthUrl) ?? Get("EYEPOP_AUTH_URL")) ?? row.AuthUrl;
+        var apiKey = Set(args.ApiKey) ?? Get("EYEPOP_API_KEY");
 
         Auth auth = (authUrl, apiKey) switch
         {
             (null, null) => Auth.Anonymous,
             (null, _) => throw new EyePopException(ErrorKind.InvalidConfig, "an API key needs an auth URL"),
-            (_, null) => throw new EyePopException(ErrorKind.InvalidConfig, "an auth URL needs an API key"),
+            (_, null) => throw new EyePopException(ErrorKind.InvalidConfig, "an auth URL needs an API key: set EYEPOP_API_KEY, or EYEPOP_ENV=local for a pipeline without auth"),
             var (url, key) => new Auth.Exchange(url, key),
         };
 
-        return Create(pipelineUrl, auth, ParseGuid(args.AccountUuid ?? Get("EYEPOP_ACCOUNT_UUID")));
+        return Create(pipelineUrl, auth, ParseGuid(Set(args.AccountUuid) ?? Get("EYEPOP_ACCOUNT_UUID")));
     }
+
+    private static string? Set(string? value) => string.IsNullOrWhiteSpace(value) ? null : value;
 
     private static Uri? ParseUrl(string? text) =>
         text is null ? null
@@ -111,8 +113,9 @@ public sealed record ConfigArgs(string? PipelineUrl = null, string? AuthUrl = nu
 internal static class Urls
 {
     // Plain http would send the API key or the token in the clear, so only a loopback host may use it.
+    // A password in a URL would be printed wherever the URL is.
     public static Uri Checked(Uri url) =>
-        url.IsAbsoluteUri && (url.Scheme == Uri.UriSchemeHttps || (url.Scheme == Uri.UriSchemeHttp && url.IsLoopback))
+        url is { IsAbsoluteUri: true, UserInfo: "" } && (url.Scheme == Uri.UriSchemeHttps || (url.Scheme == Uri.UriSchemeHttp && url.IsLoopback))
             ? url
-            : throw new EyePopException(ErrorKind.InvalidConfig, "a URL must be https, or http to a loopback host");
+            : throw new EyePopException(ErrorKind.InvalidConfig, "a URL must be https, or http to a loopback host, and hold no user info");
 }

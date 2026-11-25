@@ -198,4 +198,64 @@ public class UploadTests
         session.Feed(new Input.UploadRead(stale.Epoch, id, null, new byte[5], false));
         Assert.Empty(session.Out);
     }
+
+    private static (Session, string) GroupOfTen()
+    {
+        var session = Session.Opened();
+        var group = new Media.Group(new Media.Member[] { new Media.Upload("image/png", UploadContent.FromBytes(new byte[10])) });
+        return (session, session.SetSource(new Source(group)));
+    }
+
+    [Fact]
+    public void An_upload_of_known_length_sends_uploaded_when_the_bytes_sent_reach_the_length_even_if_the_credit_is_spent()
+    {
+        var (session, id) = GroupOfTen();
+        session.Feed(new Send(id, 10, 0));
+        var read = Assert.Single(session.Of<Output.ReadUpload>());
+        Assert.Equal(10, read.Count);
+
+        session.Feed(new Input.UploadRead(read.Epoch, id, 0, new byte[10], false));
+
+        Assert.Equal("uploaded", session.Sent().Single()["type"]!.GetValue<string>());
+        Assert.Empty(session.Of<Output.ReadUpload>());
+    }
+
+    [Fact]
+    public void A_read_is_never_asked_for_more_than_the_bytes_left_of_a_known_length()
+    {
+        var (session, id) = GroupOfTen();
+
+        session.Feed(new Send(id, 1000, 0));
+
+        Assert.Equal(10, Assert.Single(session.Of<Output.ReadUpload>()).Count);
+    }
+
+    public static IEnumerable<object[]> Removals() => new[]
+    {
+        new object[] { "stop" },
+        new object[] { "end" },
+        new object[] { "rejected" },
+        new object[] { "overloaded" },
+    };
+
+    [Theory]
+    [MemberData(nameof(Removals))]
+    public void When_the_current_upload_goes_away_the_next_credited_upload_starts_reading(string how)
+    {
+        var session = Session.Opened();
+        var a = session.SetSource(new Source(new Media.Upload("image/jpeg", UploadContent.FromStream(() => new MemoryStream())), new SourceOptions(Live: true)));
+        var b = session.SetSource(Session.UploadOf(UploadContent.FromStream(() => new MemoryStream())));
+        session.Feed(new Send(b, 100));
+        Assert.Empty(session.Of<Output.ReadUpload>());
+
+        switch (how)
+        {
+            case "stop": session.Feed(new Input.StopSource(a)); break;
+            case "end": session.Feed(new End(a, EndReason.Stopped)); break;
+            case "rejected": session.Feed(new ErrorMessage("queue_full", "no", a)); break;
+            default: session.Feed(new ErrorMessage("overloaded", "busy", a)); break;
+        }
+
+        Assert.Equal(b, Assert.Single(session.Of<Output.ReadUpload>()).Id);
+    }
 }
