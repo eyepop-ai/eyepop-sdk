@@ -17,10 +17,12 @@ public class ProtocolSurfaceTests
             new[]
             {
                 "Ability", "Camera", "CameraDistortion", "CameraExtrinsics", "CameraExtrinsicsRotation",
-                "CameraExtrinsicsTranslation", "CameraIntrinsics", "ComponentParams", "Dropped", "End", "EndReason",
-                "EndReasonWire", "InferenceComponent", "JobMessage", "Pop", "PopComponent", "PopDepthMap",
+                "CameraExtrinsicsTranslation", "CameraIntrinsics", "ComponentParams", "Contour", "Depth",
+                "Dropped", "End", "EndReason", "EndReasonWire", "InferenceComponent", "JobMessage", "Mask",
+                "Point", "Pop", "PopComponent", "PopDepthMap", "PredictedClass", "PredictedKeyPoint",
+                "PredictedKeyPoints", "PredictedMesh", "PredictedObject", "PredictedText", "Prediction",
                 "PredictionMessage", "RawComponent", "Roi", "RoiContour", "RoiContourPoint", "RoiRectangle",
-                "SourceDefaults", "Start", "Usage",
+                "SourceDefaults", "Start", "TrackEvent", "Usage",
             },
             exported);
     }

@@ -478,7 +478,7 @@ def test_x_tolerant_beside_a_ref_to_an_object_makes_the_csharp_read_tolerant():
         "either": schema("either", {"oneOf": [{"$ref": "holder.json"}]}),
     }
 
-    source = generate(schemas, ("either",))["csharp"]
+    source = generate(schemas, ("either",), ["either", "holder", "thing"])["csharp"]
 
     assert 'Wire.Tolerant(Thing.FromJson, value => new Thing(Raw: Wire.Snapshot(value)))' in source
 
