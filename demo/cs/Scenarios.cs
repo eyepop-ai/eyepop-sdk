@@ -11,7 +11,7 @@ public static class Scenarios
     public static readonly (string Name, Func<Run, Task> Execute)[] All =
     [
         ("objects", Objects),
-        ("pose", Pose),
+        ("keypoints", Keypoints),
         ("caption", Caption),
     ];
 
@@ -38,8 +38,8 @@ public static class Scenarios
         }
     }
 
-    // Body pose: find each person, then crop to the person and find the pose.
-    public static async Task Pose(Run run)
+    // Body joints: find each person, then crop to the person and find the joints.
+    public static async Task Keypoints(Run run)
     {
         var pop = Pop.FromJson(JsonNode.Parse("""
             {
@@ -51,15 +51,16 @@ public static class Scenarios
                   "confidenceThreshold": 0.5,
                   "forward": {
                     "operator": {
-                      "type": "crop_with_full_fallback",
-                      "includeClasses": ["person"],
-                      "crop": { "boxPadding": 0.1 }
+                      "type": "crop",
+                      "crop": {
+                        "maxItems": 128
+                      }
                     },
                     "targets": [
                       {
                         "type": "inference",
-                        "ability": "eyepop.person.pose:latest",
-                        "categoryName": "pose",
+                        "ability": "eyepop.person.2d-body-points:latest",
+                        "categoryName": "2d-body-points",
                         "confidenceThreshold": 0.25
                       }
                     ]
@@ -88,11 +89,7 @@ public static class Scenarios
                   "ability": "eyepop.vlm.image:latest",
                   "categoryName": "description",
                   "params": {
-                    "prompts": [
-                      {
-                        "prompt": "Describe the scene in one sentence."
-                      }
-                    ]
+                    "prompt": "Describe the scene in one sentence."
                   }
                 }
               ]

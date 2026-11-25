@@ -16,7 +16,7 @@ public static class Summary
         if (prediction.Objects is { Count: > 0 } objects)
             parts.Add($"objects={objects.Count} [{string.Join(", ", objects.Select(o => o.ClassLabel).OfType<string>().Distinct())}]");
 
-        // The pose of a person hangs off that person, however deep the cascade nests it.
+        // The joints of a person hang off that person, however deep the cascade nests it.
         var keyPoints = (prediction.KeyPoints?.Count ?? 0) + Flatten(prediction.Objects).Sum(o => o.KeyPoints?.Count ?? 0);
         if (keyPoints > 0) parts.Add($"keypoints={keyPoints}");
 

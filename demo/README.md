@@ -16,20 +16,20 @@ You need the [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0) and 
 export EYEPOP_API_KEY=...
 dotnet run --project demo/cs                 # the objects scenario on the bundled sample image, from any directory
 dotnet run --project demo/cs -- list         # the scenario names
-dotnet run --project demo/cs -- pose --file ./team.jpg
+dotnet run --project demo/cs -- keypoints --file ./team.jpg
 dotnet run --project demo/cs -- all          # every scenario in turn
 ```
 
-Inside the repo with Devbox: `devbox run -- task demo:cs -- pose`.
+Inside the repo with Devbox: `devbox run -- task demo:cs -- keypoints`.
 
-Example output of `all` on the sample image. The counts and the caption depend on the live models; the shape of each line does not:
+Output of `all` on the sample image, from a live run:
 
 ```
 prediction objects=9 [person]
 PASS objects
 prediction objects=9 [person] keypoints=9
-PASS pose
-prediction caption="A crowd of people standing together."
+PASS keypoints
+prediction caption="A group of nine people stands in a row, each holding a white card with a black question mark over their face, creating an anonymous and inquisitive visual."
 PASS caption
 ```
 
@@ -40,12 +40,12 @@ All three run on the bundled `demo/media/people-1.jpg`, which shows nine people.
 | Scenario | Pop | Prints |
 |----------|-----|--------|
 | `objects` (default) | `eyepop.person:latest` | object count and labels |
-| `pose` | person, then `eyepop.person.pose:latest` on each person crop | the objects, and the number of key point sets |
+| `keypoints` | person, then `eyepop.person.2d-body-points:latest` on each person crop | the objects, and the number of key point sets |
 | `caption` | `eyepop.vlm.image:latest` with the prompt "Describe the scene in one sentence." | the caption |
 
-The pops are copied from the pops the SDKs' integration suite runs against real environments.
+The `caption` pop passes the prompt as `params.prompt`, a string; the pipeline ignores a `params.prompts` list for this ability. The caption wording varies from run to run.
 
-What has been run: the unit tests, the argument and failure paths, and every scenario against an unreachable local address (the pops parse and the sample is found from another working directory). No scenario has been run against a real EyePop environment, so the example output above is the expected shape, not a recording. In particular the `keypoints=9` count and the caption text are illustrative, and where `pose` and `caption` answer in a prediction is read from the integration suite's notes: pose key points on the person object (nested at any depth), the caption in `texts`, with `tokens.text` also read because the protocol's own example uses it.
+Verified live: on 2026-11-25 all three scenarios passed against the staging environment, including from a different working directory. The caption is read from `texts[]`, else from `tokens.text` (the protocol's own example uses it); both print correctly.
 
 ## Options
 

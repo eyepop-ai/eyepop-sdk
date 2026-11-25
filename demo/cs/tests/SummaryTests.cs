@@ -27,7 +27,7 @@ public class SummaryTests
     public void Key_points_on_a_nested_object_are_counted() =>
         Assert.Equal(
             "prediction objects=1 [person] keypoints=1",
-            Line("""{"objects":[{"classLabel":"person","objects":[{"classLabel":"pose","keyPoints":[{"points":[]}]}]}]}"""));
+            Line("""{"objects":[{"classLabel":"person","objects":[{"classLabel":"2d-body-points","keyPoints":[{"points":[]}]}]}]}"""));
 
     [Fact]
     public void A_caption_comes_from_texts() =>
