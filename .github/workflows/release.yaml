@@ -6,9 +6,13 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: Release tag to build artifacts for, e.g. v4.0.0-alpha.1 (never uploads to a registry)
+        description: Release tag to build artifacts for, e.g. v4.0.0-dev.1 or v4.0.0-alpha.1
         type: string
         required: true
+      registries:
+        description: Comma list of registries to really publish to, e.g. cs or cs,node (empty builds only). Only for a -dev.N or -alpha.N tag.
+        type: string
+        default: ''
 
 concurrency:
   group: release-${{ github.event.release.tag_name || inputs.tag }}
@@ -32,10 +36,14 @@ jobs:
         name: Validate tag for every ecosystem
         env:
           TAG: ${{ github.event.release.tag_name || inputs.tag }}
-          REGISTRIES: ${{ github.event_name == 'release' && vars.PUBLISH_TO_REGISTRIES || '' }}
+          REGISTRIES: ${{ github.event_name == 'release' && vars.PUBLISH_TO_REGISTRIES || inputs.registries }}
         run: |
           scripts/verify-tag.sh "$TAG"
-          [[ $REGISTRIES =~ ^[a-z,]*$ ]] || { echo "PUBLISH_TO_REGISTRIES must be true or a comma list like cs,node" >&2; exit 1; }
+          [[ $REGISTRIES =~ ^[a-z,]*$ ]] || { echo "registries must be true or a comma list like cs,node" >&2; exit 1; }
+          if [[ $GITHUB_EVENT_NAME == workflow_dispatch && -n $REGISTRIES ]]; then
+            [[ $REGISTRIES != true ]] || { echo "dispatch needs a comma list of registries, not true" >&2; exit 1; }
+            [[ $TAG =~ -(dev|alpha)\.[0-9]+$ ]] || { echo "dispatch publishes only -dev.N or -alpha.N tags" >&2; exit 1; }
+          fi
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
           echo "registries=$REGISTRIES" >> "$GITHUB_OUTPUT"
 

@@ -5,10 +5,10 @@ set -euo pipefail
 tag=${1:?tag required}
 ecosystem=${2:?ecosystem required}
 
-pattern='^v([0-9]+\.[0-9]+\.[0-9]+)(-(alpha|beta|rc)\.([0-9]+))?$'
+pattern='^v([0-9]+\.[0-9]+\.[0-9]+)(-(dev|alpha|beta|rc)\.([0-9]+))?$'
 [[ $tag =~ $pattern ]] || { echo "invalid release tag: $tag" >&2; exit 1; }
 core=${BASH_REMATCH[1]}     # 4.0.0
-stage=${BASH_REMATCH[3]:-}  # alpha, beta, rc, or empty for a stable release
+stage=${BASH_REMATCH[3]:-}  # dev, alpha, beta, rc, or empty for a stable release
 number=${BASH_REMATCH[4]:-} # 1
 
 leading_zero='(^|\.)0[0-9]'
@@ -20,6 +20,7 @@ fi
 semver=$core${stage:+-$stage.$number}
 
 case $stage in
+  dev) pep440=${core}.dev$number ;;
   alpha) pep440=${core}a$number ;;
   beta) pep440=${core}b$number ;;
   rc) pep440=${core}rc$number ;;

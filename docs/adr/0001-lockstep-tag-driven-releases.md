@@ -5,3 +5,7 @@ One git tag `vX.Y.Z` is the only source of truth for a version, and every Langua
 ## Revisited 2026-11-10: kept
 
 We considered independent per-language releases (`<lang>/vX.Y.Z` tags, one release workflow per language) because existing registry histories differ (PyPI `eyepop`, the `@eyepop.ai` npm scope) and a node-only change should not republish the others. We kept lockstep: one version and one tag are much easier to track, and per-language versions would need a pipeline-API compatibility story and a rewrite of the Release tag and Lockstep release terms. The churn cost above stands. Reopen this if a Language SDK needs to ship on its own cadence.
+
+## Dev releases
+
+To cut a dev release of individual Language SDKs, run the Release workflow by hand (`workflow_dispatch`) with a `-dev.N` or `-alpha.N` tag and `registries` set to a comma list such as `cs` or `cs,node`. Only the listed registries publish; the rest only build. Dispatch refuses to publish any other tag. The version is still lockstep-shaped (one tag, one version), so a dev release does not change the rule above for stable releases. Prereleases are real and permanent on npm, crates.io and the Go proxy; only PyPI and NuGet have test registries, which are not wired up yet.
