@@ -33,7 +33,7 @@ jobs:
           path: ${{ runner.temp }}/out/*
           if-no-files-found: error
       - if: ${{ !inputs.publish }}
-        run: echo "publish is off, would publish to npm here"
+        run: echo "- $TAG, publish is off, would publish to npm here" >> "$GITHUB_STEP_SUMMARY"
       - if: ${{ inputs.publish }}
         run: task node:publish TAG="$TAG"
       - if: ${{ inputs.publish }}
