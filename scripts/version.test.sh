@@ -11,6 +11,9 @@ check v4.0.0-alpha.1 npm 4.0.0-alpha.1
 check v4.0.0-alpha.1 cargo 4.0.0-alpha.1
 check v4.0.0-alpha.1 nuget 4.0.0-alpha.1
 check v4.0.0-alpha.1 pypi 4.0.0a1
+check v4.0.0-dev.3 npm 4.0.0-dev.3
+check v4.0.0-dev.3 pypi 4.0.0.dev3
+check v4.0.0-dev.3 go-tag go/v4.0.0-dev.3
 check v4.0.0-beta.2 pypi 4.0.0b2
 check v4.0.0-rc.3 pypi 4.0.0rc3
 check v4.0.0 pypi 4.0.0
